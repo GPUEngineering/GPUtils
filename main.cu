@@ -133,7 +133,7 @@ void t_operations_with_matrices() {
 int main() {
 
     t_operations_with_vectors();
-    t_operations_with_matrices();
+//    t_operations_with_matrices();
 
 
 

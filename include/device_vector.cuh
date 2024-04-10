@@ -209,16 +209,14 @@ public:
 
     TElement operator*(const DeviceVector &rhs);
 
-    friend DeviceVector &operator+(DeviceVector<float> lhs,
-                                   const DeviceVector<float>& rhs);
+    template<typename T>
+    friend DeviceVector<T> &operator+(DeviceVector<T> lhs,
+                                   const DeviceVector<T>& rhs);
 
     TElement norm2();
 
     TElement sum();
 
-    friend DeviceVector<TElement> operator+(
-            DeviceVector<TElement> lhs,
-            const DeviceVector<TElement>& rhs);
 
 }; /* end of class */
 
@@ -230,12 +228,13 @@ DeviceVector<float> &DeviceVector<float>::operator+=(const DeviceVector<float> &
     return *this;
 }
 
-template<>
-DeviceVector<float> DeviceVector<float>::operator+(DeviceVector<float> lhs,
+DeviceVector<float> operator+(DeviceVector<float> lhs,
                                         const DeviceVector<float>& rhs) {
     Context context;
-    DeviceVector<float> aaa(&context, 10);
-    return aaa;
+    DeviceVector<float> res(&context, 10);
+    lhs.deviceCopyTo(res);
+    res += rhs;
+    return res;
 }
 
 
