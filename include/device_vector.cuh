@@ -28,12 +28,6 @@ public:
 
 };
 
-template<typename TElement>
-class DeviceVector;;
-
-template<typename TElement>
-DeviceVector<TElement> operator+(const DeviceVector<TElement> &lhs, const DeviceVector<TElement> &rhs);
-
 /**
  * DeviceVector is a unique_ptr-type entity for device data.
  */

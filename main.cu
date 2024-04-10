@@ -101,6 +101,11 @@ void t_operations_with_vectors(){
     DeviceVector<float> a(&context, h_a);
     DeviceVector<float> b(&context, h_b);
 
+    DeviceVector<float> z(&context, 100);
+    z.upload(h_a);
+    std::cout << "#z = "<< z.capacity() << std::endl;
+
+
     a += b;
 
     float x = a * b;
@@ -124,6 +129,9 @@ void t_operations_with_vectors(){
     std::cout << "100a = " << a << std::endl;
     DeviceVector<float> d = 0.123f * a;
     std::cout << "d = " << d << std::endl;
+
+    DeviceVector<float> mySlice(d, 3, 5);
+    std::cout << mySlice;
 }
 
 
@@ -139,7 +147,13 @@ void t_operations_with_matrices() {
 }
 int main() {
 
-    t_operations_with_vectors();
+    Context context;
+    std::vector<float> hostData{1., 2., 3.};
+    std::vector<float> hostZeros(7);
+    DeviceVector<float> x(&context, hostZeros);
+    DeviceVector<float> mySlice(x, 3, 5);
+    mySlice.upload(hostData);
+    std::cout << x << std::endl;
 //    t_operations_with_matrices();
 
 
