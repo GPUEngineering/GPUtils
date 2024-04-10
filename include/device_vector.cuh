@@ -28,8 +28,11 @@ public:
 
 };
 
-template<typename TElement> class DeviceVector;;
-template <typename TElement> DeviceVector<TElement> operator+(const DeviceVector<TElement>& lhs, const DeviceVector<TElement>& rhs);
+template<typename TElement>
+class DeviceVector;;
+
+template<typename TElement>
+DeviceVector<TElement> operator+(const DeviceVector<TElement> &lhs, const DeviceVector<TElement> &rhs);
 
 /**
  * DeviceVector is a unique_ptr-type entity for device data.
@@ -224,13 +227,34 @@ public:
      * @param rhs
      * @return
      */
-    TElement operator*(const DeviceVector &rhs);
+    TElement operator*(const DeviceVector &rhs) const;
+
+    /**
+     * Scalar multiplication
+     * @param scalar
+     * @return
+     */
+    DeviceVector &operator*=(float scalar);
 
 
-    friend DeviceVector operator+(DeviceVector& a, const DeviceVector& b) {
+    friend DeviceVector operator+(DeviceVector &a, const DeviceVector &b) {
         DeviceVector n(a.m_context, a.capacity());
         a.deviceCopyTo(n);
         n += b;
+        return n;
+    }
+
+    friend DeviceVector operator-(DeviceVector &a, const DeviceVector &b) {
+        DeviceVector n(a.m_context, a.capacity());
+        a.deviceCopyTo(n);
+        n -= b;
+        return n;
+    }
+
+    friend DeviceVector operator*(const float b, DeviceVector &a) {
+        DeviceVector n(a.m_context, a.capacity());
+        a.deviceCopyTo(n);
+        n *= b;
         return n;
     }
 
@@ -238,13 +262,13 @@ public:
      * Euclidean norm
      * @return
      */
-    TElement norm2();
+    TElement norm2() const;
 
     /**
      * Sum of the elements of the vector
      * @return
      */
-    TElement sum();
+    TElement sum() const;
 
 
 }; /* end of class */
@@ -257,6 +281,12 @@ DeviceVector<float> &DeviceVector<float>::operator+=(const DeviceVector<float> &
     return *this;
 }
 
+template<>
+DeviceVector<float> &DeviceVector<float>::operator*=(float scalar) {
+    float alpha = scalar;
+    cublasSscal(m_context->handle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    return *this;
+}
 
 
 template<>
@@ -267,21 +297,21 @@ DeviceVector<float> &DeviceVector<float>::operator-=(const DeviceVector<float> &
 }
 
 template<>
-float DeviceVector<float>::operator*(const DeviceVector<float> &rhs) {
+float DeviceVector<float>::operator*(const DeviceVector<float> &rhs) const {
     float inn_prod;
     cublasSdot(m_context->handle(), m_numAllocatedElements, m_d_data, 1, rhs.m_d_data, 1, &inn_prod);
     return inn_prod;
 }
 
 template<>
-float DeviceVector<float>::norm2() {
+float DeviceVector<float>::norm2() const {
     float the_norm;
     cublasSnrm2(m_context->handle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
     return the_norm;
 }
 
 template<>
-float DeviceVector<float>::sum() {
+float DeviceVector<float>::sum() const {
     float the_sum;
     cublasSasum(m_context->handle(), m_numAllocatedElements, m_d_data, 1, &the_sum);
     return the_sum;
