@@ -198,7 +198,6 @@ public:
         for (size_t i = 0; i < data.m_numAllocatedElements; i++) {
             out << "@(" << i << ") = " << temp[i] << std::endl;
         }
-        out << std::endl;
         return out;
     }
 

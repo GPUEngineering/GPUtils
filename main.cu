@@ -148,12 +148,18 @@ void t_operations_with_matrices() {
 int main() {
 
     Context context;
-    std::vector<float> hostData{1., 2., 3.};
-    std::vector<float> hostZeros(7);
-    DeviceVector<float> x(&context, hostZeros);
-    DeviceVector<float> mySlice(x, 3, 5);
-    mySlice.upload(hostData);
-    std::cout << x << std::endl;
+    std::vector<float> host_x{1., 2., 3., 4., 5., 6.,  7.};
+    std::vector<float> host_y{1., 3., 5., 7., 9., 11., 13.};
+    DeviceVector<float> x(&context, host_x);
+    DeviceVector<float> y(&context, host_x);
+    float innerProduct = x * y;
+    std::cout << innerProduct << std::endl;
+
+    auto sum = x + y;
+    auto diff = x - y;
+    auto scaledX = 3.0f * x;
+    std::cout << scaledX << std::endl;
+
 //    t_operations_with_matrices();
 
 
