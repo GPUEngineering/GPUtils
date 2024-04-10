@@ -115,8 +115,10 @@ void t_operations_with_vectors(){
 
     std::cout << "Σ a_i = " << a.sum() << std::endl;
 
+    std::cout << a << std::endl;
+    std::cout << b << std::endl;
     DeviceVector<float> c = a + b;
-    std::cout << c;
+    std::cout << c << std::endl;
 }
 
 

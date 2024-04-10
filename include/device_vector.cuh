@@ -28,6 +28,8 @@ public:
 
 };
 
+template<typename TElement> class DeviceVector;;
+template <typename TElement> DeviceVector<TElement> operator+(const DeviceVector<TElement>& lhs, const DeviceVector<TElement>& rhs);
 
 /**
  * DeviceVector is a unique_ptr-type entity for device data.
@@ -73,7 +75,7 @@ public:
      *
      * @param other other device vector
      * @param from start (index)
-     * @param to end
+     * @param to end (index)
      */
     DeviceVector(DeviceVector &other, size_t from, size_t to) {
         m_context = other.m_context;
@@ -203,18 +205,45 @@ public:
         return out;
     }
 
+    /**
+     * Add another vector to the current vector (element-wise)
+     * @param rhs
+     * @return
+     */
     DeviceVector &operator+=(const DeviceVector &rhs);
 
+    /**
+     * Subtract from the current vector another vector (element-wise)
+     * @param rhs
+     * @return
+     */
     DeviceVector &operator-=(const DeviceVector &rhs);
 
+    /**
+     * Inner product between two vectors
+     * @param rhs
+     * @return
+     */
     TElement operator*(const DeviceVector &rhs);
 
-    template<typename T>
-    friend DeviceVector<T> &operator+(DeviceVector<T> lhs,
-                                   const DeviceVector<T>& rhs);
 
+    friend DeviceVector operator+(DeviceVector& a, const DeviceVector& b) {
+        DeviceVector n(a.m_context, a.capacity());
+        a.deviceCopyTo(n);
+        n += b;
+        return n;
+    }
+
+    /**
+     * Euclidean norm
+     * @return
+     */
     TElement norm2();
 
+    /**
+     * Sum of the elements of the vector
+     * @return
+     */
     TElement sum();
 
 
@@ -228,14 +257,6 @@ DeviceVector<float> &DeviceVector<float>::operator+=(const DeviceVector<float> &
     return *this;
 }
 
-DeviceVector<float> operator+(DeviceVector<float> lhs,
-                                        const DeviceVector<float>& rhs) {
-    Context context;
-    DeviceVector<float> res(&context, 10);
-    lhs.deviceCopyTo(res);
-    res += rhs;
-    return res;
-}
 
 
 template<>
@@ -325,9 +346,12 @@ void DeviceVector<TElement>::download(std::vector <TElement> &vec) {
                cudaMemcpyDeviceToHost);
 }
 
-
+/**
+ * Storage mode for the data of a matrix
+ */
 enum MatrixStorageMode {
-    ColumnMajor, RowMajor
+    ColumnMajor, /**< column major storage (preferred/default) */
+    RowMajor /**< row major storage */
 };
 
 template<typename TElement>
