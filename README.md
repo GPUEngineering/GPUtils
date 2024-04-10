@@ -112,9 +112,40 @@ we use `cublas` functions):
 
 ### 1.4. Some cool operators
 
+:warning: Note that these operations are currently supported for 
+`float`-based device vectors only (the extension other types is trivial).
+
+We can add device vectors on the device as follows:
+
+```c++
+Context context;
+std::vector<float> host_x{1., 2., 3., 4., 5., 6.,  7.};
+std::vector<float> host_y{1., 3., 5., 7., 9., 11., 13.};
+DeviceVector<float> x(&context, host_x);
+DeviceVector<float> y(&context, host_x);
+x += y;  // x = [2, 4, 6, 8, 10, 12, 14]
+```
+
+To subtract `y` from `x` we can use `x -= y`.
+
+We can also scale a device vector by a scalar with `*=` (e.g, `x *= 5.0f`). 
+To negate the values of a device vector we can be `x *= -1.0`.
+
+We can also compute the inner product of two vectors as follows:
+
+```c++
+float innerProduct = x * y;
+```
+
+If necessary, we can also use the following operations
+
+```c++
+auto sum = x + y;
+auto diff = x - y;
+auto scaledX = 3.0f * x;
+```
 
 
-
-## DeviceMatrix
+## 2. DeviceMatrix
 
 Under construction.
