@@ -152,6 +152,7 @@ To construct a device matrix we need to provide the data in
 an array; we can use either a column-major or a row-major format,
 the former being the preferred and default one.
 Suppose we need to construct the matrix 
+
 $$A = \begin{bmatrix}
 1 & 2 & 3 \\
 4 & 5 & 6 \\
@@ -159,6 +160,7 @@ $$A = \begin{bmatrix}
 10 & 11 & 12 \\
 13 & 14 & 15
 \end{bmatrix},$$
+
 where the data is stored, say, in row-major format.
 Then, we do
 ```c++
