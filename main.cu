@@ -145,8 +145,8 @@ void t_operations_with_matrices() {
 }
 
 
-void rm2cm(std::vector<float>& rm,
-           std::vector<float>& cm,
+void rm2cm(std::vector<float> &rm,
+           std::vector<float> &cm,
            size_t nr,
            size_t nc) {
     int current = 0;
@@ -162,6 +162,9 @@ void rm2cm(std::vector<float>& rm,
 
 int main() {
     Context context;
+    DeviceMatrix<float> a(&context, 6, 10);
+    std::cout << a;
+
     size_t n_rows = 5;
     std::vector<float> h_data{1.0f, 2.0f, 3.0f,
                               4.0f, 5.0f, 6.0f,
@@ -174,6 +177,9 @@ int main() {
                             MatrixStorageMode::RowMajor);
     std::cout << mat << std::endl;
     std::cout << mat.n_rows() << " x " << mat.n_cols() << std::endl;
+//    mat += mat;
+    mat *= 3.5f;
+    std::cout << mat << std::endl;
 //    std::cout << "res : \n";
 //    for (int i = 0; i < 15; ++i) {
 //        std::cout << x[i] << ", ";

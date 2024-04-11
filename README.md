@@ -148,6 +148,8 @@ auto scaledX = 3.0f * x;
 
 ## 2. DeviceMatrix
 
+### 2.1. Construction of device matrices
+
 To construct a device matrix we need to provide the data in 
 an array; we can use either a column-major or a row-major format,
 the former being the preferred and default one.
@@ -176,3 +178,15 @@ DeviceMatrix<float> mat(&context,
                         h_data,
                         MatrixStorageMode::RowMajor);
 ```
+
+We can also preallocate memory for a device matrix as follows
+
+```c++
+size_t n_rows = 5;
+size_t n_cols = 10;
+DeviceMatrix<float> a(&context, n_rows, n_cols);
+```
+
+The number of rows and columns of a device matrix can be 
+retrieved using the method `.n_rows()` and `.n_cols()` respectively.
+

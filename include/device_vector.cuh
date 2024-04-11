@@ -391,6 +391,19 @@ private:
         if (m_vec) delete m_vec;
     }
 
+    void rm2cm(std::vector <TElement> vec_rm,
+               std::vector <TElement> &vec_cm,
+               size_t n_rows,
+               size_t n_cols) {
+        for (size_t i = 0; i < n_rows; i++) {
+            for (size_t j = 0; j < n_cols; j++) {
+                float c = vec_rm[j + i * n_cols];
+                vec_cm[i + j * n_rows] = c;
+            }
+        }
+    }
+
+
 public:
 
     DeviceMatrix(Context *context, size_t n_rows, size_t n_cols) {
@@ -406,20 +419,21 @@ public:
         m_num_rows = n_rows;
         size_t n_cols = numel / n_rows;
         if (mode == MatrixStorageMode::RowMajor) {
-            // change to column-major before storing
             std::vector <TElement> vec_cm(numel);
-            for (size_t i = 0; i < n_rows; i++) {
-                for (size_t j = 0; j < n_cols; j++) {
-                    float c = vec[j + i * n_cols];
-                    vec_cm[i + j * n_rows] = c;
-                }
-            }
+            rm2cm(vec, vec_cm, n_rows, n_cols);  // to column-major
             m_vec = new DeviceVector<TElement>(context, vec_cm);
         } else {
             m_vec = new DeviceVector<TElement>(context, vec);
         }
     }
 
+    void upload(const std::vector <TElement> &vec,
+                size_t n_rows,
+                MatrixStorageMode mode = MatrixStorageMode::ColumnMajor) {
+        // TODO implement this
+        // make sure enough memory has been reserved
+
+    }
 
     ~DeviceMatrix() {
         destroy();
@@ -432,6 +446,12 @@ public:
     size_t n_cols() {
         return m_vec->capacity() / m_num_rows;
     }
+
+    DeviceMatrix &operator+=(const DeviceMatrix &rhs);
+
+    DeviceMatrix &operator-=(const DeviceMatrix &rhs);
+
+    DeviceMatrix &operator*=(float scalar);
 
     friend std::ostream &operator<<(std::ostream &out, const DeviceMatrix<TElement> &data) {
         size_t numel = data.m_vec->capacity();
@@ -450,5 +470,25 @@ public:
     }
 
 };
+
+
+template<>
+DeviceMatrix<float> &DeviceMatrix<float>::operator+=(const DeviceMatrix<float> &rhs) {
+    *m_vec += *rhs.m_vec;
+    return *this;
+}
+
+template<>
+DeviceMatrix<float> &DeviceMatrix<float>::operator-=(const DeviceMatrix<float> &rhs) {
+    *m_vec -= *rhs.m_vec;
+    return *this;
+}
+
+
+template<>
+DeviceMatrix<float> &DeviceMatrix<float>::operator*=(float scalar) {
+    *m_vec *= scalar;
+    return *this;
+}
 
 #endif
