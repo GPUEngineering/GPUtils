@@ -238,18 +238,24 @@ public:
         return n;
     }
 
-    friend DeviceVector operator-(DeviceVector &a, const DeviceVector &b) {
-        DeviceVector n(a.m_context, a.capacity());
-        a.deviceCopyTo(n);
-        n -= b;
-        return n;
+    friend DeviceVector operator-(DeviceVector &firstVector, const DeviceVector &secondVector) {
+        DeviceVector resultVec(firstVector.m_context, firstVector.capacity());
+        firstVector.deviceCopyTo(resultVec);
+        resultVec -= secondVector;
+        return resultVec;
     }
 
-    friend DeviceVector operator*(const float b, DeviceVector &a) {
-        DeviceVector n(a.m_context, a.capacity());
-        a.deviceCopyTo(n);
-        n *= b;
-        return n;
+    /**
+     * Scalar multiplication
+     * @param firstVector
+     * @param secondVector
+     * @return
+     */
+    friend DeviceVector operator*(const float firstVector, DeviceVector &secondVector) {
+        DeviceVector resultVec(secondVector.m_context, secondVector.capacity());
+        secondVector.deviceCopyTo(resultVec);
+        resultVec *= firstVector;
+        return resultVec;
     }
 
     /**
@@ -267,7 +273,6 @@ public:
 
 }; /* end of class */
 
-
 template<>
 DeviceVector<float> &DeviceVector<float>::operator+=(const DeviceVector<float> &rhs) {
     const float alpha = 1.;
@@ -281,7 +286,6 @@ DeviceVector<float> &DeviceVector<float>::operator*=(float scalar) {
     cublasSscal(m_context->handle(), m_numAllocatedElements, &alpha, m_d_data, 1);
     return *this;
 }
-
 
 template<>
 DeviceVector<float> &DeviceVector<float>::operator-=(const DeviceVector<float> &rhs) {
@@ -333,7 +337,6 @@ bool DeviceVector<TElement>::allocateOnDevice(size_t size) {
     return true;
 }
 
-
 template<typename TElement>
 bool DeviceVector<TElement>::upload(const TElement *dataArray, size_t size) {
     if (!allocateOnDevice(size)) return false;
@@ -374,23 +377,39 @@ void DeviceVector<TElement>::download(std::vector <TElement> &vec) {
  * Storage mode for the data of a matrix
  */
 enum MatrixStorageMode {
-    ColumnMajor, /**< column major storage (preferred/default) */
-    RowMajor /**< row major storage */
+    columnMajor, /**< column major storage (preferred/default) */
+    rowMajor /**< row major storage */
 };
 
+
+/**
+ * Device matrix
+ * @tparam TElement
+ */
 template<typename TElement>
 class DeviceMatrix {
 
 private:
     // the data is always stored in CM format
-    DeviceVector<TElement> *m_vec = nullptr;
-    size_t m_num_rows = 0;
+    Context* m_context = nullptr;
+    DeviceVector<TElement> *m_vec = nullptr; /**< stores all useful memory */
+    size_t m_num_rows = 0; /**< number of rows */
 
+    /**
+     *
+     */
     void destroy() {
         m_num_rows = 0;
         if (m_vec) delete m_vec;
     }
 
+    /**
+     *
+     * @param vec_rm
+     * @param vec_cm
+     * @param n_rows
+     * @param n_cols
+     */
     void rm2cm(std::vector <TElement> vec_rm,
                std::vector <TElement> &vec_cm,
                size_t n_rows,
@@ -406,19 +425,34 @@ private:
 
 public:
 
+    /**
+     *
+     * @param context
+     * @param n_rows
+     * @param n_cols
+     */
     DeviceMatrix(Context *context, size_t n_rows, size_t n_cols) {
+        m_context = context;
         m_num_rows = n_rows;
         m_vec = new DeviceVector<TElement>(context, n_rows * n_cols);
     }
 
+    /**
+     *
+     * @param context
+     * @param n_rows
+     * @param vec
+     * @param mode
+     */
     DeviceMatrix(Context *context,
                  size_t n_rows,
                  const std::vector <TElement> &vec,
-                 MatrixStorageMode mode = MatrixStorageMode::ColumnMajor) {
+                 MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
+        m_context = context;
         size_t numel = vec.size();
         m_num_rows = n_rows;
         size_t n_cols = numel / n_rows;
-        if (mode == MatrixStorageMode::RowMajor) {
+        if (mode == MatrixStorageMode::rowMajor) {
             std::vector <TElement> vec_cm(numel);
             rm2cm(vec, vec_cm, n_rows, n_cols);  // to column-major
             m_vec = new DeviceVector<TElement>(context, vec_cm);
@@ -427,32 +461,102 @@ public:
         }
     }
 
+    /**
+     *
+     * @param vec
+     * @param n_rows
+     * @param mode
+     */
     void upload(const std::vector <TElement> &vec,
                 size_t n_rows,
-                MatrixStorageMode mode = MatrixStorageMode::ColumnMajor) {
-        // TODO implement this
-        // make sure enough memory has been reserved
-
+                MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
+        size_t n = vec.size();
+        size_t n_cols = n / n_rows;
+        // TODO error if size is not exact
+        if (mode == MatrixStorageMode::rowMajor) {
+            std::vector <TElement> vec_cm(n);
+            rm2cm(vec, vec_cm, n_rows, n_cols);  // to column-major
+            m_vec->upload(vec_cm);
+        } else {
+            m_vec->upload(vec);
+        }
     }
 
+    /**
+     *
+     */
     ~DeviceMatrix() {
         destroy();
     }
 
-    size_t n_rows() {
+    /**
+     *
+     * @return
+     */
+    size_t n_rows() const {
         return m_num_rows;
     }
 
-    size_t n_cols() {
+    /**
+     *
+     * @return
+     */
+    size_t n_cols() const {
         return m_vec->capacity() / m_num_rows;
     }
 
+    /**
+     *
+     * @param rhs
+     * @return
+     */
     DeviceMatrix &operator+=(const DeviceMatrix &rhs);
 
+    /**
+     *
+     * @param rhs
+     * @return
+     */
     DeviceMatrix &operator-=(const DeviceMatrix &rhs);
 
+    /**
+     *
+     * @param scalar
+     * @return
+     */
     DeviceMatrix &operator*=(float scalar);
 
+    friend DeviceMatrix operator*(DeviceMatrix &a, const DeviceMatrix &b) {
+        size_t nRowsA = a.n_rows();
+        size_t nColsA = a.n_cols();
+        size_t nColsB = b.n_cols();
+        float alpha = 1.;
+        float beta = 1.;
+
+        DeviceMatrix resultMatrix(a.m_context, nRowsA, nColsB);
+        cublasSgemm(a.m_context->handle(),
+                    CUBLAS_OP_N,
+                    CUBLAS_OP_N,
+                    nRowsA,
+                    nColsB,
+                    nColsA,
+                    &alpha,
+                    a.m_vec->get(),
+                    nRowsA,
+                    b.m_vec->get(),
+                    nColsA,
+                    &beta,
+                    resultMatrix.m_vec->get(),
+                    nRowsA);
+        return resultMatrix;
+    }
+
+    /**
+     *
+     * @param out
+     * @param data
+     * @return
+     */
     friend std::ostream &operator<<(std::ostream &out, const DeviceMatrix<TElement> &data) {
         size_t numel = data.m_vec->capacity();
         size_t nr = data.m_num_rows;
@@ -471,7 +575,6 @@ public:
 
 };
 
-
 template<>
 DeviceMatrix<float> &DeviceMatrix<float>::operator+=(const DeviceMatrix<float> &rhs) {
     *m_vec += *rhs.m_vec;
@@ -483,7 +586,6 @@ DeviceMatrix<float> &DeviceMatrix<float>::operator-=(const DeviceMatrix<float> &
     *m_vec -= *rhs.m_vec;
     return *this;
 }
-
 
 template<>
 DeviceMatrix<float> &DeviceMatrix<float>::operator*=(float scalar) {

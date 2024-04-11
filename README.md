@@ -176,17 +176,52 @@ std::vector<float> h_data{1.0f, 2.0f, 3.0f,
 DeviceMatrix<float> mat(&context,
                         n_rows,
                         h_data,
-                        MatrixStorageMode::RowMajor);
+                        MatrixStorageMode::rowMajor);
 ```
+
+Choose `MatrixStorageMode::rowMajor` or `MatrixStorageMode::rowMajor` as appropriate.
 
 We can also preallocate memory for a device matrix as follows
 
 ```c++
-size_t n_rows = 5;
-size_t n_cols = 10;
-DeviceMatrix<float> a(&context, n_rows, n_cols);
+size_t nRows = 2;
+size_t nCols = 3;
+DeviceMatrix<float> a(&context, nRows, nCols);
+```
+
+Then, we can upload the data as follows:
+
+```c++
+std::vector<float> h_a{1.0f, 2.0f, 3.0f,
+                              4.0f, 5.0f, 6.0f}
+a.upload(h_a, nRows, MatrixStorageMode::rowMajor);
 ```
 
 The number of rows and columns of a device matrix can be 
 retrieved using the method `.n_rows()` and `.n_cols()` respectively.
+
+To print a matrix, just do 
+```c++
+std::cout << myMatrix;
+```
+
+
+### 2.2. Operations with device matrices
+
+The operators `+=` are `-=` supported for device matrices.
+
+Matrix-matrix multiplication is as simple as:
+
+```c++
+size_t n = 2, k = 3;
+std::vector<float> aData{1.0f,  2.0f,  3.0f,
+                         4.0f,  5.0f,  6.0f};
+std::vector<float> bData{1.0f,  2.0f,  3.0f,  4.0f,  5.0f,
+                         6.0f,  7.0f,  8.0f,  9.0f, 10.0f,
+                         11.0f, 12.0f, 13.0f, 14.0f, 15.0f};
+DeviceMatrix<float> A(&context, n, aData, MatrixStorageMode::rowMajor);
+DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
+auto X = A * B;
+std::cout << A << B << X;
+```
 
