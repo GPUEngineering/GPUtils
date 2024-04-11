@@ -148,4 +148,29 @@ auto scaledX = 3.0f * x;
 
 ## 2. DeviceMatrix
 
-Under construction.
+To construct a device matrix we need to provide the data in 
+an array; we can use either a column-major or a row-major format,
+the former being the preferred and default one.
+Suppose we need to construct the matrix 
+$$A = \begin{bmatrix}
+1 & 2 & 3 \\
+4 & 5 & 6 \\
+7 & 8 & 9 \\
+10 & 11 & 12 \\
+13 & 14 & 15
+\end{bmatrix},$$
+where the data is stored, say, in row-major format.
+Then, we do
+```c++
+Context context;
+size_t n_rows = 5;
+std::vector<float> h_data{1.0f, 2.0f, 3.0f,
+                          4.0f, 5.0f, 6.0f,
+                          7.0f, 8.0f, 9.0f,
+                          10.0f, 11.0f, 12.0f,
+                          13.0f, 14.0f, 15.0f};
+DeviceMatrix<float> mat(&context,
+                        n_rows,
+                        h_data,
+                        MatrixStorageMode::RowMajor);
+```

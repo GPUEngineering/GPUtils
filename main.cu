@@ -19,7 +19,6 @@ static __global__ void projectOnSOC(float *x, float scaling, float norm, size_t 
 }
 
 
-
 class Set {
 
 protected:
@@ -90,8 +89,7 @@ public:
 };
 
 
-
-void t_operations_with_vectors(){
+void t_operations_with_vectors() {
     Context context;
     // Host data
     std::vector<float> h_a{4., -5., 6., 9., 8., 5., 9., -10.2, 9., 11.};
@@ -103,7 +101,7 @@ void t_operations_with_vectors(){
 
     DeviceVector<float> z(&context, 100);
     z.upload(h_a);
-    std::cout << "#z = "<< z.capacity() << std::endl;
+    std::cout << "#z = " << z.capacity() << std::endl;
 
 
     a += b;
@@ -145,20 +143,66 @@ void t_operations_with_matrices() {
     std::cout << mat << std::endl;
 
 }
+
+
+void rm2cm(std::vector<float>& rm,
+           std::vector<float>& cm,
+           size_t nr,
+           size_t nc) {
+    int current = 0;
+    int stride = nc;
+    int total_elements = nr * nc;
+    for (int i = 0; i < total_elements + 1; ++i) {
+        std::cout << current << " ";
+        cm[i] = rm[current];
+        current = (current + stride) % (total_elements - 1);
+    }
+}
+
+
 int main() {
-
     Context context;
-    std::vector<float> host_x{1., 2., 3., 4., 5., 6.,  7.};
-    std::vector<float> host_y{1., 3., 5., 7., 9., 11., 13.};
-    DeviceVector<float> x(&context, host_x);
-    DeviceVector<float> y(&context, host_x);
-    float innerProduct = x * y;
-    std::cout << innerProduct << std::endl;
+    size_t n_rows = 5;
+    std::vector<float> h_data{1.0f, 2.0f, 3.0f,
+                              4.0f, 5.0f, 6.0f,
+                              7.0f, 8.0f, 9.0f,
+                              10.0f, 11.0f, 12.0f,
+                              13.0f, 14.0f, 15.0f};
+    DeviceMatrix<float> mat(&context,
+                            n_rows,
+                            h_data,
+                            MatrixStorageMode::RowMajor);
+    std::cout << mat << std::endl;
+    std::cout << mat.n_rows() << " x " << mat.n_cols() << std::endl;
+//    std::cout << "res : \n";
+//    for (int i = 0; i < 15; ++i) {
+//        std::cout << x[i] << ", ";
+//    }
 
-    auto sum = x + y;
-    auto diff = x - y;
-    auto scaledX = 3.0f * x;
-    std::cout << scaledX << std::endl;
+//    Context context;
+//    std::vector<float> h_data{1., 2., 3.,
+//                              4., 5., 6.};
+//
+//    size_t n_rows = 2;
+//    size_t n_cols = 3;
+//    DeviceMatrix<float> mat(&context,
+//                            n_rows,
+//                            h_data,
+//                            MatrixStorageMode::RowMajor);
+//
+//
+//    std::cout << mat;
+//
+//
+//    int current = 0;
+//    int stride = 3;
+//    int total_elements = 15;
+//
+//    for (int i = 0; i < total_elements; ++i) {
+//        std::cout << current << " ";
+//        current = (current + stride) % (total_elements + 1);
+//    }
+
 
 //    t_operations_with_matrices();
 

@@ -5,6 +5,7 @@
 #ifndef DEVICE_VECTOR_CUH__
 #define DEVICE_VECTOR_CUH__
 
+
 class Context {
 
 private:
@@ -397,16 +398,26 @@ public:
         m_vec = new DeviceVector<TElement>(context, n_rows * n_cols);
     }
 
-
     DeviceMatrix(Context *context,
                  size_t n_rows,
                  const std::vector <TElement> &vec,
                  MatrixStorageMode mode = MatrixStorageMode::ColumnMajor) {
+        size_t numel = vec.size();
         m_num_rows = n_rows;
+        size_t n_cols = numel / n_rows;
         if (mode == MatrixStorageMode::RowMajor) {
             // change to column-major before storing
+            std::vector <TElement> vec_cm(numel);
+            for (size_t i = 0; i < n_rows; i++) {
+                for (size_t j = 0; j < n_cols; j++) {
+                    float c = vec[j + i * n_cols];
+                    vec_cm[i + j * n_rows] = c;
+                }
+            }
+            m_vec = new DeviceVector<TElement>(context, vec_cm);
+        } else {
+            m_vec = new DeviceVector<TElement>(context, vec);
         }
-        m_vec = new DeviceVector<TElement>(context, vec);
     }
 
 
@@ -424,7 +435,17 @@ public:
 
     friend std::ostream &operator<<(std::ostream &out, const DeviceMatrix<TElement> &data) {
         size_t numel = data.m_vec->capacity();
-        out << "DeviceMatrix [" << data.m_num_rows << " x " << numel / data.m_num_rows << "]:" << std::endl;
+        size_t nr = data.m_num_rows;
+        size_t nc = numel / data.m_num_rows;
+        out << "DeviceMatrix [" << nr << " x " << nc << "]:" << std::endl;
+        std::vector <TElement> temp;
+        data.m_vec->download(temp);
+        for (size_t i = 0; i < nr; i++) {
+            for (size_t j = 0; j < nc; j++) {
+                out << temp[j * nr + i] << ", ";
+            }
+            out << std::endl;
+        }
         return out;
     }
 
