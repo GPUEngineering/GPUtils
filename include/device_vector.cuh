@@ -526,13 +526,17 @@ public:
      */
     DeviceMatrix &operator*=(float scalar);
 
+    friend DeviceVector<TElement> operator*(DeviceMatrix &a, const DeviceVector<TElement> &b) {
+        DeviceVector<TElement> asd(a.m_context, 10);
+        return asd;
+    }
+
     friend DeviceMatrix operator*(DeviceMatrix &a, const DeviceMatrix &b) {
         size_t nRowsA = a.n_rows();
         size_t nColsA = a.n_cols();
         size_t nColsB = b.n_cols();
         float alpha = 1.;
         float beta = 1.;
-
         DeviceMatrix resultMatrix(a.m_context, nRowsA, nColsB);
         cublasSgemm(a.m_context->handle(),
                     CUBLAS_OP_N,
@@ -551,6 +555,18 @@ public:
         return resultMatrix;
     }
 
+    /*
+     * TODO:
+     * -1. Use this in the other project @RM
+     * 0. Matrix-vector multiplication
+     * 1. Z = bZ + aAB
+     * 2. Nullspace of matrices (same >)
+     * 3. Cholesky (separate class to manage pre-allocated memory)
+     * 4. SVD (same)
+     * 5. Least squares with gels
+     * 6. Package this into a library (static)
+     */
+
     /**
      *
      * @param out
@@ -562,7 +578,7 @@ public:
         size_t nr = data.m_num_rows;
         size_t nc = numel / data.m_num_rows;
         out << "DeviceMatrix [" << nr << " x " << nc << "]:" << std::endl;
-        std::vector <TElement> temp;
+        std::vector<TElement> temp;
         data.m_vec->download(temp);
         for (size_t i = 0; i < nr; i++) {
             for (size_t j = 0; j < nc; j++) {

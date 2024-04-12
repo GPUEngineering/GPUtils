@@ -171,8 +171,14 @@ int main() {
                              11.0f, 12.0f, 13.0f, 14.0f, 15.0f};
     DeviceMatrix<float> A(&context, n, aData, MatrixStorageMode::rowMajor);
     DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
+    DeviceVector<float> x(&context, 5);
     auto X = A * B;
     std::cout << A << B << X;
+
+    DeviceVector<float> y = A * x;
+    std::cout << y;
+
+
 
 
 
