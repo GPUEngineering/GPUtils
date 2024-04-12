@@ -558,13 +558,13 @@ public:
     /*
      * TODO:
      * -1. Use this in the other project @RM
-     * 0. Matrix-vector multiplication
-     * 1. Z = bZ + aAB
-     * 2. Nullspace of matrices (same >)
-     * 3. Cholesky (separate class to manage pre-allocated memory)
-     * 4. SVD (same)
-     * 5. Least squares with gels
-     * 6. Package this into a library (static)
+     * 0. Matrix-vector multiplication @RM
+     * 1. Z = bZ + aAB @RM
+     * 2. Nullspace of matrices (same >)  @RM
+     * 3. Cholesky (separate class to manage pre-allocated memory) @RM
+     * 4. SVD (same; class) @PS
+     * 5. Least squares with gels @RM
+     * 6. Package this into a library (static) @RM
      */
 
     /**
