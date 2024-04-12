@@ -4,10 +4,15 @@
 #include <string>
 #include <cublas_v2.h>
 #include <cusolverDn.h>
+#include <stdexcept>
 
 #ifndef DEVICE_VECTOR_CUH__
 #define DEVICE_VECTOR_CUH__
 
+
+/* ------------------------------------------------------------------------------------
+ *  Context
+ * ------------------------------------------------------------------------------------ */
 
 class Context {
 
@@ -38,6 +43,10 @@ public:
     cusolverDnHandle_t &cuSolverHandle() { return m_cusolverHandle; }
 
 };
+
+/* ------------------------------------------------------------------------------------
+ *  Device Vector
+ * ------------------------------------------------------------------------------------ */
 
 /**
  * DeviceVector is a unique_ptr-type entity for device data.
@@ -90,6 +99,20 @@ public:
         m_doDestroy = false;
         m_numAllocatedElements = to - from + 1;
         m_d_data = other.m_d_data + from;
+    }
+
+    /**
+     * Copy constructor
+     * @param other
+     */
+    DeviceVector(DeviceVector &other) {
+        m_context = other.m_context;
+        allocateOnDevice(other.m_numAllocatedElements);
+        cudaMemcpy(m_d_data,
+                   other.get(),
+                   m_numAllocatedElements * sizeof(TElement),
+                   cudaMemcpyDeviceToDevice);
+        m_doDestroy = true;
     }
 
     /**
@@ -476,6 +499,12 @@ public:
         }
     }
 
+    DeviceMatrix(DeviceMatrix& other) {
+        m_context = other.m_context;
+        m_num_rows = other.m_num_rows;
+        m_vec = new DeviceVector<TElement>(*other.m_vec);
+    }
+
     /**
      *
      * @param vec
@@ -600,7 +629,7 @@ public:
      * 1. Z = bZ + aAB @RM
      * 2. Nullspace of matrices (same >)  @RM
      * 3. Cholesky (separate class to manage pre-allocated memory) @RM
-     * 4. SVD (same; class) @PS
+     * 4. SVD (same; class) @PS  [DONE]
      * 5. Least squares with gels @RM
      * 6. Package this into a library (static) @RM
      */
@@ -657,19 +686,41 @@ class SvdFactoriser {
 
 private:
 
-    int m_lwork = -1;
     Context *m_context;
-    DeviceMatrix<TElement> *m_mat = nullptr;
-    DeviceMatrix<TElement> *m_Vtr = nullptr;
-    DeviceVector<TElement> *m_S = nullptr;
-    DeviceVector<TElement> *m_workspace = nullptr;
-    DeviceVector<int> *m_info;
+    int m_lwork = -1; /**< size of workspace needed for SVD */
+    DeviceMatrix<TElement> *m_mat = nullptr;  /**< pointer to original matrix to be factorised */
+    DeviceMatrix<TElement> *m_Vtr = nullptr;  /**< matrix V' or right singular vectors */
+    DeviceVector<TElement> *m_S = nullptr;  /**< singular values in a vector */
+    DeviceMatrix<TElement> *m_U = nullptr;  /**< matrix U or left singular vectors*/
+    DeviceVector<TElement> *m_workspace = nullptr;  /**< workspace vector */
+    DeviceVector<int> *m_info = nullptr;  /**< status code of computation */
+    bool m_computeU = false;  /** whether to compute U */
+
+    /**
+     * Checks whether matrix is tall; throws invalid_argument if not
+     * @param mat given matrix
+     */
+    void checkMatrix(DeviceMatrix<TElement> &mat) {
+        if (mat.numRows() < mat.numCols()) {
+            throw std::invalid_argument("your matrix is fat (no offence)");
+        }
+    };
 
 public:
 
-    SvdFactoriser(Context *context, DeviceMatrix<TElement> &mat) {
+    /**
+     * Constructor
+     * @param context context
+     * @param mat matrix to be factorised
+     * @param computeU whether to compute U (default is false)
+     */
+    SvdFactoriser(Context *context,
+                  DeviceMatrix<TElement> &mat,
+                  bool computeU = false) {
+        checkMatrix(mat);
         m_context = context;
         m_mat = &mat;
+        m_computeU = computeU;
         size_t m = mat.numRows();
         size_t n = mat.numCols();
         size_t k = std::min(m, n);
@@ -678,15 +729,39 @@ public:
         m_Vtr = new DeviceMatrix<float>(context, n, n);
         m_S = new DeviceVector<float>(context, k);
         m_info = new DeviceVector<int>(context, 1);
+        if (computeU) m_U = new DeviceMatrix<float>(context, m, m);
     }
 
+    /**
+     * Update matrix reusing allocated memory; the currect object can be
+     * reused for matrices of the same dimensions
+     * @param mat
+     */
+    void updateMatrix(DeviceMatrix<TElement> &mat) {
+        checkMatrix(mat);
+        size_t m = mat.numRows();
+        size_t n = mat.numCols();
+        if (m != m_mat->numRows() || n != m_mat->numCols()) {
+            throw std::invalid_argument("wrong matrix dimensions");
+        }
+        m_mat = &mat;
+    }
+
+    /**
+     * Perform factorisation
+     * @return status code
+     *
+     * Warning: the given matrix is destroyed
+     */
     int factorise() {
         size_t m = m_mat->numRows();
         size_t n = m_mat->numCols();
-        cusolverDnSgesvd(m_context->cuSolverHandle(), 'N', 'A', m, n,
+        cusolverDnSgesvd(m_context->cuSolverHandle(),
+                         (m_computeU) ? 'A' : 'N', 'A',
+                         m, n,
                          m_mat->get(), m,
                          m_S->get(),
-                         nullptr, m,  // skip the U
+                         m_U->get(), m,
                          m_Vtr->get(), n,
                          m_workspace->get(),
                          m_lwork,
@@ -704,10 +779,15 @@ public:
         return m_Vtr;
     }
 
+    DeviceMatrix<TElement> *leftSingularVectors() {
+        return m_U;
+    }
+
     ~SvdFactoriser() {
         m_lwork = -1;
         if (m_workspace) delete m_workspace;
         if (m_S) delete m_S;
+        if (m_U) delete m_U;
         if (m_Vtr) delete m_Vtr;
         if (m_info) delete m_info;
         m_workspace = nullptr;

@@ -84,8 +84,10 @@ DeviceVector<float> y(&context, 10);
 x.deviceCopyTo(y); // x ---> y
 ```
 
+The copy constructor has also been implemented; to hard-copy a vector just
+do `DeviceVector<float> myCopy(existingVector)`.
 
-Lasly, a not so efficient method that should only be used for 
+Lastly, a not so efficient method that should only be used for 
 debugging, if at all, is `fetchElementFromDevice`, which fetches
 one element of the vector to the host; for the love of god, do 
 not put this in a loop.
@@ -197,6 +199,9 @@ std::vector<float> h_a{1.0f, 2.0f, 3.0f,
 a.upload(h_a, nRows, MatrixStorageMode::rowMajor);
 ```
 
+The copy constructor has also been implemented; to hard-copy a vector just
+do `DeviceVector<float> myCopy(existingMatrix)`.
+
 The number of rows and columns of a device matrix can be 
 retrieved using the method `.numRows()` and `.numCols()` respectively.
 
@@ -228,4 +233,60 @@ std::cout << A << B << X;
 
 
 ## 3. Singular Value Decomposition
+
+Firstly, note that this implementation works only with tall matrices. 
+Here is an example with the 4-by-3 matrix
+
+$$B = \begin{bmatrix}
+1 & 2 & 3 \\
+6 & 7 & 8 \\
+6 & 7 & 8 \\
+6 & 7 & 8 
+\end{bmatrix}.$$
+
+Evidently, the rank of $B$ is 2, so there will be two nonzero singular values.
+
+This is how to perform an SVD decomposition:
+
+```c++
+Context context;
+size_t k = 4;
+std::vector<float> bData{1.0f, 2.0f, 3.0f,
+                         6.0f, 7.0f, 8.0f,
+                         6.0f, 7.0f, 8.0f,
+                         6.0f, 7.0f, 8.0f,};
+DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
+DeviceMatrix<float> Bcopy(B);  // create a copy
+SvdFactoriser<float> svdEngine(&context, Bcopy);
+status = svdEngine.factorise();
+```
+
+Note that we copy the matrix *B* into a matrix *Bcopy*. This is done because the 
+contents of *Bcopy* are destroyed by `.factorise()`. The `status` code is 0 
+iff the SVD is computed successfully.
+
+By default, `SvdFactoriser` will not compute matrix *U*. If you need it, 
+create an instance of `SvdFactoriser` as follows
+
+```c++
+SvdFactoriser<float> svdEngine(&context, Bcopy, true); // computes U
+```
+
+After you have factorised the matrix, you can access *S*, *V* and, perhaps, *U*.
+You can do:
+
+```c++
+std::cout << "S = " << *svdEngine.singularValues();
+std::cout << "V' = " << *svdEngine.rightSingularVectors();
+auto U = svdEngine.leftSingularVectors();
+if (U) std::cout << "U = " << *U;
+```
+
+
+
+## 4. Nullspace
+
+
+## 5. Least squares
+
 
