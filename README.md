@@ -277,10 +277,8 @@ After you have factorised the matrix, you can access *S*, *V* and, perhaps, *U*.
 You can do:
 
 ```c++
-std::cout << "S = " << *svdEngine.singularValues();
-std::cout << "V' = " << *svdEngine.rightSingularVectors();
-auto U = svdEngine.leftSingularVectors();
-if (U) std::cout << "U = " << *U;
+std::cout << "S = " << svdEngine.singularValues();
+std::cout << "V' = " << svdEngine.rightSingularVectors();
 ```
 
 

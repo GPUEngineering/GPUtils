@@ -5,6 +5,7 @@
 #include <cublas_v2.h>
 #include <cusolverDn.h>
 #include <stdexcept>
+#include <memory>
 
 #ifndef DEVICE_VECTOR_CUH__
 #define DEVICE_VECTOR_CUH__
@@ -17,14 +18,12 @@
 class Context {
 
 private:
-    cublasHandle_t cublasHandle;
+    cublasHandle_t m_cublasHandle;
     cusolverDnHandle_t m_cusolverHandle;
 
 public:
-    explicit Context()
-
-    noexcept {
-        cublasStatus_t stat = cublasCreate(&cublasHandle);
+    explicit Context() noexcept {
+        cublasStatus_t stat = cublasCreate(&m_cublasHandle);
         if (stat != CUBLAS_STATUS_SUCCESS) {
             printf("cuBLAS initialization failed\n");
         }
@@ -34,11 +33,12 @@ public:
         }
     }
 
-    virtual ~Context()
+    virtual ~Context() noexcept {
+        cublasDestroy(m_cublasHandle);
+        cusolverDnDestroy(m_cusolverHandle);
+    }
 
-    noexcept { cublasDestroy(cublasHandle); }
-
-    cublasHandle_t &cuBlasHandle() { return cublasHandle; }
+    cublasHandle_t &cuBlasHandle() { return m_cublasHandle; }
 
     cusolverDnHandle_t &cuSolverHandle() { return m_cusolverHandle; }
 
@@ -230,9 +230,9 @@ public:
                    data.m_numAllocatedElements * sizeof(TElement),
                    cudaMemcpyDeviceToHost);
         for (size_t i = 0; i < data.m_numAllocatedElements - 1; i++) {
-            out << std::setw(9) << temp[i] << std::endl;
+            out << std::setw(10) << temp[i] << std::endl;
         }
-        out << std::setw(9) << temp[data.m_numAllocatedElements - 1] << std::endl;
+        out << std::setw(10) << temp[data.m_numAllocatedElements - 1] << std::endl;
         return out;
     }
 
@@ -649,7 +649,7 @@ public:
         data.m_vec->download(temp);
         for (size_t i = 0; i < nr; i++) {
             for (size_t j = 0; j < nc; j++) {
-                out << std::setw(7) << temp[j * nr + i] << ", ";
+                out << std::setw(10) << temp[j * nr + i] << ", ";
             }
             out << std::endl;
         }
@@ -686,14 +686,14 @@ class SvdFactoriser {
 
 private:
 
-    Context *m_context;
+    Context *m_context = nullptr;
     int m_lwork = -1; /**< size of workspace needed for SVD */
     DeviceMatrix<TElement> *m_mat = nullptr;  /**< pointer to original matrix to be factorised */
-    DeviceMatrix<TElement> *m_Vtr = nullptr;  /**< matrix V' or right singular vectors */
-    DeviceVector<TElement> *m_S = nullptr;  /**< singular values in a vector */
-    DeviceMatrix<TElement> *m_U = nullptr;  /**< matrix U or left singular vectors*/
-    DeviceVector<TElement> *m_workspace = nullptr;  /**< workspace vector */
-    DeviceVector<int> *m_info = nullptr;  /**< status code of computation */
+    std::unique_ptr<DeviceMatrix<TElement>> m_Vtr;  /**< matrix V' or right singular vectors */
+    std::unique_ptr<DeviceVector<TElement>> m_S;
+    std::unique_ptr<DeviceMatrix<TElement>> m_U;  /**< matrix U or left singular vectors*/
+    std::unique_ptr<DeviceVector<TElement>> m_workspace;  /**< workspace vector */
+    std::unique_ptr<DeviceVector<int>> m_info;  /**< status code of computation */
     bool m_computeU = false;  /**< whether to compute U */
     bool m_destroyMatrix = true; /**< whether to sacrifice original matrix */
 
@@ -722,21 +722,17 @@ public:
         checkMatrix(mat);
         m_context = context;
         m_destroyMatrix = destroyMatrix;
-        if (destroyMatrix) {
-            m_mat = &mat;
-        } else {
-            m_mat = new DeviceMatrix<TElement>(mat);
-        }
+        m_mat = (destroyMatrix) ? &mat : new DeviceMatrix<TElement>(mat);
         m_computeU = computeU;
         size_t m = mat.numRows();
         size_t n = mat.numCols();
         size_t k = std::min(m, n);
         cusolverDnSgesvd_bufferSize(context->cuSolverHandle(), m, n, &m_lwork);
-        m_workspace = new DeviceVector<float>(context, m_lwork);
-        m_Vtr = new DeviceMatrix<float>(context, n, n);
-        m_S = new DeviceVector<float>(context, k);
-        m_info = new DeviceVector<int>(context, 1);
-        if (computeU) m_U = new DeviceMatrix<float>(context, m, m);
+        m_workspace = std::make_unique<DeviceVector<TElement>>(context, m_lwork);
+        m_Vtr = std::make_unique<DeviceMatrix<TElement>>(context, n, n);
+        m_S = std::make_unique<DeviceVector<TElement>>(context, k);
+        m_info = std::make_unique<DeviceVector<int>>(context, 1);
+        if (computeU) m_U = std::make_unique<DeviceMatrix<TElement>>(context, m, m);
     }
 
     /**
@@ -768,7 +764,7 @@ public:
                          m, n,
                          m_mat->get(), m,
                          m_S->get(),
-                         m_U->get(), m,
+                         (m_computeU) ? m_U->get() : nullptr, m,
                          m_Vtr->get(), n,
                          m_workspace->get(),
                          m_lwork,
@@ -778,30 +774,22 @@ public:
         return info;
     }
 
-    DeviceVector<TElement> *singularValues() {
-        return m_S;
+    DeviceVector<TElement> singularValues() {
+        return *m_S;
     }
 
-    DeviceMatrix<TElement> *rightSingularVectors() {
-        return m_Vtr;
+    DeviceMatrix<TElement> rightSingularVectors() {
+        return *m_Vtr;
     }
 
-    DeviceMatrix<TElement> *leftSingularVectors() {
-        return m_U;
+    DeviceMatrix<TElement> leftSingularVectors() {
+        if (!m_computeU) throw std::runtime_error("there's no U");
+        return *m_U;
     }
 
     ~SvdFactoriser() {
         m_lwork = -1;
-        if (m_workspace) delete m_workspace;
-        if (m_S) delete m_S;
-        if (m_U) delete m_U;
-        if (m_Vtr) delete m_Vtr;
-        if (m_info) delete m_info;
         if (!m_destroyMatrix && m_mat) delete m_mat;
-        m_workspace = nullptr;
-        m_S = nullptr;
-        m_Vtr = nullptr;
-        m_mat = nullptr;
     }
 
 
