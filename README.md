@@ -167,14 +167,14 @@ where the data is stored, say, in row-major format.
 Then, we do
 ```c++
 Context context;
-size_t n_rows = 5;
+size_t numRows = 5;
 std::vector<float> h_data{1.0f, 2.0f, 3.0f,
                           4.0f, 5.0f, 6.0f,
                           7.0f, 8.0f, 9.0f,
                           10.0f, 11.0f, 12.0f,
                           13.0f, 14.0f, 15.0f};
 DeviceMatrix<float> mat(&context,
-                        n_rows,
+                        numRows,
                         h_data,
                         MatrixStorageMode::rowMajor);
 ```
@@ -198,7 +198,7 @@ a.upload(h_a, nRows, MatrixStorageMode::rowMajor);
 ```
 
 The number of rows and columns of a device matrix can be 
-retrieved using the method `.n_rows()` and `.n_cols()` respectively.
+retrieved using the method `.numRows()` and `.numCols()` respectively.
 
 To print a matrix, just do 
 ```c++
@@ -224,4 +224,8 @@ DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
 auto X = A * B;
 std::cout << A << B << X;
 ```
+
+
+
+## 3. Singular Value Decomposition
 

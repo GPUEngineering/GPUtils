@@ -11,7 +11,7 @@ set(CMAKE_CUDA_FLAGS "-std=c++20")
 
 
 add_executable(bigBoyConnexion main.cu)
-target_link_libraries(bigBoyConnexion -lcublas -lcurand)
+target_link_libraries(bigBoyConnexion -lcublas -lcurand -lcusolver)
 
 add_custom_target(run
         COMMAND ./bigBoyConnexion
