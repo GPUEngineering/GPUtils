@@ -256,21 +256,22 @@ std::vector<float> bData{1.0f, 2.0f, 3.0f,
                          6.0f, 7.0f, 8.0f,
                          6.0f, 7.0f, 8.0f,};
 DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
-DeviceMatrix<float> Bcopy(B);  // create a copy
-SvdFactoriser<float> svdEngine(&context, Bcopy);
+SvdFactoriser<float> svdEngine(&context, B);
 status = svdEngine.factorise();
 ```
 
-Note that we copy the matrix *B* into a matrix *Bcopy*. This is done because the 
-contents of *Bcopy* are destroyed by `.factorise()`. The `status` code is 0 
-iff the SVD is computed successfully.
-
-By default, `SvdFactoriser` will not compute matrix *U*. If you need it, 
+By default, `SvdFactoriser` will not compute matrix *U*. If you need it,
 create an instance of `SvdFactoriser` as follows
 
 ```c++
-SvdFactoriser<float> svdEngine(&context, Bcopy, true); // computes U
+SvdFactoriser<float> svdEngine(&context, B, true); // computes U
 ```
+
+Note that the default behaviour of `.factorise()` is to destroy
+the given matrix `B`. If you want the factoriser to keep your 
+matrix, you need to set the fourth argument of the above constructor
+to `false`. 
+
 
 After you have factorised the matrix, you can access *S*, *V* and, perhaps, *U*.
 You can do:

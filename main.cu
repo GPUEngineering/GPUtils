@@ -16,9 +16,7 @@ int main() {
                              6.0f, 7.0f, 8.0f,
                              6.0f, 7.0f, 8.0f,};
     DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
-
-    DeviceMatrix<float> Bcopy(B);
-    SvdFactoriser<float> svdEngine(&context, Bcopy, false);
+    SvdFactoriser<float> svdEngine(&context, B, true, false);
     svdEngine.factorise();
 
     /* ~~~ print results ~~~ */
@@ -27,20 +25,6 @@ int main() {
     std::cout << "V' = " << *svdEngine.rightSingularVectors();
     auto U = svdEngine.leftSingularVectors();
     if (U) std::cout << "U = " << *U;
-//
-//    std::vector<float> cData{1.5f, 2.0f, 3.0f,
-//                             6.0f, 7.0f, 8.0f,
-//                             6.0f, 7.0f, 8.0f,
-//                             6.0f, 7.0f, 8.0f,};
-//    DeviceMatrix<float> C(&context, k, cData, MatrixStorageMode::rowMajor);
-//    svdEngine.updateMatrix(C);
-//    svdEngine.factorise();
-//
-//    std::cout << "S = " << *svdEngine.singularValues();
-//    if (svdEngine.leftSingularVectors()) {
-//        std::cout << "U = " << *svdEngine.leftSingularVectors();
-//    }
-
-
+    std::cout << " B = " << B;
     return 0;
 }

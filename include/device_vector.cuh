@@ -499,7 +499,7 @@ public:
         }
     }
 
-    DeviceMatrix(DeviceMatrix& other) {
+    DeviceMatrix(DeviceMatrix &other) {
         m_context = other.m_context;
         m_num_rows = other.m_num_rows;
         m_vec = new DeviceVector<TElement>(*other.m_vec);
@@ -694,7 +694,8 @@ private:
     DeviceMatrix<TElement> *m_U = nullptr;  /**< matrix U or left singular vectors*/
     DeviceVector<TElement> *m_workspace = nullptr;  /**< workspace vector */
     DeviceVector<int> *m_info = nullptr;  /**< status code of computation */
-    bool m_computeU = false;  /** whether to compute U */
+    bool m_computeU = false;  /**< whether to compute U */
+    bool m_destroyMatrix = true; /**< whether to sacrifice original matrix */
 
     /**
      * Checks whether matrix is tall; throws invalid_argument if not
@@ -716,10 +717,16 @@ public:
      */
     SvdFactoriser(Context *context,
                   DeviceMatrix<TElement> &mat,
-                  bool computeU = false) {
+                  bool computeU = false,
+                  bool destroyMatrix = true) {
         checkMatrix(mat);
         m_context = context;
-        m_mat = &mat;
+        m_destroyMatrix = destroyMatrix;
+        if (destroyMatrix) {
+            m_mat = &mat;
+        } else {
+            m_mat = new DeviceMatrix<TElement>(mat);
+        }
         m_computeU = computeU;
         size_t m = mat.numRows();
         size_t n = mat.numCols();
@@ -790,6 +797,7 @@ public:
         if (m_U) delete m_U;
         if (m_Vtr) delete m_Vtr;
         if (m_info) delete m_info;
+        if (!m_destroyMatrix && m_mat) delete m_mat;
         m_workspace = nullptr;
         m_S = nullptr;
         m_Vtr = nullptr;
