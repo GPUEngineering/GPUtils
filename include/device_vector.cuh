@@ -262,8 +262,7 @@ public:
      * @param scalar
      * @return
      */
-    DeviceVector &operator*=(float scalar);
-
+    DeviceVector &operator*=(TElement scalar);  // CLion says not implemented, but it is
 
     friend DeviceVector operator+(DeviceVector &a, const DeviceVector &b) {
         DeviceVector n(a.m_context, a.capacity());
@@ -285,7 +284,7 @@ public:
      * @param secondVector
      * @return
      */
-    friend DeviceVector operator*(const float firstVector, DeviceVector &secondVector) {
+    friend DeviceVector operator*(const TElement firstVector, DeviceVector &secondVector) {
         DeviceVector resultVec(secondVector.m_context, secondVector.capacity());
         secondVector.deviceCopyTo(resultVec);
         resultVec *= firstVector;
@@ -308,44 +307,86 @@ public:
 }; /* end of class */
 
 template<>
-DeviceVector<float> &DeviceVector<float>::operator+=(const DeviceVector<float> &rhs) {
+inline DeviceVector<float> &DeviceVector<float>::operator+=(const DeviceVector<float> &rhs) {
     const float alpha = 1.;
     cublasSaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
     return *this;
 }
 
 template<>
-DeviceVector<float> &DeviceVector<float>::operator*=(float scalar) {
+inline DeviceVector<double> &DeviceVector<double>::operator+=(const DeviceVector<double> &rhs) {
+    const double alpha = 1.;
+    cublasDaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline DeviceVector<float> &DeviceVector<float>::operator*=(float scalar) {
     float alpha = scalar;
     cublasSscal(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
     return *this;
 }
 
 template<>
-DeviceVector<float> &DeviceVector<float>::operator-=(const DeviceVector<float> &rhs) {
+inline DeviceVector<double> &DeviceVector<double>::operator*=(double scalar) {
+    double alpha = scalar;
+    cublasDscal(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline DeviceVector<float> &DeviceVector<float>::operator-=(const DeviceVector<float> &rhs) {
     const float alpha = -1.;
     cublasSaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
     return *this;
 }
 
 template<>
-float DeviceVector<float>::operator*(const DeviceVector<float> &rhs) const {
+inline DeviceVector<double> &DeviceVector<double>::operator-=(const DeviceVector<double> &rhs) {
+    const double alpha = -1.;
+    cublasDaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline float DeviceVector<float>::operator*(const DeviceVector<float> &rhs) const {
     float inn_prod;
     cublasSdot(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, rhs.m_d_data, 1, &inn_prod);
     return inn_prod;
 }
 
 template<>
-float DeviceVector<float>::norm2() const {
+inline double DeviceVector<double>::operator*(const DeviceVector<double> &rhs) const {
+    double inn_prod;
+    cublasDdot(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, rhs.m_d_data, 1, &inn_prod);
+    return inn_prod;
+}
+
+template<>
+inline float DeviceVector<float>::norm2() const {
     float the_norm;
     cublasSnrm2(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
     return the_norm;
 }
 
 template<>
-float DeviceVector<float>::sum() const {
+inline double DeviceVector<double>::norm2() const {
+    double the_norm;
+    cublasDnrm2(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
+    return the_norm;
+}
+
+template<>
+inline float DeviceVector<float>::sum() const {
     float the_sum;
     cublasSasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_sum);
+    return the_sum;
+}
+
+template<>
+inline double DeviceVector<double>::sum() const {
+    double the_sum;
+    cublasDasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_sum);
     return the_sum;
 }
 
@@ -454,7 +495,7 @@ private:
                size_t n_cols) {
         for (size_t i = 0; i < n_rows; i++) {
             for (size_t j = 0; j < n_cols; j++) {
-                float c = vec_rm[j + i * n_cols];
+                TElement c = vec_rm[j + i * n_cols];
                 vec_cm[i + j * n_rows] = c;
             }
         }
@@ -585,7 +626,7 @@ public:
      * @param scalar
      * @return
      */
-    DeviceMatrix &operator*=(float scalar);
+    DeviceMatrix &operator*=(TElement scalar);
 
     /**
      * Matrix-vector multiplication (vec = A * b)
@@ -659,19 +700,37 @@ public:
 };
 
 template<>
-DeviceMatrix<float> &DeviceMatrix<float>::operator+=(const DeviceMatrix<float> &rhs) {
+inline DeviceMatrix<float> &DeviceMatrix<float>::operator+=(const DeviceMatrix<float> &rhs) {
     *m_vec += *rhs.m_vec;
     return *this;
 }
 
 template<>
-DeviceMatrix<float> &DeviceMatrix<float>::operator-=(const DeviceMatrix<float> &rhs) {
+inline DeviceMatrix<double> &DeviceMatrix<double>::operator+=(const DeviceMatrix<double> &rhs) {
+    *m_vec += *rhs.m_vec;
+    return *this;
+}
+
+template<>
+inline DeviceMatrix<float> &DeviceMatrix<float>::operator-=(const DeviceMatrix<float> &rhs) {
     *m_vec -= *rhs.m_vec;
     return *this;
 }
 
 template<>
-DeviceMatrix<float> &DeviceMatrix<float>::operator*=(float scalar) {
+inline DeviceMatrix<double> &DeviceMatrix<double>::operator-=(const DeviceMatrix<double> &rhs) {
+    *m_vec -= *rhs.m_vec;
+    return *this;
+}
+
+template<>
+inline DeviceMatrix<float> &DeviceMatrix<float>::operator*=(float scalar) {
+    *m_vec *= scalar;
+    return *this;
+}
+
+template<>
+inline DeviceMatrix<double> &DeviceMatrix<double>::operator*=(double scalar) {
     *m_vec *= scalar;
     return *this;
 }
