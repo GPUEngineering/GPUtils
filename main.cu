@@ -25,8 +25,6 @@ int main() {
     std::cout << "S = " << svdEngine.singularValues();
     std::cout << "V' = " << svdEngine.rightSingularVectors();
     auto U = svdEngine.leftSingularVectors();
-    if (U.has_value()) {
-        std::cout << "U = " << U.value();
-    }
+    if (U) std::cout << "U = " << U.value();
     return 0;
 }

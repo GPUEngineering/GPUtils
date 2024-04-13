@@ -289,14 +289,16 @@ Here is an example:
 
 ```c++
 auto U = svdEngine.leftSingularVectors();
-if (U.has_value()) {
-    std::cout << "U = " << U.value();
-}
+if (U) std::cout << "U = " << U.value();
 ```
 
-## 4. Nullspace
+## 4. Projection onto a nullspace
 
 
 ## 5. Least squares
 
 
+## 6. Cholesky factorisation and system solution
+
+
+## 7. Tensors
