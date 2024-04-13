@@ -11,6 +11,9 @@ In what follows, we first need to create a `Context` object by doing
 Context context;
 ```
 
+Then, we need to decide on a data type between `float` or `double`.
+We will use `float` for the following examples.
+
 ### 1.1. Memory management
 
 The simplest way to create an empty `DeviceVector` object is by defining its capacity:
@@ -281,11 +284,24 @@ std::cout << "S = " << svdEngine.singularValues();
 std::cout << "V' = " << svdEngine.rightSingularVectors();
 ```
 
+Note that `U` can be obtained, if it is computed 
+in the first place, by the method 
+`leftSingularVectors` which returns an object 
+of type [`std::optional<DeviceMatrix<TElement>>`](https://dev.to/delta456/modern-c-stdoptional-58ga).
+Here is an example:
 
+```c++
+auto U = svdEngine.leftSingularVectors();
+if (U) std::cout << "U = " << U.value();
+```
 
-## 4. Nullspace
+## 4. Projection onto a nullspace
 
 
 ## 5. Least squares
 
 
+## 6. Cholesky factorisation and system solution
+
+
+## 7. Tensors
