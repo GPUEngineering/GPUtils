@@ -281,7 +281,18 @@ std::cout << "S = " << svdEngine.singularValues();
 std::cout << "V' = " << svdEngine.rightSingularVectors();
 ```
 
+Note that `U` can be obtained, if it is computed 
+in the first place, by the method 
+`leftSingularVectors` which returns an object 
+of type [`std::optional<DeviceMatrix<TElement>>`](https://dev.to/delta456/modern-c-stdoptional-58ga).
+Here is an example:
 
+```c++
+auto U = svdEngine.leftSingularVectors();
+if (U.has_value()) {
+    std::cout << "U = " << U.value();
+}
+```
 
 ## 4. Nullspace
 

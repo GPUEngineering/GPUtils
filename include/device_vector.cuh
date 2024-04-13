@@ -6,6 +6,7 @@
 #include <cusolverDn.h>
 #include <stdexcept>
 #include <memory>
+#include <optional>
 
 #ifndef DEVICE_VECTOR_CUH__
 #define DEVICE_VECTOR_CUH__
@@ -146,7 +147,7 @@ public:
     /**
      * Size of allocated memory space on the device
      */
-    size_t capacity() {
+    size_t capacity() const {
         return m_numAllocatedElements;
     }
 
@@ -265,11 +266,11 @@ public:
     DeviceVector &operator*=(float scalar);
 
 
-    friend DeviceVector operator+(DeviceVector &a, const DeviceVector &b) {
-        DeviceVector n(a.m_context, a.capacity());
-        a.deviceCopyTo(n);
-        n += b;
-        return n;
+    friend DeviceVector operator+(DeviceVector &firstVector, const DeviceVector &secondVector) {
+        DeviceVector resultVec(firstVector.m_context, firstVector.capacity());
+        firstVector.deviceCopyTo(resultVec);
+        resultVec += secondVector;
+        return resultVec;
     }
 
     friend DeviceVector operator-(DeviceVector &firstVector, const DeviceVector &secondVector) {
@@ -431,13 +432,13 @@ private:
     // the data is always stored in CM format
     Context *m_context = nullptr;
     DeviceVector<TElement> *m_vec = nullptr; /**< stores all useful memory */
-    size_t m_num_rows = 0; /**< number of rows */
+    size_t m_numRows = 0; /**< number of rows */
 
     /**
      *
      */
     void destroy() {
-        m_num_rows = 0;
+        m_numRows = 0;
         if (m_vec) delete m_vec;
     }
 
@@ -471,7 +472,7 @@ public:
      */
     DeviceMatrix(Context *context, size_t n_rows, size_t n_cols) {
         m_context = context;
-        m_num_rows = n_rows;
+        m_numRows = n_rows;
         m_vec = new DeviceVector<TElement>(context, n_rows * n_cols);
     }
 
@@ -488,7 +489,9 @@ public:
                  MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
         m_context = context;
         size_t numel = vec.size();
-        m_num_rows = n_rows;
+        m_numRows = n_rows;
+
+        if (numel % n_rows != 0) throw std::invalid_argument("impossible dimensions");
         size_t n_cols = numel / n_rows;
         if (mode == MatrixStorageMode::rowMajor) {
             std::vector<TElement> vec_cm(numel);
@@ -499,9 +502,9 @@ public:
         }
     }
 
-    DeviceMatrix(DeviceMatrix &other) {
+    DeviceMatrix(const DeviceMatrix &other) {
         m_context = other.m_context;
-        m_num_rows = other.m_num_rows;
+        m_numRows = other.m_numRows;
         m_vec = new DeviceVector<TElement>(*other.m_vec);
     }
 
@@ -515,8 +518,8 @@ public:
                 size_t n_rows,
                 MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
         size_t n = vec.size();
+        if (n % n_rows != 0) throw std::invalid_argument("impossible dimensions");
         size_t n_cols = n / n_rows;
-        // TODO error if size is not exact
         if (mode == MatrixStorageMode::rowMajor) {
             std::vector<TElement> vec_cm(n);
             rm2cm(vec, vec_cm, n_rows, n_cols);  // to column-major
@@ -555,7 +558,7 @@ public:
      * @return
      */
     size_t numRows() const {
-        return m_num_rows;
+        return m_numRows;
     }
 
     /**
@@ -563,7 +566,7 @@ public:
      * @return
      */
     size_t numCols() const {
-        return m_vec->capacity() / m_num_rows;
+        return m_vec->capacity() / m_numRows;
     }
 
     /**
@@ -598,21 +601,21 @@ public:
         return res;
     }
 
-    friend DeviceMatrix operator*(DeviceMatrix &a, const DeviceMatrix &b) {
-        size_t nRowsA = a.numRows();
-        size_t nColsA = a.numCols();
+    friend DeviceMatrix operator*(DeviceMatrix &A, const DeviceMatrix &b) {
+        size_t nRowsA = A.numRows();
+        size_t nColsA = A.numCols();
         size_t nColsB = b.numCols();
         float alpha = 1.;
         float beta = 1.;
-        DeviceMatrix resultMatrix(a.m_context, nRowsA, nColsB);
-        cublasSgemm(a.m_context->cuBlasHandle(),
+        DeviceMatrix resultMatrix(A.m_context, nRowsA, nColsB);
+        cublasSgemm(A.m_context->cuBlasHandle(),
                     CUBLAS_OP_N,
                     CUBLAS_OP_N,
                     nRowsA,
                     nColsB,
                     nColsA,
                     &alpha,
-                    a.m_vec->get(),
+                    A.m_vec->get(),
                     nRowsA,
                     b.m_vec->get(),
                     nColsA,
@@ -642,8 +645,8 @@ public:
      */
     friend std::ostream &operator<<(std::ostream &out, const DeviceMatrix<TElement> &data) {
         size_t numel = data.m_vec->capacity();
-        size_t nr = data.m_num_rows;
-        size_t nc = numel / data.m_num_rows;
+        size_t nr = data.m_numRows;
+        size_t nc = numel / data.m_numRows;
         out << "DeviceMatrix [" << nr << " x " << nc << "]:" << std::endl;
         std::vector<TElement> temp;
         data.m_vec->download(temp);
@@ -782,8 +785,8 @@ public:
         return *m_Vtr;
     }
 
-    DeviceMatrix<TElement> leftSingularVectors() {
-        if (!m_computeU) throw std::runtime_error("there's no U");
+    std::optional<DeviceMatrix<TElement>> leftSingularVectors() {
+        if (!m_computeU) return std::nullopt;
         return *m_U;
     }
 
@@ -791,7 +794,6 @@ public:
         m_lwork = -1;
         if (!m_destroyMatrix && m_mat) delete m_mat;
     }
-
 
 };
 
