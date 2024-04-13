@@ -82,8 +82,8 @@ public:
      * Constructs a DeviceVector object and allocates
      * memory on the device for n elements
      */
-    DeviceVector(Context *context, size_t n) {
-        m_context = context;
+    DeviceVector(Context &context, size_t n) {
+        m_context = &context;
         allocateOnDevice(n);
     }
 
@@ -121,8 +121,8 @@ public:
      *
      * @param vec host vector
      */
-    DeviceVector(Context *context, const std::vector<TElement> &vec) {
-        m_context = context;
+    DeviceVector(Context &context, const std::vector<TElement> &vec) {
+        m_context = &context;
         allocateOnDevice(vec.size());
         upload(vec);
     }
@@ -469,8 +469,8 @@ public:
      * @param n_rows
      * @param n_cols
      */
-    DeviceMatrix(Context *context, size_t n_rows, size_t n_cols) {
-        m_context = context;
+    DeviceMatrix(Context &context, size_t n_rows, size_t n_cols) {
+        m_context = &context;
         m_num_rows = n_rows;
         m_vec = new DeviceVector<TElement>(context, n_rows * n_cols);
     }
@@ -482,11 +482,11 @@ public:
      * @param vec
      * @param mode
      */
-    DeviceMatrix(Context *context,
+    DeviceMatrix(Context &context,
                  size_t n_rows,
                  const std::vector<TElement> &vec,
                  MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
-        m_context = context;
+        m_context = &context;
         size_t numel = vec.size();
         m_num_rows = n_rows;
         size_t n_cols = numel / n_rows;
@@ -715,19 +715,19 @@ public:
      * @param mat matrix to be factorised
      * @param computeU whether to compute U (default is false)
      */
-    SvdFactoriser(Context *context,
+    SvdFactoriser(Context &context,
                   DeviceMatrix<TElement> &mat,
                   bool computeU = false,
                   bool destroyMatrix = true) {
         checkMatrix(mat);
-        m_context = context;
+        m_context = &context;
         m_destroyMatrix = destroyMatrix;
         m_mat = (destroyMatrix) ? &mat : new DeviceMatrix<TElement>(mat);
         m_computeU = computeU;
         size_t m = mat.numRows();
         size_t n = mat.numCols();
         size_t k = std::min(m, n);
-        cusolverDnSgesvd_bufferSize(context->cuSolverHandle(), m, n, &m_lwork);
+        cusolverDnSgesvd_bufferSize(context.cuSolverHandle(), m, n, &m_lwork);
         m_workspace = std::make_unique<DeviceVector<TElement>>(context, m_lwork);
         m_Vtr = std::make_unique<DeviceMatrix<TElement>>(context, n, n);
         m_S = std::make_unique<DeviceVector<TElement>>(context, k);

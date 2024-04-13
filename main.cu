@@ -12,8 +12,8 @@ int main() {
                              6.0f, 7.0f, 8.0f,
                              6.0f, 7.0f, 8.0f,
                              6.0f, 7.0f, 8.0f,};
-    DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
-    SvdFactoriser<float> svdEngine(&context, B, true, false);
+    DeviceMatrix<float> B(context, k, bData, MatrixStorageMode::rowMajor);
+    SvdFactoriser<float> svdEngine(context, B, true, false);
     std::cout << "S = " << svdEngine.singularValues();
     svdEngine.factorise();
 
