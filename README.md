@@ -91,9 +91,11 @@ The copy constructor has also been implemented; to hard-copy a vector just
 do `DeviceVector<float> myCopy(existingVector)`.
 
 Lastly, a not so efficient method that should only be used for 
-debugging, if at all, is `fetchElementFromDevice`, which fetches
+debugging, if at all, is the `()` operator (e.g., `x(i)`), which fetches
 one element of the vector to the host; for the love of god, do 
-not put this in a loop.
+not put this in a loop. 
+
+This cannot be used to set a value, so don't do anything like `x(0) = 4.5`!
 
 ### 1.2. Printing vectors
 
@@ -113,7 +115,7 @@ The following scalar quantities can be computed (internally,
 we use `cublas` functions):
 
 - The Euclidean norm of $x$, using `norm2`
-- The sum of all values of the vector, using `sum` 
+- The 1-norm, using `norm1` 
 
 ### 1.4. Some cool operators
 
@@ -234,6 +236,10 @@ std::cout << A << B << X;
 ```
 
 We can also create the transpose of a matrix using `.tr()`. Transposition in-place is not possible.
+
+To fetch a single element of matrix we can simply use the `()` operator, 
+e.g., we can do `float value = X(2, 3)` to obtain the (2, 3)-entry 
+of matrix `X`.
 
 ## 3. Singular Value Decomposition
 
