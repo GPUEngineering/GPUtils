@@ -11,8 +11,9 @@ protected:
 };
 
 /* ---------------------------------------
- * Vector capacity and allocateOnDevice
+ * Row-major <-> column-major storage
  * --------------------------------------- */
+
 template<typename T>
 void row2Col() {
     size_t rows = 4;
@@ -65,6 +66,11 @@ TEST_F(DeviceTest, col2Row) {
     col2Row<double>();
 }
 
+/* ---------------------------------------
+ * DeviceVector
+ * .capacity and .allocateOnDevice
+ * --------------------------------------- */
+
 template<typename T>
 void vectorCapacity(Context &context) {
     DeviceVector<T> four(context, 4);
@@ -97,7 +103,7 @@ TEST_F(DeviceTest, matrixDimensions) {
 }
 
 /* ---------------------------------------
- * DeviceVector data transfer
+ * DeviceVector/Matrix data transfer
  * .upload and .download
  * --------------------------------------- */
 
@@ -132,9 +138,9 @@ TEST_F(DeviceTest, transfer) {
     transfer<double>(m_context);
 }
 
-
 /* ---------------------------------------
  * Matrix-vector multiplication
+ * op* and .addAB
  * --------------------------------------- */
 
 template<typename T>
@@ -179,31 +185,29 @@ TEST_F(DeviceTest, addAB) {
     addAB<double>(m_context);
 }
 
-
 /* ---------------------------------------
  * Indexing Vectors
  * --------------------------------------- */
 
 template<typename T>
-void IndexingVectors(Context &context) {
+void indexingVectors(Context &context) {
     std::vector<T> xData{1.0, 2.0, 3.0, 6.0, 7.0, 8.0};
     DeviceVector<T> x(context, xData);
     EXPECT_EQ(1., x(0));
     EXPECT_EQ(7., x(4));
 }
 
-TEST_F(DeviceTest, IndexingVectors) {
-    IndexingVectors<float>(m_context);
-    IndexingVectors<double>(m_context);
+TEST_F(DeviceTest, indexingVectors) {
+    indexingVectors<float>(m_context);
+    indexingVectors<double>(m_context);
 }
-
 
 /* ---------------------------------------
  * Indexing Matrices
  * --------------------------------------- */
 
 template<typename T>
-void IndexingMatrices(Context &context) {
+void indexingMatrices(Context &context) {
     std::vector<T> bData{1.0, 2.0, 3.0,
                          6.0, 7.0, 8.0};
     DeviceMatrix<T> B(context, 2, bData, MatrixStorageMode::rowMajor);
@@ -211,18 +215,18 @@ void IndexingMatrices(Context &context) {
     EXPECT_EQ(7., B(1, 1));
 }
 
-TEST_F(DeviceTest, IndexingVectorsMatrices) {
-    IndexingMatrices<float>(m_context);
-    IndexingMatrices<double>(m_context);
+TEST_F(DeviceTest, indexingMatrices) {
+    indexingMatrices<float>(m_context);
+    indexingMatrices<double>(m_context);
 }
-
 
 /* ---------------------------------------
  * Get Matrix Rows
+ * .getRows
  * --------------------------------------- */
 
 template<typename T>
-void GetMatrixRows(Context &context) {
+void getMatrixRows(Context &context) {
     size_t k = 6;
     std::vector<T> bData{1.0, 2.0, 3.0,
                          6.0, 7.0, 8.0,
@@ -238,9 +242,9 @@ void GetMatrixRows(Context &context) {
     EXPECT_EQ(17., copiedRows(3, 2));
 }
 
-TEST_F(DeviceTest, GetMatrixRows) {
-    GetMatrixRows<float>(m_context);
-    GetMatrixRows<double>(m_context);
+TEST_F(DeviceTest, getMatrixRows) {
+    getMatrixRows<float>(m_context);
+    getMatrixRows<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -250,7 +254,7 @@ TEST_F(DeviceTest, GetMatrixRows) {
 
 template<typename T>
 requires std::floating_point<T>
-void SingularValuesComputation(Context &context, float epsilon) {
+void singularValuesComputation(Context &context, float epsilon) {
     size_t k = 8;
     std::vector<T> bData{1.0, 2.0, 3.0,
                          6.0, 7.0, 8.0,
@@ -270,7 +274,7 @@ void SingularValuesComputation(Context &context, float epsilon) {
     EXPECT_NEAR(0.997152358903242, S(1), epsilon); // value from MATLAB
 }
 
-TEST_F(DeviceTest, SingularValues) {
-    SingularValuesComputation<float>(m_context, 1e-4);
-    SingularValuesComputation<double>(m_context, 1e-7);
+TEST_F(DeviceTest, singularValuesComputation) {
+    singularValuesComputation<float>(m_context, 1e-4);
+    singularValuesComputation<double>(m_context, 1e-7);
 }
