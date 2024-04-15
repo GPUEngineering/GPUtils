@@ -803,7 +803,7 @@ inline DeviceMatrix<double> &DeviceMatrix<double>::operator*=(double scalar) {
  */
 template<typename TElement>
 requires std::floating_point<TElement>
-__global__ void k_countNonzeroSignularValues(TElement *d_array, size_t n, unsigned int *d_count, TElement epsilon) {
+__global__ void k_countNonzeroSingularValues(TElement *d_array, size_t n, unsigned int *d_count, TElement epsilon) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < n && d_array[idx] > epsilon) {
         atomicAdd(d_count, 1);
@@ -913,7 +913,7 @@ public:
 
     unsigned int rank(TElement epsilon = 1e-6) {
         int k = m_S->capacity();
-        k_countNonzeroSignularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), k,
+        k_countNonzeroSingularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), k,
                                                                                      m_rank->get(),
                                                                                      epsilon);
         return m_rank->fetchElementFromDevice(0);
