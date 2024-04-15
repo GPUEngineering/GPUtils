@@ -756,6 +756,7 @@ inline DeviceMatrix<double> &DeviceMatrix<double>::operator*=(double scalar) {
  * ------------------------------------------------------------------------------------ */
 
 template<typename TElement>
+requires std::floating_point<TElement>
 class SvdFactoriser {
 
 private:
@@ -781,9 +782,7 @@ private:
         }
     };
 
-    void computeWorkspaceSize(size_t m, size_t n) {
-        cusolverDnSgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
-    }
+    void computeWorkspaceSize(size_t m, size_t n);
 
 public:
 
