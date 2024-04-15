@@ -78,6 +78,33 @@ TEST_F(DeviceTest, MatrixVectorOperatorAsterisk) {
 }
 
 template<typename T>
+void IndexingVectors(Context &context) {
+    std::vector<T> xData{1.0, 2.0, 3.0, 6.0, 7.0, 8.0};
+    DeviceVector<T> x(context, xData);
+    EXPECT_EQ(1., x(0));
+    EXPECT_EQ(7., x(4));
+}
+
+TEST_F(DeviceTest, IndexingVectors) {
+    IndexingVectors<float>(m_context);
+    IndexingVectors<double>(m_context);
+}
+
+template<typename T>
+void IndexingMatrices(Context &context) {
+    std::vector<T> bData{1.0, 2.0, 3.0,
+                         6.0, 7.0, 8.0};
+    DeviceMatrix<T> B(context, 2, bData, MatrixStorageMode::rowMajor);
+    EXPECT_EQ(2., B(0, 1));
+    EXPECT_EQ(7., B(1, 1));
+}
+
+TEST_F(DeviceTest, IndexingVectorsMatrices) {
+    IndexingMatrices<float>(m_context);
+    IndexingMatrices<double>(m_context);
+}
+
+template<typename T>
 requires std::floating_point<T>
 void singularValues(Context &context) {
     size_t k = 8;
