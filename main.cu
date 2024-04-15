@@ -2,7 +2,8 @@
 #include <iostream>
 #include <cublas_v2.h>
 #include "include/device_vector.cuh"
-#define real_t float
+
+#define real_t double
 
 
 int main() {
