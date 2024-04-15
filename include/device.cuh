@@ -48,6 +48,34 @@ public:
 };
 
 /* ------------------------------------------------------------------------------------
+*  Convert between row- and column-major ordering of vector-stored matrices
+* ------------------------------------------------------------------------------------ */
+
+template<typename T>
+inline void row2col(const std::vector<T> &srcRow, std::vector<T> &dstCol, size_t numRows, size_t numCols) {
+    if (numRows * numCols != srcRow.size()) std::cerr << "row2col dimension mismatch" << "\n";
+    dstCol.resize(srcRow.size());
+    std::vector<T> copySrc(srcRow);
+    for (size_t r = 0; r < numRows; r++) {
+        for (size_t c = 0; c < numCols; c++) {
+            dstCol[c * numRows + r] = copySrc[r * numCols + c];
+        }
+    }
+}
+
+template<typename T>
+inline void col2row(const std::vector<T> &srcCol, std::vector<T> &dstRow, size_t numRows, size_t numCols) {
+    if (numRows * numCols != srcCol.size()) std::cerr << "col2row dimension mismatch" << "\n";
+    dstRow.resize(srcCol.size());
+    std::vector<T> copySrc(srcCol);
+    for (size_t r = 0; r < numRows; r++) {
+        for (size_t c = 0; c < numCols; c++) {
+            dstRow[r * numCols + c] = copySrc[c * numRows + r];
+        }
+    }
+}
+
+/* ------------------------------------------------------------------------------------
  *  Device Vector
  * ------------------------------------------------------------------------------------ */
 
@@ -485,26 +513,6 @@ private:
         if (m_vec) delete m_vec;
     }
 
-    /**
-     *
-     * @param vec_rm
-     * @param vec_cm
-     * @param n_rows
-     * @param n_cols
-     */
-    void rm2cm(std::vector<TElement> vec_rm,
-               std::vector<TElement> &vec_cm,
-               size_t n_rows,
-               size_t n_cols) {
-        for (size_t i = 0; i < n_rows; i++) {
-            for (size_t j = 0; j < n_cols; j++) {
-                TElement c = vec_rm[j + i * n_cols];
-                vec_cm[i + j * n_rows] = c;
-            }
-        }
-    }
-
-
 public:
 
     /**
@@ -538,7 +546,7 @@ public:
         size_t n_cols = numel / n_rows;
         if (mode == MatrixStorageMode::rowMajor) {
             std::vector<TElement> vec_cm(numel);
-            rm2cm(vec, vec_cm, n_rows, n_cols);  // to column-major
+            row2col(vec, vec_cm, n_rows, n_cols);  // to column-major
             m_vec = new DeviceVector<TElement>(context, vec_cm);
         } else {
             m_vec = new DeviceVector<TElement>(context, vec);
@@ -574,7 +582,7 @@ public:
         size_t n_cols = n / n_rows;
         if (mode == MatrixStorageMode::rowMajor) {
             std::vector<TElement> vec_cm(n);
-            rm2cm(vec, vec_cm, n_rows, n_cols);  // to column-major
+            row2col(vec, vec_cm, n_rows, n_cols);  // to column-major
             m_vec->upload(vec_cm);
         } else {
             m_vec->upload(vec);
@@ -683,6 +691,7 @@ public:
                     1);
         return resultVector;
     }
+
     friend DeviceVector<double> operator*(DeviceMatrix &A, DeviceVector<double> &b) {
         size_t nRowsA = A.numRows();
         size_t nColsA = b.capacity();
@@ -704,12 +713,15 @@ public:
         return resultVector;
     }
 
-    friend DeviceMatrix operator*(DeviceMatrix &A, const DeviceMatrix &b) {
+    /**
+     * C = AB
+     */
+    friend DeviceMatrix operator*(DeviceMatrix &A, const DeviceMatrix &B) {
         size_t nRowsA = A.numRows();
         size_t nColsA = A.numCols();
-        size_t nColsB = b.numCols();
+        size_t nColsB = B.numCols();
         float alpha = 1.;
-        float beta = 1.;
+        float beta = 0.;
         DeviceMatrix resultMatrix(A.m_context, nRowsA, nColsB);
         cublasSgemm(A.m_context->cuBlasHandle(),
                     CUBLAS_OP_N,
@@ -720,13 +732,18 @@ public:
                     &alpha,
                     A.m_vec->get(),
                     nRowsA,
-                    b.m_vec->get(),
+                    B.m_vec->get(),
                     nColsA,
                     &beta,
                     resultMatrix.m_vec->get(),
                     nRowsA);
         return resultMatrix;
     }
+
+    /**
+     * C += AB
+     */
+    void addAB(const DeviceMatrix &A, const DeviceMatrix &B);
 
     /**
      *
@@ -788,6 +805,56 @@ inline DeviceMatrix<double> &DeviceMatrix<double>::operator*=(double scalar) {
     return *this;
 }
 
+template<>
+inline void DeviceMatrix<float>::addAB(const DeviceMatrix &A, const DeviceMatrix &B) {
+    size_t nColsC = this->numCols();
+    size_t nColsA = A.numCols();
+    if (A.numRows() != m_numRows || B.numCols() != nColsC || nColsA != B.numRows()) {
+        std::invalid_argument("impossible dimensions");
+    }
+    float alpha = 1.;
+    float beta = 1.;
+    cublasSgemm(A.m_context->cuBlasHandle(),
+                CUBLAS_OP_N,
+                CUBLAS_OP_N,
+                m_numRows,
+                nColsC,
+                nColsA,
+                &alpha,
+                A.m_vec->get(),
+                m_numRows,
+                B.m_vec->get(),
+                nColsA,
+                &beta,
+                m_vec->get(),
+                m_numRows);
+}
+
+template<>
+inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatrix &B) {
+    size_t nColsC = this->numCols();
+    size_t nColsA = A.numCols();
+    if (A.numRows() != m_numRows || B.numCols() != nColsC || nColsA != B.numRows()) {
+        std::invalid_argument("impossible dimensions");
+    }
+    double alpha = 1.;
+    double beta = 1.;
+    cublasDgemm(A.m_context->cuBlasHandle(),
+                CUBLAS_OP_N,
+                CUBLAS_OP_N,
+                m_numRows,
+                nColsC,
+                nColsA,
+                &alpha,
+                A.m_vec->get(),
+                m_numRows,
+                B.m_vec->get(),
+                nColsA,
+                &beta,
+                m_vec->get(),
+                m_numRows);
+}
+
 
 /* ------------------------------------------------------------------------------------
  *  SVD Factoriser
@@ -810,8 +877,7 @@ __global__ void k_countNonzeroSingularValues(TElement *d_array, size_t n, unsign
     }
 }
 
-template<typename TElement>
-requires std::floating_point<TElement>
+template<typename TElement> requires std::floating_point<TElement>
 class SvdFactoriser {
 
 private:
