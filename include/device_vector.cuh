@@ -722,6 +722,10 @@ private:
         }
     };
 
+    void computeWorkspaceSize(size_t m, size_t n) {
+        cusolverDnSgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
+    }
+
 public:
 
     /**
@@ -742,7 +746,7 @@ public:
         size_t m = mat.numRows();
         size_t n = mat.numCols();
         size_t k = std::min(m, n);
-        cusolverDnSgesvd_bufferSize(context->cuSolverHandle(), m, n, &m_lwork);
+        computeWorkspaceSize(m, n);
         m_workspace = std::make_unique<DeviceVector<TElement>>(context, m_lwork);
         m_Vtr = std::make_unique<DeviceMatrix<TElement>>(context, n, n);
         m_S = std::make_unique<DeviceVector<TElement>>(context, k);
@@ -771,23 +775,7 @@ public:
      *
      * Warning: the given matrix is destroyed
      */
-    int factorise() {
-        size_t m = m_mat->numRows();
-        size_t n = m_mat->numCols();
-        cusolverDnSgesvd(m_context->cuSolverHandle(),
-                         (m_computeU) ? 'A' : 'N', 'A',
-                         m, n,
-                         m_mat->get(), m,
-                         m_S->get(),
-                         (m_computeU) ? m_U->get() : nullptr, m,
-                         m_Vtr->get(), n,
-                         m_workspace->get(),
-                         m_lwork,
-                         nullptr,  // rwork (used only if SVD fails)
-                         m_info->get());
-        int info = m_info->fetchElementFromDevice(0);
-        return info;
-    }
+    int factorise();
 
     DeviceVector<TElement> singularValues() const {
         return *m_S;
@@ -809,4 +797,53 @@ public:
 
 };
 
+
+template<>
+int SvdFactoriser<float>::factorise() {
+    size_t m = m_mat->numRows();
+    size_t n = m_mat->numCols();
+    cusolverDnSgesvd(m_context->cuSolverHandle(),
+                     (m_computeU) ? 'A' : 'N', 'A',
+                     m, n,
+                     m_mat->get(), m,
+                     m_S->get(),
+                     (m_computeU) ? m_U->get() : nullptr, m,
+                     m_Vtr->get(), n,
+                     m_workspace->get(),
+                     m_lwork,
+                     nullptr,  // rwork (used only if SVD fails)
+                     m_info->get());
+    int info = m_info->fetchElementFromDevice(0);
+    return info;
+}
+
+
+template<>
+int SvdFactoriser<double>::factorise() {
+    size_t m = m_mat->numRows();
+    size_t n = m_mat->numCols();
+    cusolverDnDgesvd(m_context->cuSolverHandle(),
+                     (m_computeU) ? 'A' : 'N', 'A',
+                     m, n,
+                     m_mat->get(), m,
+                     m_S->get(),
+                     (m_computeU) ? m_U->get() : nullptr, m,
+                     m_Vtr->get(), n,
+                     m_workspace->get(),
+                     m_lwork,
+                     nullptr,  // rwork (used only if SVD fails)
+                     m_info->get());
+    int info = m_info->fetchElementFromDevice(0);
+    return info;
+}
+
+template<>
+void SvdFactoriser<float>::computeWorkspaceSize(size_t m, size_t n) {
+    cusolverDnSgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
+}
+
+template<>
+void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
+    cusolverDnDgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
+}
 #endif
