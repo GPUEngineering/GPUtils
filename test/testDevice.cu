@@ -105,8 +105,30 @@ TEST_F(DeviceTest, IndexingVectorsMatrices) {
 }
 
 template<typename T>
+void GetMatrixRows(Context &context) {
+    size_t k = 6;
+    std::vector<T> bData{1.0, 2.0, 3.0,
+                         6.0, 7.0, 8.0,
+                         9.0, 10.0, 11.0,
+                         12.0, 13.0, 14.0,
+                         15.0, 16.0, 17.0,
+                         18.0, 19.0, 20.0};
+    DeviceMatrix<T> B(context, k, bData, MatrixStorageMode::rowMajor);
+    auto copiedRows = B.getRows(1, 4);
+    EXPECT_EQ(6., copiedRows(0, 0));
+    EXPECT_EQ(10., copiedRows(1, 1));
+    EXPECT_EQ(16., copiedRows(3, 1));
+    EXPECT_EQ(17., copiedRows(3, 2));
+}
+
+TEST_F(DeviceTest, GetMatrixRows) {
+    GetMatrixRows<float>(m_context);
+    GetMatrixRows<double>(m_context);
+}
+
+template<typename T>
 requires std::floating_point<T>
-void singularValues(Context &context) {
+void SingularValues(Context &context) {
     size_t k = 8;
     std::vector<T> bData{1.0, 2.0, 3.0,
                          6.0, 7.0, 8.0,
@@ -125,7 +147,7 @@ void singularValues(Context &context) {
 
 }
 
-TEST_F(DeviceTest, singularValues) {
-    singularValues<float>(m_context);
-    singularValues<double>(m_context);
+TEST_F(DeviceTest, SingularValues) {
+    SingularValues<float>(m_context);
+    SingularValues<double>(m_context);
 }

@@ -240,7 +240,6 @@ public:
     }
 
 
-
     TElement operator()(size_t i) {
         return fetchElementFromDevice(i);
     }
@@ -567,9 +566,8 @@ public:
         m_vec = new DeviceVector<TElement>(*other.m_vec, start, finish);
     }
 
-    DeviceMatrix copyRows(size_t rowsFrom, size_t rowsTo) {
+    DeviceMatrix getRows(size_t rowsFrom, size_t rowsTo);
 
-    }
 
     /**
      *
@@ -701,6 +699,7 @@ public:
                     1);
         return resultVector;
     }
+
     friend DeviceVector<double> operator*(DeviceMatrix &A, DeviceVector<double> &b) {
         size_t nRowsA = A.numRows();
         size_t nColsA = b.capacity();
@@ -771,6 +770,32 @@ public:
 };
 
 template<>
+inline DeviceMatrix<double> DeviceMatrix<double>::getRows(size_t rowsFrom, size_t rowsTo) {
+    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
+    size_t n = numCols(), m = numRows();
+    DeviceMatrix<double> rowsOnly(*m_context, rowsRangeLength, numCols());
+    for (size_t i = 0; i < rowsRangeLength; i++) {
+        cublasDcopy(m_context->cuBlasHandle(), m * n,
+                    m_vec->get() + rowsFrom + i, m,
+                    rowsOnly.get() + i, rowsRangeLength);
+    }
+    return rowsOnly;
+}
+
+template<>
+inline DeviceMatrix<float> DeviceMatrix<float>::getRows(size_t rowsFrom, size_t rowsTo) {
+    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
+    size_t n = numCols(), m = numRows();
+    DeviceMatrix<float> rowsOnly(*m_context, rowsRangeLength, numCols());
+    for (size_t i = 0; i < rowsRangeLength; i++) {
+        cublasScopy(m_context->cuBlasHandle(), m * n,
+                    m_vec->get() + rowsFrom + i, m,
+                    rowsOnly.get() + i, rowsRangeLength);
+    }
+    return rowsOnly;
+}
+
+template<>
 inline DeviceMatrix<float> &DeviceMatrix<float>::operator+=(const DeviceMatrix<float> &rhs) {
     *m_vec += *rhs.m_vec;
     return *this;
@@ -828,8 +853,7 @@ __global__ void k_countNonzeroSingularValues(TElement *d_array, size_t n, unsign
     }
 }
 
-template<typename TElement>
-requires std::floating_point<TElement>
+template<typename TElement> requires std::floating_point<TElement>
 class SvdFactoriser {
 
 private:
