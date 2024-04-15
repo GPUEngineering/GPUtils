@@ -3,21 +3,21 @@
 #include <cublas_v2.h>
 #include "include/device_vector.cuh"
 
-#define real_t float
+#define real_t double
 
 
 int main() {
     Context context;
 
     size_t k = 8;
-    std::vector<real_t> bData{1.0f, 2.0f, 3.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,};
+    std::vector<real_t> bData{1.0, 2.0, 3.0,
+                              6.0, 7.0, 8.0,
+                              6.0, 7.0, 8.0,
+                              6.0, 7.0, 8.0,
+                              6.0, 7.0, 8.0,
+                              6.0, 7.0, 8.0,
+                              6.0, 7.0, 8.0,
+                              6.0, 7.0, 8.0,};
     DeviceMatrix<real_t> B(context, k, bData, MatrixStorageMode::rowMajor);
     SvdFactoriser<real_t> svdEngine(context, B, true, false);
     std::cout << "status = " << svdEngine.factorise() << std::endl;

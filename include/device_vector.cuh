@@ -756,12 +756,21 @@ inline DeviceMatrix<double> &DeviceMatrix<double>::operator*=(double scalar) {
 /* ------------------------------------------------------------------------------------
  *  SVD Factoriser
  * ------------------------------------------------------------------------------------ */
+
+/**
+ * Kernel that counts the number of elements of a vector that are higher than epsilon
+ * @tparam TElement either float or double
+ * @param d_array device array
+ * @param n length of device array
+ * @param d_count on exit, count of elements (int on device)
+ * @param epsilon threshold
+ */
 template<typename TElement>
 requires std::floating_point<TElement>
-__global__ void k_countNonzeroSignularValues(TElement *s, size_t n, int *d_rank) {
+__global__ void k_countNonzeroSignularValues(TElement *d_array, size_t n, unsigned int *d_count, TElement epsilon) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
-    if (idx < n && s[idx] > 0.0001) {
-        atomicAdd(d_rank, 1);
+    if (idx < n && d_array[idx] > epsilon) {
+        atomicAdd(d_count, 1);
     }
 }
 
@@ -778,7 +787,7 @@ private:
     std::unique_ptr<DeviceMatrix<TElement>> m_U;  /**< matrix U or left singular vectors*/
     std::unique_ptr<DeviceVector<TElement>> m_workspace;  /**< workspace vector */
     std::unique_ptr<DeviceVector<int>> m_info;  /**< status code of computation */
-    std::unique_ptr<DeviceVector<int>> m_rank;
+    std::unique_ptr<DeviceVector<unsigned int>> m_rank;
     bool m_computeU = false;  /**< whether to compute U */
     bool m_destroyMatrix = true; /**< whether to sacrifice original matrix */
 
@@ -819,7 +828,7 @@ public:
         m_Vtr = std::make_unique<DeviceMatrix<TElement>>(context, n, n);
         m_S = std::make_unique<DeviceVector<TElement>>(context, k);
         m_info = std::make_unique<DeviceVector<int>>(context, 1);
-        m_rank = std::make_unique<DeviceVector<int>>(context, 1);
+        m_rank = std::make_unique<DeviceVector<unsigned int>>(context, 1);
         if (computeU) m_U = std::make_unique<DeviceMatrix<TElement>>(context, m, m);
 
     }
@@ -865,9 +874,9 @@ public:
         if (!m_destroyMatrix && m_mat) delete m_mat;
     }
 
-    int rank() {
+    unsigned int rank(TElement epsilon=1e-6) {
         int k = m_S->capacity();
-        k_countNonzeroSignularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), m_S->capacity(), m_rank->get());
+        k_countNonzeroSignularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), k, m_rank->get(), epsilon);
         return m_rank->fetchElementFromDevice(0);
     }
 
