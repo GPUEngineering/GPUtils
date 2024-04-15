@@ -3,7 +3,7 @@
 #include <cublas_v2.h>
 #include "include/device_vector.cuh"
 
-#define real_t double
+#define real_t float
 
 
 int main() {
@@ -28,6 +28,7 @@ int main() {
     std::cout << "V' = " << svdEngine.rightSingularVectors();
     auto U = svdEngine.leftSingularVectors();
     if (U) std::cout << "U = " << U.value();
+    std::cout << "rank B = " << svdEngine.rank() << std::endl;
 
     return 0;
 }

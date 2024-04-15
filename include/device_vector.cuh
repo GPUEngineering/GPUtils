@@ -11,6 +11,8 @@
 #ifndef DEVICE_VECTOR_CUH__
 #define DEVICE_VECTOR_CUH__
 
+#define THREADS_PER_BLOCK 512
+#define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
 
 /* ------------------------------------------------------------------------------------
  *  Context
@@ -754,9 +756,16 @@ inline DeviceMatrix<double> &DeviceMatrix<double>::operator*=(double scalar) {
 /* ------------------------------------------------------------------------------------
  *  SVD Factoriser
  * ------------------------------------------------------------------------------------ */
-
 template<typename TElement>
 requires std::floating_point<TElement>
+__global__ void k_countNonzeroSignularValues(TElement *s, size_t n, int *d_rank) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < n && s[idx] > 0.0001) {
+        atomicAdd(d_rank, 1);
+    }
+}
+
+template<typename TElement> requires std::floating_point<TElement>
 class SvdFactoriser {
 
 private:
@@ -769,6 +778,7 @@ private:
     std::unique_ptr<DeviceMatrix<TElement>> m_U;  /**< matrix U or left singular vectors*/
     std::unique_ptr<DeviceVector<TElement>> m_workspace;  /**< workspace vector */
     std::unique_ptr<DeviceVector<int>> m_info;  /**< status code of computation */
+    std::unique_ptr<DeviceVector<int>> m_rank;
     bool m_computeU = false;  /**< whether to compute U */
     bool m_destroyMatrix = true; /**< whether to sacrifice original matrix */
 
@@ -809,7 +819,9 @@ public:
         m_Vtr = std::make_unique<DeviceMatrix<TElement>>(context, n, n);
         m_S = std::make_unique<DeviceVector<TElement>>(context, k);
         m_info = std::make_unique<DeviceVector<int>>(context, 1);
+        m_rank = std::make_unique<DeviceVector<int>>(context, 1);
         if (computeU) m_U = std::make_unique<DeviceMatrix<TElement>>(context, m, m);
+
     }
 
     /**
@@ -853,8 +865,13 @@ public:
         if (!m_destroyMatrix && m_mat) delete m_mat;
     }
 
-};
+    int rank() {
+        int k = m_S->capacity();
+        k_countNonzeroSignularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), m_S->capacity(), m_rank->get());
+        return m_rank->fetchElementFromDevice(0);
+    }
 
+};
 
 template<>
 int SvdFactoriser<float>::factorise() {
@@ -904,4 +921,5 @@ template<>
 void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
     cusolverDnDgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
 }
+
 #endif
