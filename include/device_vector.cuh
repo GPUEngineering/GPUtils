@@ -874,9 +874,11 @@ public:
         if (!m_destroyMatrix && m_mat) delete m_mat;
     }
 
-    unsigned int rank(TElement epsilon=1e-6) {
+    unsigned int rank(TElement epsilon = 1e-6) {
         int k = m_S->capacity();
-        k_countNonzeroSignularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), k, m_rank->get(), epsilon);
+        k_countNonzeroSignularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), k,
+                                                                                     m_rank->get(),
+                                                                                     epsilon);
         return m_rank->fetchElementFromDevice(0);
     }
 
