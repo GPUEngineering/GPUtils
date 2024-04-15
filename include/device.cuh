@@ -810,7 +810,8 @@ __global__ void k_countNonzeroSignularValues(TElement *d_array, size_t n, unsign
     }
 }
 
-template<typename TElement> requires std::floating_point<TElement>
+template<typename TElement>
+requires std::floating_point<TElement>
 class SvdFactoriser {
 
 private:
