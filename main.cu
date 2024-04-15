@@ -43,6 +43,5 @@ int main() {
     DeviceMatrix<float> Ft = F.tr();
     std::cout << Ft;
 
-
     return 0;
 }
