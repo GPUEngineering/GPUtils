@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cublas_v2.h>
 #include "include/device_vector.cuh"
+
 #define real_t float
 
 
@@ -29,10 +30,12 @@ int main() {
     auto U = svdEngine.leftSingularVectors();
     if (U) std::cout << "U = " << U.value();
 
-    std::vector<real_t> bVals = {1., 2., 3.};
-    DeviceVector<real_t> b(context, bVals);
-    real_t scalar = 2.;
-    b *= scalar;
-    std::cout << "b = " << b;
+    // Get the last row of V (not the most efficient way)
+    // TODO use cublas<t>Copy to copy a single row
+    auto Vt = svdEngine.rightSingularVectors();
+    auto V = Vt.tr();
+    DeviceMatrix<float> VLastCol(V, 2, 2);
+    std::cout << VLastCol;
+
     return 0;
 }
