@@ -560,6 +560,10 @@ public:
         m_vec = new DeviceVector<TElement>(*other.m_vec, start, finish);
     }
 
+    DeviceMatrix copyRows(size_t rowsFrom, size_t rowsTo) {
+
+    }
+
     /**
      *
      * @param vec
