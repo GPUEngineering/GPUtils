@@ -191,14 +191,14 @@ public:
      *
      * @param hostData destination memory position on host
      */
-    void download(TElement *hostData);
+    void download(TElement *hostData) const;
 
     /**
      * Download the device data to a vector
      *
      * @param vec
      */
-    void download(std::vector<TElement> &vec);
+    void download(std::vector<TElement> &vec) const;
 
     /**
      * Fetches just one value from the device
@@ -392,7 +392,7 @@ void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement> &elsewhere) {
 }
 
 template<typename TElement>
-void DeviceVector<TElement>::download(TElement *hostData) {
+void DeviceVector<TElement>::download(TElement *hostData) const {
     cudaMemcpy(hostData,
                m_d_data,
                m_numAllocatedElements * sizeof(TElement),
@@ -400,7 +400,7 @@ void DeviceVector<TElement>::download(TElement *hostData) {
 }
 
 template<typename TElement>
-void DeviceVector<TElement>::download(std::vector<TElement> &vec) {
+void DeviceVector<TElement>::download(std::vector<TElement> &vec) const {
     vec.reserve(m_numAllocatedElements);
     cudaMemcpy(vec.data(),
                m_d_data,
@@ -508,6 +508,15 @@ public:
         m_vec = new DeviceVector<TElement>(*other.m_vec);
     }
 
+    // SLICE!
+    DeviceMatrix(DeviceMatrix &other, size_t colFrom, size_t colTo) {
+        m_context = other.m_context;
+        m_numRows = other.m_numRows;
+        size_t start = colFrom * m_numRows;
+        size_t finish = (colTo + 1) * m_numRows - 1;
+        m_vec = new DeviceVector<TElement>(*other.m_vec, start, finish);
+    }
+
     /**
      *
      * @param vec
@@ -568,6 +577,21 @@ public:
     size_t numCols() const {
         return m_vec->capacity() / m_numRows;
     }
+
+    DeviceMatrix<TElement> tr() {
+        size_t m = numRows();
+        size_t n = numCols();
+        DeviceMatrix<TElement> transpose(m_context, n, m);
+        float alpha = 1.0f, beta = 0;
+        cublasSgeam(m_context->cuBlasHandle(),
+                    CUBLAS_OP_T, CUBLAS_OP_N,
+                    n, m,
+                    &alpha, m_vec->get(), m,
+                    &beta, nullptr, n,
+                    transpose.get(), n);
+        return transpose;
+    }
+
 
     /**
      *
@@ -765,15 +789,15 @@ public:
         return info;
     }
 
-    DeviceVector<TElement> singularValues() {
+    DeviceVector<TElement> singularValues() const {
         return *m_S;
     }
 
-    DeviceMatrix<TElement> rightSingularVectors() {
+    DeviceMatrix<TElement> rightSingularVectors() const {
         return *m_Vtr;
     }
 
-    std::optional<DeviceMatrix<TElement>> leftSingularVectors() {
+    std::optional<DeviceMatrix<TElement>> leftSingularVectors() const {
         if (!m_computeU) return std::nullopt;
         return *m_U;
     }

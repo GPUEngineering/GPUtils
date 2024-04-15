@@ -26,5 +26,23 @@ int main() {
     std::cout << "V' = " << svdEngine.rightSingularVectors();
     auto U = svdEngine.leftSingularVectors();
     if (U) std::cout << "U = " << U.value();
+
+
+    std::vector<float> xData{1.0f, 2.0f, 3.0f,
+                             4.0f, 5.0f, 6.0f,
+                             6.0f, 7.0f, 8.0f,
+                             9.0f, 10.f, 11.f};
+    DeviceMatrix<float> X(&context, 4, xData, rowMajor);
+    std::cout << X;
+    DeviceMatrix<float> Xt = X.tr();
+    std::cout << Xt;
+
+    DeviceMatrix<float> F(Xt, 2, 3);
+    std::cout << F;
+
+    DeviceMatrix<float> Ft = F.tr();
+    std::cout << Ft;
+
+
     return 0;
 }
