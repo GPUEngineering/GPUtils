@@ -10,6 +10,10 @@ protected:
     virtual ~DeviceTest() {}
 };
 
+/* =======================================
+ * DeviceVector<T>
+ * ======================================= */
+
 /* ---------------------------------------
  * Vector capacity and allocateOnDevice
  * --------------------------------------- */
@@ -26,6 +30,284 @@ TEST_F(DeviceTest, VectorCapacity) {
     VectorCapacity<float>(m_context);
     VectorCapacity<double>(m_context);
 }
+
+/* ---------------------------------------
+ * Basic constructor (extreme cases)
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorBasicConstructor(Context &context) {
+    DeviceVector<T> empty(context, 0);
+    EXPECT_EQ(0, empty.capacity());
+    DeviceVector<T> big(context, 24000);
+    EXPECT_EQ(24000, big.capacity());
+}
+
+TEST_F(DeviceTest, DeviceVectorBasicConstructor) {
+    DeviceVectorBasicConstructor<float>(m_context);
+    DeviceVectorBasicConstructor<double>(m_context);
+    DeviceVectorBasicConstructor<int>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Slice constructor
+ * --------------------------------------- */
+
+template<typename T>
+void DeviceVectorSliceConstructor(Context &context) {
+    std::vector<T> dataX{1, 2, 3, 4, 5};
+    DeviceVector<T> x(context, dataX);
+    DeviceVector<T> xSlice(x, 1, 3);
+    EXPECT_EQ(3, xSlice.capacity());
+    EXPECT_EQ(2, xSlice(0));
+    EXPECT_EQ(3, xSlice(1));
+}
+
+TEST_F(DeviceTest, DeviceVectorSliceConstructor) {
+    DeviceVectorSliceConstructor<float>(m_context);
+    DeviceVectorSliceConstructor<double>(m_context);
+    DeviceVectorSliceConstructor<int>(m_context);
+}
+
+/* ---------------------------------------
+ * Copy constructor
+ * --------------------------------------- */
+
+template<typename T>
+void DeviceVectorCopyConstructor(Context &context) {
+    std::vector<T> dataX{1, 2, 3, 4, 5};
+    DeviceVector<T> x(context, dataX);
+    DeviceVector<T> xCopy(x);
+    EXPECT_EQ(5, xCopy.capacity());
+    EXPECT_EQ(1, xCopy(0));
+    EXPECT_EQ(5, xCopy(4));
+}
+
+TEST_F(DeviceTest, DeviceVectorCopyConstructor) {
+    DeviceVectorCopyConstructor<float>(m_context);
+    DeviceVectorCopyConstructor<double>(m_context);
+    DeviceVectorCopyConstructor<int>(m_context);
+}
+
+/* ---------------------------------------
+ * Operator * (dot product)
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorDotProduct(Context &context) {
+    std::vector<T> dataX{1, 2, 3, 4, 5};
+    DeviceVector<T> x(context, dataX);
+    std::vector<T> dataY{-1, 4, -6, 9, 10};
+    DeviceVector<T> y(context, dataY);
+    T dotProduct = x * y;
+    EXPECT_EQ(75, dotProduct);
+}
+
+TEST_F(DeviceTest, DeviceVectorDotProduct) {
+    DeviceVectorDotProduct<float>(m_context);
+    DeviceVectorDotProduct<double>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Norm2
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorEuclideanNorm(Context &context, T epsilon) {
+    std::vector<T> dataX{1, 2, 3, 4, 5};
+    DeviceVector<T> x(context, dataX);
+    T nrmX = x.norm2();
+    EXPECT_NEAR(7.416198487095663, nrmX, epsilon);
+}
+
+TEST_F(DeviceTest, DeviceVectorEuclideanNorm) {
+    DeviceVectorEuclideanNorm<float>(m_context, 1e-4);
+    DeviceVectorEuclideanNorm<double>(m_context, 1e-12);
+}
+
+/* ---------------------------------------
+ * Norm-1
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorNorm1(Context &context) {
+    std::vector<T> dataY{-1., 4., -6., 9., 10.};
+    DeviceVector<T> y(context, dataY);
+    T nrmX = y.norm1();
+    EXPECT_EQ(30, nrmX);
+}
+
+TEST_F(DeviceTest, DeviceVectorNorm1) {
+    DeviceVectorNorm1<float>(m_context);
+    DeviceVectorNorm1<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Sum of vectors (operator +)
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorSum(Context &context) {
+    std::vector<T> dataX{10., 20., 30., 40., 50.};
+    std::vector<T> dataY{-1., 4., -6., 9., 10.};
+    DeviceVector<T> x(context, dataX);
+    DeviceVector<T> y(context, dataY);
+    auto sum = x + y;
+    EXPECT_EQ(9, sum(0));
+    EXPECT_EQ(60, sum(4));
+}
+
+TEST_F(DeviceTest, DeviceVectorSum) {
+    DeviceVectorSum<float>(m_context);
+    DeviceVectorSum<double>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Scalar product (scaling)
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorScaling(Context &context) {
+    std::vector<T> dataX{10., 20., 30., 40., -50.};
+    DeviceVector<T> x(context, dataX);
+    T alpha = 2.;
+    auto scaledX = alpha * x;
+    EXPECT_EQ(20, scaledX(0));
+    EXPECT_EQ(-100, scaledX(4));
+}
+
+TEST_F(DeviceTest, DeviceVectorScaling) {
+    DeviceVectorScaling<float>(m_context);
+    DeviceVectorScaling<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Scalar product (scaling in place)
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorScalingInPlace(Context &context) {
+    std::vector<T> dataX{10., 20., 30., 40., -50.};
+    DeviceVector<T> x(context, dataX);
+    T alpha = 2.;
+    x *= alpha;
+    EXPECT_EQ(20, x(0));
+    EXPECT_EQ(-100, x(4));
+}
+
+TEST_F(DeviceTest, DeviceVectorScalingInPlace) {
+    DeviceVectorScalingInPlace<float>(m_context);
+    DeviceVectorScalingInPlace<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Difference of vectors (operator -)
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorDiff(Context &context) {
+    std::vector<T> dataX{10., 20., 30., 40., 50.};
+    std::vector<T> dataY{-1., 4., -6., 9., 10.};
+    DeviceVector<T> x(context, dataX);
+    DeviceVector<T> y(context, dataY);
+    auto sum = x - y;
+    EXPECT_EQ(11, sum(0));
+    EXPECT_EQ(40, sum(4));
+}
+
+TEST_F(DeviceTest, DeviceVectorDiff) {
+    DeviceVectorDiff<float>(m_context);
+    DeviceVectorDiff<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Device-to-device copy with slicing
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorDeviceToDeviceCopy(Context &context) {
+    std::vector<T> dataX{-1., 2., 3., 4., 6.};
+    DeviceVector<T> x(context, dataX);
+    DeviceVector<T> xSlice(x, 1, 3);
+
+    std::vector<T> dataY{5, 5, 5};
+    DeviceVector<T> y(context, dataY);
+
+    y.deviceCopyTo(xSlice);
+
+    std::vector<T> xExpected{-1., 5., 5., 5., 6.};
+    std::vector<T> h_x(5);
+    x.download(h_x);
+    for (size_t i = 0; i < 5; i++) {
+        EXPECT_EQ(xExpected[i], h_x[i]);
+    }
+}
+
+TEST_F(DeviceTest, DeviceVectorDeviceToDeviceCopy) {
+    DeviceVectorDeviceToDeviceCopy<float>(m_context);
+    DeviceVectorDeviceToDeviceCopy<double>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Operator +=
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorOpPlusEq(Context &context) {
+    std::vector<T> dataX{10., 20., 30., 40., 50.};
+    std::vector<T> dataY{-1., 4., -6., 9., 10.};
+    DeviceVector<T> x(context, dataX);
+    DeviceVector<T> y(context, dataY);
+    x += y;
+    EXPECT_EQ(9, x(0));
+    EXPECT_EQ(49, x(3));
+    EXPECT_EQ(60, x(4));
+}
+
+TEST_F(DeviceTest, DeviceVectorOpPlusEq) {
+    DeviceVectorOpPlusEq<float>(m_context);
+    DeviceVectorOpPlusEq<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Operator -=
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorOpMinusEq(Context &context) {
+    std::vector<T> dataX{10., 20., 30., 40., 50.};
+    std::vector<T> dataY{-1., 4., -6., 9., 10.};
+    DeviceVector<T> x(context, dataX);
+    DeviceVector<T> y(context, dataY);
+    x -= y;
+    EXPECT_EQ(11, x(0));
+    EXPECT_EQ(16, x(1));
+    EXPECT_EQ(36, x(2));
+}
+
+TEST_F(DeviceTest, DeviceVectorOpMinusEq) {
+    DeviceVectorOpMinusEq<float>(m_context);
+    DeviceVectorOpMinusEq<double>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Upload data
+ * --------------------------------------- */
+template<typename T>
+void DeviceVectorUploadData(Context &context) {
+    std::vector<T> data = {1, 2, 3, 4, 5, 6};
+    std::vector<T> result(data.size());
+    DeviceVector<T> vec(context, data.size());
+    vec.upload(data);
+    vec.download(result);
+    EXPECT_EQ(data, result);
+}
+
+TEST_F(DeviceTest, DeviceVectorUploadData) {
+    DeviceVectorUploadData<float>(m_context);
+    DeviceVectorUploadData<double>(m_context);
+}
+
+
+
+/* =======================================
+ * DeviceMatrix<T>
+ * ======================================= */
+
 
 /* ---------------------------------------
  * Matrix Dimensions
@@ -158,6 +440,11 @@ TEST_F(DeviceTest, GetMatrixRows) {
     GetMatrixRows<float>(m_context);
     GetMatrixRows<double>(m_context);
 }
+
+
+/* =======================================
+ * SVD
+ * ======================================= */
 
 /* ---------------------------------------
  * Computation of singular values

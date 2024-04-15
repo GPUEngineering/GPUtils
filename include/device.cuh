@@ -74,6 +74,16 @@ private:
         return true;
     }
 
+    /**
+     * Fetches just one value from the device
+     *
+     * Use sparingly
+     *
+     * @param i index
+     * @return entry of array at index i
+     */
+    TElement fetchElementFromDevice(size_t i);
+
 public:
 
     /**
@@ -202,15 +212,6 @@ public:
      */
     void download(std::vector<TElement> &vec) const;
 
-    /**
-     * Fetches just one value from the device
-     *
-     * Use sparingly
-     *
-     * @param i index
-     * @return entry of array at index i
-     */
-    TElement fetchElementFromDevice(size_t i);
 
     /**
      * Copy data to another memory position on the device.
@@ -273,14 +274,14 @@ public:
     DeviceVector &operator*=(TElement scalar);  // CLion warns `not implemented`, but it is
 
     friend DeviceVector operator+(DeviceVector &firstVector, const DeviceVector &secondVector) {
-        DeviceVector resultVec(firstVector.m_context, firstVector.capacity());
+        DeviceVector resultVec(*firstVector.m_context, firstVector.capacity());
         firstVector.deviceCopyTo(resultVec);
         resultVec += secondVector;
         return resultVec;
     }
 
     friend DeviceVector operator-(DeviceVector &firstVector, const DeviceVector &secondVector) {
-        DeviceVector resultVec(firstVector.m_context, firstVector.capacity());
+        DeviceVector resultVec(*firstVector.m_context, firstVector.capacity());
         firstVector.deviceCopyTo(resultVec);
         resultVec -= secondVector;
         return resultVec;
@@ -293,7 +294,7 @@ public:
      * @return
      */
     friend DeviceVector operator*(const TElement firstVector, DeviceVector &secondVector) {
-        DeviceVector resultVec(secondVector.m_context, secondVector.capacity());
+        DeviceVector resultVec(*secondVector.m_context, secondVector.capacity());
         secondVector.deviceCopyTo(resultVec);
         resultVec *= firstVector;
         return resultVec;
@@ -309,7 +310,7 @@ public:
      * Sum of the elements of the vector
      * @return
      */
-    TElement sum() const;
+    TElement norm1() const;
 
 
 }; /* end of class */
@@ -385,17 +386,17 @@ inline double DeviceVector<double>::norm2() const {
 }
 
 template<>
-inline float DeviceVector<float>::sum() const {
+inline float DeviceVector<float>::norm1() const {
     float the_sum;
     cublasSasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_sum);
     return the_sum;
 }
 
 template<>
-inline double DeviceVector<double>::sum() const {
-    double the_sum;
-    cublasDasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_sum);
-    return the_sum;
+inline double DeviceVector<double>::norm1() const {
+    double nrm1;
+    cublasDasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &nrm1);
+    return nrm1;
 }
 
 template<typename TElement>
@@ -649,7 +650,7 @@ public:
         size_t m = numRows();
         if (i >= m) throw std::out_of_range("Uh oh! i >= number of rows");
         if (j >= numCols()) throw std::out_of_range("Uh oh! j >= number of columns");
-        return m_vec->fetchElementFromDevice(j * m + i);
+        return (*m_vec)(j * m + i);
     }
 
     /**
@@ -962,7 +963,7 @@ public:
         k_countNonzeroSingularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), k,
                                                                                      m_rank->get(),
                                                                                      epsilon);
-        return m_rank->fetchElementFromDevice(0);
+        return (*m_rank)(0);
     }
 
 };
@@ -982,7 +983,7 @@ inline int SvdFactoriser<float>::factorise() {
                      m_lwork,
                      nullptr,  // rwork (used only if SVD fails)
                      m_info->get());
-    int info = m_info->fetchElementFromDevice(0);
+    int info = (*m_info)(0);
     return info;
 }
 
@@ -1002,7 +1003,7 @@ inline int SvdFactoriser<double>::factorise() {
                      m_lwork,
                      nullptr,  // rwork (used only if SVD fails)
                      m_info->get());
-    int info = m_info->fetchElementFromDevice(0);
+    int info = (*m_info)(0);
     return info;
 }
 
