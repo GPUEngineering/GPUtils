@@ -267,6 +267,11 @@ public:
         return out;
     }
 
+
+    TElement operator()(size_t i) {
+        return fetchElementFromDevice(i);
+    }
+
     /**
      * Add another vector to the current vector (element-wise)
      * @param rhs
@@ -423,6 +428,7 @@ inline double DeviceVector<double>::sum() const {
 
 template<typename TElement>
 TElement DeviceVector<TElement>::fetchElementFromDevice(size_t i) {
+    if (i >= capacity()) throw std::out_of_range("Uh oh! Index out of bounds");
     DeviceVector<TElement> d_element(*this, i, i);
     TElement xi[1];
     d_element.download(xi);
@@ -568,6 +574,9 @@ public:
         m_vec = new DeviceVector<TElement>(*other.m_vec, start, finish);
     }
 
+    DeviceMatrix getRows(size_t rowsFrom, size_t rowsTo);
+
+
     /**
      *
      * @param vec
@@ -643,6 +652,13 @@ public:
         return transpose;
     }
 
+
+    TElement operator()(size_t i, size_t j) {
+        size_t m = numRows();
+        if (i >= m) throw std::out_of_range("Uh oh! i >= number of rows");
+        if (j >= numCols()) throw std::out_of_range("Uh oh! j >= number of columns");
+        return m_vec->fetchElementFromDevice(j * m + i);
+    }
 
     /**
      *
@@ -768,6 +784,36 @@ public:
     }
 
 };
+
+template<>
+inline DeviceMatrix<double> DeviceMatrix<double>::getRows(size_t rowsFrom, size_t rowsTo) {
+    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
+    size_t n = numCols(), m = numRows();
+    DeviceMatrix<double> rowsOnly(*m_context, rowsRangeLength, numCols());
+    for (size_t i = 0; i < rowsRangeLength; i++) {
+        cublasDcopy(m_context->cuBlasHandle(),
+                    n, // # values to copy
+                    m_vec->get() + rowsFrom + i, m,
+                    rowsOnly.get() + i,
+                    rowsRangeLength);
+    }
+    return rowsOnly;
+}
+
+template<>
+inline DeviceMatrix<float> DeviceMatrix<float>::getRows(size_t rowsFrom, size_t rowsTo) {
+    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
+    size_t n = numCols(), m = numRows();
+    DeviceMatrix<float> rowsOnly(*m_context, rowsRangeLength, numCols());
+    for (size_t i = 0; i < rowsRangeLength; i++) {
+        cublasScopy(m_context->cuBlasHandle(),
+                    n, // # values to copy
+                    m_vec->get() + rowsFrom + i, m,
+                    rowsOnly.get() + i,
+                    rowsRangeLength);
+    }
+    return rowsOnly;
+}
 
 template<>
 inline DeviceMatrix<float> &DeviceMatrix<float>::operator+=(const DeviceMatrix<float> &rhs) {
