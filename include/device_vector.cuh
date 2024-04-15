@@ -263,7 +263,7 @@ public:
      * @param scalar
      * @return
      */
-    DeviceVector &operator*=(TElement scalar);  // CLion says not implemented, but it is
+    DeviceVector &operator*=(TElement scalar);  // CLion warns `not implemented`, but it is
 
     friend DeviceVector operator+(DeviceVector &firstVector, const DeviceVector &secondVector) {
         DeviceVector resultVec(firstVector.m_context, firstVector.capacity());
@@ -457,8 +457,8 @@ void DeviceVector<TElement>::download(std::vector<TElement> &vec) {
  * Storage mode for the data of a matrix
  */
 enum MatrixStorageMode {
-    columnMajor, /**< column major storage (preferred/default) */
-    rowMajor /**< row major storage */
+    columnMajor, ///< column major storage (preferred/default)
+    rowMajor ///< row major storage
 };
 
 
@@ -472,8 +472,8 @@ class DeviceMatrix {
 private:
     // the data is always stored in CM format
     Context *m_context = nullptr;
-    DeviceVector<TElement> *m_vec = nullptr; /**< stores all useful memory */
-    size_t m_numRows = 0; /**< number of rows */
+    DeviceVector<TElement> *m_vec = nullptr;  ///< stores all useful memory
+    size_t m_numRows = 0;  ///< number of rows
 
     /**
      *
@@ -629,7 +629,7 @@ public:
      * @param scalar
      * @return
      */
-    DeviceMatrix &operator*=(TElement scalar);
+    DeviceMatrix &operator*=(TElement scalar);  // CLion warns `not implemented`, but it is
 
     /**
      * Matrix-vector multiplication (vec = A * b)
@@ -637,9 +637,45 @@ public:
      * @param b RHS vector
      * @return resulting vector (allocates fresh memory)
      */
-    friend DeviceVector<TElement> operator*(DeviceMatrix &A, const DeviceVector<TElement> &b) {
-        DeviceVector<TElement> res(A.m_context, 10); // set proper size
-        return res;
+    friend DeviceVector<float> operator*(DeviceMatrix &A, DeviceVector<float> &b) {
+        size_t nRowsA = A.numRows();
+        size_t nColsA = b.capacity();
+        float alpha = 1.;
+        float beta = 0.;
+        DeviceVector<float> resultVector(*A.m_context, nRowsA);
+        cublasSgemv(A.m_context->cuBlasHandle(),
+                    CUBLAS_OP_N,
+                    nRowsA,
+                    nColsA,
+                    &alpha,
+                    A.m_vec->get(),
+                    nRowsA,
+                    b.get(),
+                    1,
+                    &beta,
+                    resultVector.get(),
+                    1);
+        return resultVector;
+    }
+    friend DeviceVector<double> operator*(DeviceMatrix &A, DeviceVector<double> &b) {
+        size_t nRowsA = A.numRows();
+        size_t nColsA = b.capacity();
+        double alpha = 1.;
+        double beta = 0.;
+        DeviceVector<double> resultVector(*A.m_context, nRowsA);
+        cublasDgemv(A.m_context->cuBlasHandle(),
+                    CUBLAS_OP_N,
+                    nRowsA,
+                    nColsA,
+                    &alpha,
+                    A.m_vec->get(),
+                    nRowsA,
+                    b.get(),
+                    1,
+                    &beta,
+                    resultVector.get(),
+                    1);
+        return resultVector;
     }
 
     friend DeviceMatrix operator*(DeviceMatrix &A, const DeviceMatrix &b) {
