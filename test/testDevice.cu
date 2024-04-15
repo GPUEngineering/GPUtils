@@ -76,3 +76,29 @@ TEST_F(DeviceTest, MatrixVectorOperatorAsterisk) {
     MatrixVectorOperatorAsterisk<float>(m_context);
     MatrixVectorOperatorAsterisk<double>(m_context);
 }
+
+template<typename T>
+requires std::floating_point<T>
+void singularValues(Context &context) {
+    size_t k = 8;
+    std::vector<T> bData{1.0, 2.0, 3.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,};
+    DeviceMatrix<T> B(context, k, bData, rowMajor);
+    SvdFactoriser<T> svdEngine(context, B, true, false);
+    EXPECT_EQ(0, svdEngine.factorise());
+    auto S = svdEngine.singularValues();
+    unsigned int r = svdEngine.rank();
+    EXPECT_EQ(2, r);
+
+}
+
+TEST_F(DeviceTest, singularValues) {
+    singularValues<float>(m_context);
+    singularValues<double>(m_context);
+}
