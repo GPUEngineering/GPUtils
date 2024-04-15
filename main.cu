@@ -3,14 +3,14 @@
 #include <cublas_v2.h>
 #include "include/device_vector.cuh"
 
-#define real_t float
+#define real_t double
 
 
 int main() {
     Context context;
 
     size_t k = 8;
-    std::vector<float> bData{1.0f, 2.0f, 3.0f,
+    std::vector<real_t> bData{1.0f, 2.0f, 3.0f,
                              6.0f, 7.0f, 8.0f,
                              6.0f, 7.0f, 8.0f,
                              6.0f, 7.0f, 8.0f,
@@ -18,10 +18,9 @@ int main() {
                              6.0f, 7.0f, 8.0f,
                              6.0f, 7.0f, 8.0f,
                              6.0f, 7.0f, 8.0f,};
-
     DeviceMatrix<real_t> B(context, k, bData, MatrixStorageMode::rowMajor);
     SvdFactoriser<real_t> svdEngine(context, B, true, false);
-    svdEngine.factorise();
+    std::cout << "status = " << svdEngine.factorise() << std::endl;
 
     /* ~~~ print results ~~~ */
     std::cout << "B = " << B;
@@ -29,13 +28,6 @@ int main() {
     std::cout << "V' = " << svdEngine.rightSingularVectors();
     auto U = svdEngine.leftSingularVectors();
     if (U) std::cout << "U = " << U.value();
-
-    // Get the last row of V (not the most efficient way)
-    // TODO use cublas<t>Copy to copy a single row
-    auto Vt = svdEngine.rightSingularVectors();
-    auto V = Vt.tr();
-    DeviceMatrix<float> VLastCol(V, 2, 2);
-    std::cout << VLastCol;
 
     return 0;
 }

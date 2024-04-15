@@ -233,7 +233,7 @@ auto X = A * B;
 std::cout << A << B << X;
 ```
 
-
+We can also create the transpose of a matrix using `.tr()`. Transposition in-place is not possible.
 
 ## 3. Singular Value Decomposition
 
