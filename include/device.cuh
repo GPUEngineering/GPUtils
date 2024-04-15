@@ -7,9 +7,41 @@
 #include <stdexcept>
 #include <memory>
 #include <optional>
+#include <source_location>
 
 #ifndef DEVICE_VECTOR_CUH__
 #define DEVICE_VECTOR_CUH__
+
+/**
+ * Check for errors when calling GPU functions
+ */
+#define gpuErrChk(status) { gpuAssert((status), std::source_location::current()); }
+
+template<typename T>
+inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
+    if constexpr (std::is_same_v<T, cudaError_t>) {
+        if (code != cudaSuccess) {
+            std::cerr << "cuda error. String: " << cudaGetErrorString(code)
+                      << ", file: " << loc.file_name() << ", line: " << loc.line() << "\n";
+            if (abort) exit(code);
+        }
+    } else if constexpr (std::is_same_v<T, cublasStatus_t>) {
+        if (code != CUBLAS_STATUS_SUCCESS) {
+            std::cerr << "cublas error. Name: " << cublasGetStatusName(code)
+                      << ", string: " << cublasGetStatusString(code)
+                      << ", file: " << loc.file_name() << ", line: " << loc.line() << "\n";
+            if (abort) exit(code);
+        }
+    } else if constexpr (std::is_same_v<T, cusolverStatus_t>) {
+        if (code != CUSOLVER_STATUS_SUCCESS) {
+            std::cerr << "cusolver error. Status: " << code
+                      << ", file: " << loc.file_name() << ", line: " << loc.line() << "\n";
+            if (abort) exit(code);
+        }
+    } else {
+        std::cerr << "Error: library status parser not implemented" << "\n";
+    }
+}
 
 #define THREADS_PER_BLOCK 512
 #define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
@@ -26,19 +58,13 @@ private:
 
 public:
     explicit Context() noexcept {
-        cublasStatus_t stat = cublasCreate(&m_cublasHandle);
-        if (stat != CUBLAS_STATUS_SUCCESS) {
-            printf("cuBLAS initialization failed\n");
-        }
-        cusolverStatus_t stat2 = cusolverDnCreate(&m_cusolverHandle);
-        if (stat2 != CUSOLVER_STATUS_SUCCESS) {
-            printf("cuSOLVER initialization failed\n");
-        }
+        gpuErrChk(cublasCreate(&m_cublasHandle));
+        gpuErrChk(cusolverDnCreate(&m_cusolverHandle));
     }
 
     virtual ~Context() noexcept {
-        cublasDestroy(m_cublasHandle);
-        cusolverDnDestroy(m_cusolverHandle);
+        gpuErrChk(cublasDestroy(m_cublasHandle));
+        gpuErrChk(cusolverDnDestroy(m_cusolverHandle));
     }
 
     cublasHandle_t &cuBlasHandle() { return m_cublasHandle; }
@@ -346,84 +372,84 @@ public:
 template<>
 inline DeviceVector<float> &DeviceVector<float>::operator+=(const DeviceVector<float> &rhs) {
     const float alpha = 1.;
-    cublasSaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    gpuErrChk(cublasSaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline DeviceVector<double> &DeviceVector<double>::operator+=(const DeviceVector<double> &rhs) {
     const double alpha = 1.;
-    cublasDaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    gpuErrChk(cublasDaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline DeviceVector<float> &DeviceVector<float>::operator*=(float scalar) {
     float alpha = scalar;
-    cublasSscal(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    gpuErrChk(cublasSscal(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline DeviceVector<double> &DeviceVector<double>::operator*=(double scalar) {
     double alpha = scalar;
-    cublasDscal(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    gpuErrChk(cublasDscal(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline DeviceVector<float> &DeviceVector<float>::operator-=(const DeviceVector<float> &rhs) {
     const float alpha = -1.;
-    cublasSaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    gpuErrChk(cublasSaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline DeviceVector<double> &DeviceVector<double>::operator-=(const DeviceVector<double> &rhs) {
     const double alpha = -1.;
-    cublasDaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    gpuErrChk(cublasDaxpy(m_context->cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline float DeviceVector<float>::operator*(const DeviceVector<float> &rhs) const {
     float inn_prod;
-    cublasSdot(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, rhs.m_d_data, 1, &inn_prod);
+    gpuErrChk(cublasSdot(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, rhs.m_d_data, 1, &inn_prod));
     return inn_prod;
 }
 
 template<>
 inline double DeviceVector<double>::operator*(const DeviceVector<double> &rhs) const {
     double inn_prod;
-    cublasDdot(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, rhs.m_d_data, 1, &inn_prod);
+    gpuErrChk(cublasDdot(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, rhs.m_d_data, 1, &inn_prod));
     return inn_prod;
 }
 
 template<>
 inline float DeviceVector<float>::norm2() const {
     float the_norm;
-    cublasSnrm2(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
+    gpuErrChk(cublasSnrm2(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm));
     return the_norm;
 }
 
 template<>
 inline double DeviceVector<double>::norm2() const {
     double the_norm;
-    cublasDnrm2(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
+    gpuErrChk(cublasDnrm2(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm));
     return the_norm;
 }
 
 template<>
 inline float DeviceVector<float>::norm1() const {
     float the_sum;
-    cublasSasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_sum);
+    gpuErrChk(cublasSasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_sum));
     return the_sum;
 }
 
 template<>
 inline double DeviceVector<double>::norm1() const {
     double nrm1;
-    cublasDasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &nrm1);
+    gpuErrChk(cublasDasum(m_context->cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &nrm1));
     return nrm1;
 }
 
@@ -438,7 +464,6 @@ TElement DeviceVector<TElement>::fetchElementFromDevice(size_t i) {
 
 template<typename TElement>
 bool DeviceVector<TElement>::allocateOnDevice(size_t size) {
-
     if (size <= 0) return false;
     if (size <= m_numAllocatedElements) return true;
     destroy();
@@ -455,7 +480,7 @@ bool DeviceVector<TElement>::upload(const TElement *dataArray, size_t size) {
     if (!allocateOnDevice(size)) return false;
     if (size <= m_numAllocatedElements) {
         size_t buffer_size = size * sizeof(TElement);
-        cudaMemcpy(m_d_data, dataArray, buffer_size, cudaMemcpyHostToDevice);
+        gpuErrChk(cudaMemcpy(m_d_data, dataArray, buffer_size, cudaMemcpyHostToDevice));
     }
     return true;
 }
@@ -463,27 +488,27 @@ bool DeviceVector<TElement>::upload(const TElement *dataArray, size_t size) {
 template<typename TElement>
 void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement> &elsewhere) {
     elsewhere.allocateOnDevice(m_numAllocatedElements);
-    cudaMemcpy(elsewhere.get(),
-               m_d_data,
-               m_numAllocatedElements * sizeof(TElement),
-               cudaMemcpyDeviceToDevice);
+    gpuErrChk(cudaMemcpy(elsewhere.get(),
+                         m_d_data,
+                         m_numAllocatedElements * sizeof(TElement),
+                         cudaMemcpyDeviceToDevice));
 }
 
 template<typename TElement>
 void DeviceVector<TElement>::download(TElement *hostData) const {
-    cudaMemcpy(hostData,
-               m_d_data,
-               m_numAllocatedElements * sizeof(TElement),
-               cudaMemcpyDeviceToHost);
+    gpuErrChk(cudaMemcpy(hostData,
+                         m_d_data,
+                         m_numAllocatedElements * sizeof(TElement),
+                         cudaMemcpyDeviceToHost));
 }
 
 template<typename TElement>
 void DeviceVector<TElement>::download(std::vector<TElement> &vec) const {
     vec.reserve(m_numAllocatedElements);
-    cudaMemcpy(vec.data(),
-               m_d_data,
-               m_numAllocatedElements * sizeof(TElement),
-               cudaMemcpyDeviceToHost);
+    gpuErrChk(cudaMemcpy(vec.data(),
+                         m_d_data,
+                         m_numAllocatedElements * sizeof(TElement),
+                         cudaMemcpyDeviceToHost));
 }
 
 /* ------------------------------------------------------------------------------------
@@ -644,12 +669,12 @@ public:
         size_t n = numCols();
         DeviceMatrix<TElement> transpose(*m_context, n, m);
         float alpha = 1.0f, beta = 0;
-        cublasSgeam(m_context->cuBlasHandle(),
-                    CUBLAS_OP_T, CUBLAS_OP_N,
-                    n, m,
-                    &alpha, m_vec->get(), m,
-                    &beta, nullptr, n,
-                    transpose.get(), n);
+        gpuErrChk(cublasSgeam(m_context->cuBlasHandle(),
+                              CUBLAS_OP_T, CUBLAS_OP_N,
+                              n, m,
+                              &alpha, m_vec->get(), m,
+                              &beta, nullptr, n,
+                              transpose.get(), n));
         return transpose;
     }
 
@@ -694,18 +719,18 @@ public:
         float alpha = 1.;
         float beta = 0.;
         DeviceVector<float> resultVector(*A.m_context, nRowsA);
-        cublasSgemv(A.m_context->cuBlasHandle(),
-                    CUBLAS_OP_N,
-                    nRowsA,
-                    nColsA,
-                    &alpha,
-                    A.m_vec->get(),
-                    nRowsA,
-                    b.get(),
-                    1,
-                    &beta,
-                    resultVector.get(),
-                    1);
+        gpuErrChk(cublasSgemv(A.m_context->cuBlasHandle(),
+                              CUBLAS_OP_N,
+                              nRowsA,
+                              nColsA,
+                              &alpha,
+                              A.m_vec->get(),
+                              nRowsA,
+                              b.get(),
+                              1,
+                              &beta,
+                              resultVector.get(),
+                              1));
         return resultVector;
     }
 
@@ -715,18 +740,18 @@ public:
         double alpha = 1.;
         double beta = 0.;
         DeviceVector<double> resultVector(*A.m_context, nRowsA);
-        cublasDgemv(A.m_context->cuBlasHandle(),
-                    CUBLAS_OP_N,
-                    nRowsA,
-                    nColsA,
-                    &alpha,
-                    A.m_vec->get(),
-                    nRowsA,
-                    b.get(),
-                    1,
-                    &beta,
-                    resultVector.get(),
-                    1);
+        gpuErrChk(cublasDgemv(A.m_context->cuBlasHandle(),
+                              CUBLAS_OP_N,
+                              nRowsA,
+                              nColsA,
+                              &alpha,
+                              A.m_vec->get(),
+                              nRowsA,
+                              b.get(),
+                              1,
+                              &beta,
+                              resultVector.get(),
+                              1));
         return resultVector;
     }
 
@@ -740,20 +765,20 @@ public:
         float alpha = 1.;
         float beta = 0.;
         DeviceMatrix resultMatrix(A.m_context, nRowsA, nColsB);
-        cublasSgemm(A.m_context->cuBlasHandle(),
-                    CUBLAS_OP_N,
-                    CUBLAS_OP_N,
-                    nRowsA,
-                    nColsB,
-                    nColsA,
-                    &alpha,
-                    A.m_vec->get(),
-                    nRowsA,
-                    B.m_vec->get(),
-                    nColsA,
-                    &beta,
-                    resultMatrix.m_vec->get(),
-                    nRowsA);
+        gpuErrChk(cublasSgemm(A.m_context->cuBlasHandle(),
+                              CUBLAS_OP_N,
+                              CUBLAS_OP_N,
+                              nRowsA,
+                              nColsB,
+                              nColsA,
+                              &alpha,
+                              A.m_vec->get(),
+                              nRowsA,
+                              B.m_vec->get(),
+                              nColsA,
+                              &beta,
+                              resultMatrix.m_vec->get(),
+                              nRowsA));
         return resultMatrix;
     }
 
@@ -792,11 +817,11 @@ inline DeviceMatrix<double> DeviceMatrix<double>::getRows(size_t rowsFrom, size_
     size_t n = numCols(), m = numRows();
     DeviceMatrix<double> rowsOnly(*m_context, rowsRangeLength, numCols());
     for (size_t i = 0; i < rowsRangeLength; i++) {
-        cublasDcopy(m_context->cuBlasHandle(),
-                    n, // # values to copy
-                    m_vec->get() + rowsFrom + i, m,
-                    rowsOnly.get() + i,
-                    rowsRangeLength);
+        gpuErrChk(cublasDcopy(m_context->cuBlasHandle(),
+                              n, // # values to copy
+                              m_vec->get() + rowsFrom + i, m,
+                              rowsOnly.get() + i,
+                              rowsRangeLength));
     }
     return rowsOnly;
 }
@@ -807,11 +832,11 @@ inline DeviceMatrix<float> DeviceMatrix<float>::getRows(size_t rowsFrom, size_t 
     size_t n = numCols(), m = numRows();
     DeviceMatrix<float> rowsOnly(*m_context, rowsRangeLength, numCols());
     for (size_t i = 0; i < rowsRangeLength; i++) {
-        cublasScopy(m_context->cuBlasHandle(),
-                    n, // # values to copy
-                    m_vec->get() + rowsFrom + i, m,
-                    rowsOnly.get() + i,
-                    rowsRangeLength);
+        gpuErrChk(cublasScopy(m_context->cuBlasHandle(),
+                              n, // # values to copy
+                              m_vec->get() + rowsFrom + i, m,
+                              rowsOnly.get() + i,
+                              rowsRangeLength));
     }
     return rowsOnly;
 }
@@ -861,20 +886,20 @@ inline void DeviceMatrix<float>::addAB(const DeviceMatrix &A, const DeviceMatrix
     }
     float alpha = 1.;
     float beta = 1.;
-    cublasSgemm(A.m_context->cuBlasHandle(),
-                CUBLAS_OP_N,
-                CUBLAS_OP_N,
-                m_numRows,
-                nColsC,
-                nColsA,
-                &alpha,
-                A.m_vec->get(),
-                m_numRows,
-                B.m_vec->get(),
-                nColsA,
-                &beta,
-                m_vec->get(),
-                m_numRows);
+    gpuErrChk(cublasSgemm(A.m_context->cuBlasHandle(),
+                          CUBLAS_OP_N,
+                          CUBLAS_OP_N,
+                          m_numRows,
+                          nColsC,
+                          nColsA,
+                          &alpha,
+                          A.m_vec->get(),
+                          m_numRows,
+                          B.m_vec->get(),
+                          nColsA,
+                          &beta,
+                          m_vec->get(),
+                          m_numRows));
 }
 
 template<>
@@ -886,20 +911,20 @@ inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatri
     }
     double alpha = 1.;
     double beta = 1.;
-    cublasDgemm(A.m_context->cuBlasHandle(),
-                CUBLAS_OP_N,
-                CUBLAS_OP_N,
-                m_numRows,
-                nColsC,
-                nColsA,
-                &alpha,
-                A.m_vec->get(),
-                m_numRows,
-                B.m_vec->get(),
-                nColsA,
-                &beta,
-                m_vec->get(),
-                m_numRows);
+    gpuErrChk(cublasDgemm(A.m_context->cuBlasHandle(),
+                          CUBLAS_OP_N,
+                          CUBLAS_OP_N,
+                          m_numRows,
+                          nColsC,
+                          nColsA,
+                          &alpha,
+                          A.m_vec->get(),
+                          m_numRows,
+                          B.m_vec->get(),
+                          nColsA,
+                          &beta,
+                          m_vec->get(),
+                          m_numRows));
 }
 
 
@@ -1038,17 +1063,18 @@ template<>
 inline int SvdFactoriser<float>::factorise() {
     size_t m = m_mat->numRows();
     size_t n = m_mat->numCols();
-    cusolverDnSgesvd(m_context->cuSolverHandle(),
-                     (m_computeU) ? 'A' : 'N', 'A',
-                     m, n,
-                     m_mat->get(), m,
-                     m_S->get(),
-                     (m_computeU) ? m_U->get() : nullptr, m,
-                     m_Vtr->get(), n,
-                     m_workspace->get(),
-                     m_lwork,
-                     nullptr,  // rwork (used only if SVD fails)
-                     m_info->get());
+    gpuErrChk(
+            cusolverDnSgesvd(m_context->cuSolverHandle(),
+                             (m_computeU) ? 'A' : 'N', 'A',
+                             m, n,
+                             m_mat->get(), m,
+                             m_S->get(),
+                             (m_computeU) ? m_U->get() : nullptr, m,
+                             m_Vtr->get(), n,
+                             m_workspace->get(),
+                             m_lwork,
+                             nullptr,  // rwork (used only if SVD fails)
+                             m_info->get()));
     int info = (*m_info)(0);
     return info;
 }
@@ -1058,29 +1084,30 @@ template<>
 inline int SvdFactoriser<double>::factorise() {
     size_t m = m_mat->numRows();
     size_t n = m_mat->numCols();
-    cusolverDnDgesvd(m_context->cuSolverHandle(),
-                     (m_computeU) ? 'A' : 'N', 'A',
-                     m, n,
-                     m_mat->get(), m,
-                     m_S->get(),
-                     (m_computeU) ? m_U->get() : nullptr, m,
-                     m_Vtr->get(), n,
-                     m_workspace->get(),
-                     m_lwork,
-                     nullptr,  // rwork (used only if SVD fails)
-                     m_info->get());
+    gpuErrChk(
+            cusolverDnDgesvd(m_context->cuSolverHandle(),
+                             (m_computeU) ? 'A' : 'N', 'A',
+                             m, n,
+                             m_mat->get(), m,
+                             m_S->get(),
+                             (m_computeU) ? m_U->get() : nullptr, m,
+                             m_Vtr->get(), n,
+                             m_workspace->get(),
+                             m_lwork,
+                             nullptr,  // rwork (used only if SVD fails)
+                             m_info->get()));
     int info = (*m_info)(0);
     return info;
 }
 
 template<>
 inline void SvdFactoriser<float>::computeWorkspaceSize(size_t m, size_t n) {
-    cusolverDnSgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
+    gpuErrChk(cusolverDnSgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork));
 }
 
 template<>
 inline void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
-    cusolverDnDgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
+    gpuErrChk(cusolverDnDgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork));
 }
 
 #endif
