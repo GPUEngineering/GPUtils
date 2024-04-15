@@ -775,9 +775,11 @@ inline DeviceMatrix<double> DeviceMatrix<double>::getRows(size_t rowsFrom, size_
     size_t n = numCols(), m = numRows();
     DeviceMatrix<double> rowsOnly(*m_context, rowsRangeLength, numCols());
     for (size_t i = 0; i < rowsRangeLength; i++) {
-        cublasDcopy(m_context->cuBlasHandle(), m * n,
+        cublasDcopy(m_context->cuBlasHandle(),
+                    n, // # values to copy
                     m_vec->get() + rowsFrom + i, m,
-                    rowsOnly.get() + i, rowsRangeLength);
+                    rowsOnly.get() + i,
+                    rowsRangeLength);
     }
     return rowsOnly;
 }
@@ -788,9 +790,11 @@ inline DeviceMatrix<float> DeviceMatrix<float>::getRows(size_t rowsFrom, size_t 
     size_t n = numCols(), m = numRows();
     DeviceMatrix<float> rowsOnly(*m_context, rowsRangeLength, numCols());
     for (size_t i = 0; i < rowsRangeLength; i++) {
-        cublasScopy(m_context->cuBlasHandle(), m * n,
+        cublasScopy(m_context->cuBlasHandle(),
+                    n, // # values to copy
                     m_vec->get() + rowsFrom + i, m,
-                    rowsOnly.get() + i, rowsRangeLength);
+                    rowsOnly.get() + i,
+                    rowsRangeLength);
     }
     return rowsOnly;
 }
