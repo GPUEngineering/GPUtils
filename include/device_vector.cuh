@@ -921,7 +921,7 @@ public:
 };
 
 template<>
-int SvdFactoriser<float>::factorise() {
+inline int SvdFactoriser<float>::factorise() {
     size_t m = m_mat->numRows();
     size_t n = m_mat->numCols();
     cusolverDnSgesvd(m_context->cuSolverHandle(),
@@ -941,7 +941,7 @@ int SvdFactoriser<float>::factorise() {
 
 
 template<>
-int SvdFactoriser<double>::factorise() {
+inline int SvdFactoriser<double>::factorise() {
     size_t m = m_mat->numRows();
     size_t n = m_mat->numCols();
     cusolverDnDgesvd(m_context->cuSolverHandle(),
@@ -960,12 +960,12 @@ int SvdFactoriser<double>::factorise() {
 }
 
 template<>
-void SvdFactoriser<float>::computeWorkspaceSize(size_t m, size_t n) {
+inline void SvdFactoriser<float>::computeWorkspaceSize(size_t m, size_t n) {
     cusolverDnSgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
 }
 
 template<>
-void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
+inline void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
     cusolverDnDgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork);
 }
 
