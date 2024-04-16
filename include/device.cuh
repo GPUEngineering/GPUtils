@@ -50,6 +50,11 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
  *  Context
  * ------------------------------------------------------------------------------------ */
 
+
+/*
+ * TODO make Context a global singleton!
+ */
+
 class Context {
 
 private:
@@ -99,21 +104,6 @@ static void col2row(const std::vector<T> &srcCol, std::vector<T> &dstRow, size_t
             dstRow[r * numCols + c] = copySrc[c * numRows + r];
         }
     }
-}
-
-/* ------------------------------------------------------------------------------------
-*  Print vectors and matrices
-* ------------------------------------------------------------------------------------ */
-
-template<typename T>
-static void print(std::ostream &out, std::vector<T> A, size_t numRows, size_t numCols) {
-    for (size_t r = 0; r < numRows; r++) {
-        for (size_t c = 0; c < numCols; c++) {
-            out << A[r * numCols + c] << "\t";
-        }
-        out << "\n";
-    }
-    out << "\n";
 }
 
 /* ------------------------------------------------------------------------------------
@@ -551,13 +541,14 @@ private:
     Context *m_context = nullptr;
     DeviceVector<TElement> *m_vec = nullptr;  ///< stores all useful memory
     size_t m_numRows = 0;  ///< number of rows
+    bool m_doDeleteVecMemory = true;
 
     /**
      *
      */
     void destroy() {
         m_numRows = 0;
-        if (m_vec) delete m_vec;
+        if (m_vec && m_doDeleteVecMemory) delete m_vec;
     }
 
 public:
@@ -615,10 +606,11 @@ public:
         m_vec = new DeviceVector<TElement>(*other.m_vec, start, finish);
     }
 
-    DeviceMatrix(Context &context, DeviceVector<TElement> other) {
+    DeviceMatrix(Context &context, DeviceVector<TElement> &other) {
         m_context = &context;
-        this->m_vec = &other;
-        this->m_numRows = other.capacity();
+        m_numRows = other.capacity();
+        m_doDeleteVecMemory = false;
+        m_vec = &other;
     }
 
     DeviceMatrix getRows(size_t rowsFrom, size_t rowsTo);
@@ -786,7 +778,7 @@ public:
         size_t nColsB = B.numCols();
         float alpha = 1.;
         float beta = 0.;
-        DeviceMatrix resultMatrix(A.m_context, nRowsA, nColsB);
+        DeviceMatrix resultMatrix(*A.m_context, nRowsA, nColsB);
         gpuErrChk(cublasSgemm(A.m_context->cuBlasHandle(),
                               CUBLAS_OP_N,
                               CUBLAS_OP_N,
@@ -957,12 +949,16 @@ private:
     Context *m_context; ///< not used yet
     size_t m_numRows = 0;  ///< number of rows of each matrix
     size_t m_numCols = 0;  ///< number of columns of each matrix
-
-    /*
-     * This is similar to a std::vector of pointers to DeviceMatrix<TElement>;
-     * It is rather a vector of references.
+    /**
+     * Host-side vector of device-side matrices
      */
     std::vector<std::reference_wrapper<DeviceMatrix<TElement>>> m_cacheDevMatrix;
+    /**
+     * Device-side vector of device-side pointers; this is a bunch of pointers
+     * {p1, p2, ..., pk} (on the device) that point to other device-side memory
+     * locations. It's needed for some cuda functions.
+     */
+    std::unique_ptr<DeviceVector<TElement *>> m_d_bunchPointers;
 
 public:
 
@@ -971,20 +967,28 @@ public:
         m_numRows = numRows;
         m_numCols = numCols;
         m_cacheDevMatrix.reserve(capacity);
+        m_d_bunchPointers = std::make_unique<DeviceVector<TElement *>>(context, capacity);
+    }
+
+    size_t numMatrices() const {
+        return m_cacheDevMatrix.size();
     }
 
     void pushBack(DeviceMatrix<TElement> &o) {
+        if (o.numRows() != m_numRows || o.numCols() != m_numCols) {
+            throw std::invalid_argument("Given matrix has incompatible dimensions");
+        }
         m_cacheDevMatrix.push_back(o);
     }
 
-    // TODO This is a host-side vector of device-side pointers, but I guess we need this on the device, right?
-    std::vector<TElement *> raw() const {
+    DeviceVector<TElement *> devicePointersToMatrices() {
         size_t n = m_cacheDevMatrix.size();
         std::vector<TElement *> rawVecPointers(n);
         for (size_t i = 0; i < n; i++) {
             rawVecPointers[i] = m_cacheDevMatrix[i].get().raw();
         }
-        return rawVecPointers;
+        m_d_bunchPointers->upload(rawVecPointers);
+        return *m_d_bunchPointers;
     }
 
     friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {

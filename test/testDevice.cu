@@ -425,6 +425,29 @@ TEST_F(DeviceTest, deviceMatrixColumnRangeShallow) {
 }
 
 /* ---------------------------------------
+ * Constructor from DeviceVector
+ * This does not allocate new memory
+ * --------------------------------------- */
+
+template<typename T>
+void deviceMatrixConstructorFromVector(Context &context) {
+    std::vector<T> od{1, 1, 1, 3, 4};
+    DeviceVector<T> o(context, od);
+    DeviceMatrix<T> p(context, o);
+    EXPECT_EQ(1, p.numCols());
+    EXPECT_EQ(5, p.numRows());
+    EXPECT_EQ(1, p(0, 0));
+    EXPECT_EQ(3, p(3, 0));
+    EXPECT_EQ(4, p(4, 0));
+}
+
+TEST_F(DeviceTest, deviceMatrixConstructorFromVector) {
+    deviceMatrixConstructorFromVector<float>(m_context);
+    deviceMatrixConstructorFromVector<double>(m_context);
+    deviceMatrixConstructorFromVector<int>(m_context);
+}
+
+/* ---------------------------------------
  * Matrix as vector (shallow copy)
  * --------------------------------------- */
 
@@ -625,20 +648,20 @@ void deviceTensorConstructPush(Context &context) {
     size_t nRows = 2, nCols = 3, nMats = 3;
     std::vector<T> aData = {1, 2, 3,
                             4, 5, 6};
-    DeviceMatrix<T> A(context, nRows, aData, rowMajor);
-    T* rawA = A.raw();
     std::vector<T> bData = {7, 8, 9,
                             10, 11, 12};
-    DeviceMatrix<T> B(context, nRows, bData, rowMajor);
-    T* rawB = B.raw();
-    DeviceTensor<T> W(context, nRows, nCols, nMats);
-    W.pushBack(A);
-    W.pushBack(A);
-    W.pushBack(B);
-    auto rawW = W.raw();
-    EXPECT_EQ(rawA, rawW[0]);
-    EXPECT_EQ(rawA, rawW[1]);
-    EXPECT_EQ(rawB, rawW[2]);
+    DeviceMatrix<T> matrixA(context, nRows, aData, rowMajor);
+    DeviceMatrix<T> matrixB(context, nRows, bData, rowMajor);
+    T* rawA = matrixA.raw();
+    T* rawB = matrixB.raw();
+    DeviceTensor<T> myTensor(context, nRows, nCols, nMats);
+    myTensor.pushBack(matrixA);
+    myTensor.pushBack(matrixA);
+    myTensor.pushBack(matrixB);
+    DeviceVector<T*> pointersToMatrices = myTensor.devicePointersToMatrices();
+    EXPECT_EQ(rawA, pointersToMatrices(0));
+    EXPECT_EQ(rawA, pointersToMatrices(1));
+    EXPECT_EQ(rawB, pointersToMatrices(2));
 }
 
 TEST_F(DeviceTest, deviceTensorConstructPush) {
