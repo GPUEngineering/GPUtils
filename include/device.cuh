@@ -191,7 +191,7 @@ public:
         m_context = other.m_context;
         allocateOnDevice(other.m_numAllocatedElements);
         cudaMemcpy(m_d_data,
-                   other.get(),
+                   other.raw(),
                    m_numAllocatedElements * sizeof(TElement),
                    cudaMemcpyDeviceToDevice);
         m_doDestroy = true;
@@ -260,7 +260,7 @@ public:
     /**
      * Returns the raw pointer to the device data
      */
-    TElement *get() {
+    TElement *raw() {
         return m_d_data;
     }
 
@@ -503,7 +503,7 @@ bool DeviceVector<TElement>::upload(const TElement *dataArray, size_t size) {
 template<typename TElement>
 void DeviceVector<TElement>::deviceCopyTo(DeviceVector<TElement> &elsewhere) {
     elsewhere.allocateOnDevice(m_numAllocatedElements);
-    gpuErrChk(cudaMemcpy(elsewhere.get(),
+    gpuErrChk(cudaMemcpy(elsewhere.raw(),
                          m_d_data,
                          m_numAllocatedElements * sizeof(TElement),
                          cudaMemcpyDeviceToDevice));
@@ -615,6 +615,12 @@ public:
         m_vec = new DeviceVector<TElement>(*other.m_vec, start, finish);
     }
 
+    DeviceMatrix(Context &context, DeviceVector<TElement> other) {
+        m_context = &context;
+        this->m_vec = &other;
+        this->m_numRows = other.capacity();
+    }
+
     DeviceMatrix getRows(size_t rowsFrom, size_t rowsTo);
 
 
@@ -639,8 +645,8 @@ public:
         }
     }
 
-    TElement *get() {
-        return m_vec->get();
+    TElement *raw() {
+        return m_vec->raw();
     }
 
     /**
@@ -688,9 +694,9 @@ public:
         gpuErrChk(cublasSgeam(m_context->cuBlasHandle(),
                               CUBLAS_OP_T, CUBLAS_OP_N,
                               n, m,
-                              &alpha, m_vec->get(), m,
+                              &alpha, m_vec->raw(), m,
                               &beta, nullptr, n,
-                              transpose.get(), n));
+                              transpose.raw(), n));
         return transpose;
     }
 
@@ -740,12 +746,12 @@ public:
                               nRowsA,
                               nColsA,
                               &alpha,
-                              A.m_vec->get(),
+                              A.m_vec->raw(),
                               nRowsA,
-                              b.get(),
+                              b.raw(),
                               1,
                               &beta,
-                              resultVector.get(),
+                              resultVector.raw(),
                               1));
         return resultVector;
     }
@@ -761,12 +767,12 @@ public:
                               nRowsA,
                               nColsA,
                               &alpha,
-                              A.m_vec->get(),
+                              A.m_vec->raw(),
                               nRowsA,
-                              b.get(),
+                              b.raw(),
                               1,
                               &beta,
-                              resultVector.get(),
+                              resultVector.raw(),
                               1));
         return resultVector;
     }
@@ -788,12 +794,12 @@ public:
                               nColsB,
                               nColsA,
                               &alpha,
-                              A.m_vec->get(),
+                              A.m_vec->raw(),
                               nRowsA,
-                              B.m_vec->get(),
+                              B.m_vec->raw(),
                               nColsA,
                               &beta,
-                              resultMatrix.m_vec->get(),
+                              resultMatrix.m_vec->raw(),
                               nRowsA));
         return resultMatrix;
     }
@@ -835,8 +841,8 @@ inline DeviceMatrix<double> DeviceMatrix<double>::getRows(size_t rowsFrom, size_
     for (size_t i = 0; i < rowsRangeLength; i++) {
         gpuErrChk(cublasDcopy(m_context->cuBlasHandle(),
                               n, // # values to copy
-                              m_vec->get() + rowsFrom + i, m,
-                              rowsOnly.get() + i,
+                              m_vec->raw() + rowsFrom + i, m,
+                              rowsOnly.raw() + i,
                               rowsRangeLength));
     }
     return rowsOnly;
@@ -850,8 +856,8 @@ inline DeviceMatrix<float> DeviceMatrix<float>::getRows(size_t rowsFrom, size_t 
     for (size_t i = 0; i < rowsRangeLength; i++) {
         gpuErrChk(cublasScopy(m_context->cuBlasHandle(),
                               n, // # values to copy
-                              m_vec->get() + rowsFrom + i, m,
-                              rowsOnly.get() + i,
+                              m_vec->raw() + rowsFrom + i, m,
+                              rowsOnly.raw() + i,
                               rowsRangeLength));
     }
     return rowsOnly;
@@ -909,12 +915,12 @@ inline void DeviceMatrix<float>::addAB(const DeviceMatrix &A, const DeviceMatrix
                           nColsC,
                           nColsA,
                           &alpha,
-                          A.m_vec->get(),
+                          A.m_vec->raw(),
                           m_numRows,
-                          B.m_vec->get(),
+                          B.m_vec->raw(),
                           nColsA,
                           &beta,
-                          m_vec->get(),
+                          m_vec->raw(),
                           m_numRows));
 }
 
@@ -934,12 +940,12 @@ inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatri
                           nColsC,
                           nColsA,
                           &alpha,
-                          A.m_vec->get(),
+                          A.m_vec->raw(),
                           m_numRows,
-                          B.m_vec->get(),
+                          B.m_vec->raw(),
                           nColsA,
                           &beta,
-                          m_vec->get(),
+                          m_vec->raw(),
                           m_numRows));
 }
 
@@ -951,7 +957,12 @@ private:
     Context *m_context;
     size_t m_numRows = 0;  ///< number of rows of each matrix
     size_t m_numCols = 0;  ///< number of columns of each matrix
-    std::vector<DeviceMatrix<TElement> *> m_cacheDevMatrix;
+
+    /*
+     * This is similar to a std::vector of pointers to DeviceMatrix<TElement>;
+     * It is rather a vector of references.
+     */
+    std::vector<std::reference_wrapper<DeviceMatrix<TElement>>> m_cacheDevMatrix;
 
 public:
 
@@ -963,14 +974,15 @@ public:
     }
 
     void pushBack(DeviceMatrix<TElement> &o) {
-        m_cacheDevMatrix.push_back(&o);
+        m_cacheDevMatrix.push_back(o);
     }
+
 
     std::vector<TElement *> raw() const {
         size_t n = m_cacheDevMatrix.size();
         std::vector<TElement *> rawVecPointers(n);
         for (size_t i = 0; i < n; i++) {
-            rawVecPointers[i] = m_cacheDevMatrix[i]->get();
+            rawVecPointers[i] = m_cacheDevMatrix[i].get().raw();
         }
         return rawVecPointers;
     }
@@ -979,8 +991,8 @@ public:
         out << "DeviceTensor [" << data.m_numRows << " x " << data.m_numCols << " x " << data.m_cacheDevMatrix.size()
             << "]:" << std::endl;
         size_t i = 0;
-        for (DeviceMatrix<TElement> *mat: data.m_cacheDevMatrix) {
-            out << "Matrix " << i << ":\n" << *mat;
+        for (auto mat: data.m_cacheDevMatrix) {
+            out << "Matrix " << i << ":\n" << mat;
             i++;
         }
         return out;
@@ -1112,8 +1124,8 @@ public:
 
     unsigned int rank(TElement epsilon = 1e-6) {
         int k = m_S->capacity();
-        k_countNonzeroSingularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->get(), k,
-                                                                                     m_rank->get(),
+        k_countNonzeroSingularValues<TElement><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->raw(), k,
+                                                                                     m_rank->raw(),
                                                                                      epsilon);
         return (*m_rank)(0);
     }
@@ -1128,14 +1140,14 @@ inline int SvdFactoriser<float>::factorise() {
             cusolverDnSgesvd(m_context->cuSolverHandle(),
                              (m_computeU) ? 'A' : 'N', 'A',
                              m, n,
-                             m_mat->get(), m,
-                             m_S->get(),
-                             (m_computeU) ? m_U->get() : nullptr, m,
-                             m_Vtr->get(), n,
-                             m_workspace->get(),
+                             m_mat->raw(), m,
+                             m_S->raw(),
+                             (m_computeU) ? m_U->raw() : nullptr, m,
+                             m_Vtr->raw(), n,
+                             m_workspace->raw(),
                              m_lwork,
                              nullptr,  // rwork (used only if SVD fails)
-                             m_info->get()));
+                             m_info->raw()));
     int info = (*m_info)(0);
     return info;
 }
@@ -1149,14 +1161,14 @@ inline int SvdFactoriser<double>::factorise() {
             cusolverDnDgesvd(m_context->cuSolverHandle(),
                              (m_computeU) ? 'A' : 'N', 'A',
                              m, n,
-                             m_mat->get(), m,
-                             m_S->get(),
-                             (m_computeU) ? m_U->get() : nullptr, m,
-                             m_Vtr->get(), n,
-                             m_workspace->get(),
+                             m_mat->raw(), m,
+                             m_S->raw(),
+                             (m_computeU) ? m_U->raw() : nullptr, m,
+                             m_Vtr->raw(), n,
+                             m_workspace->raw(),
                              m_lwork,
                              nullptr,  // rwork (used only if SVD fails)
-                             m_info->get()));
+                             m_info->raw()));
     int info = (*m_info)(0);
     return info;
 }
@@ -1222,10 +1234,10 @@ template<>
 inline int CholeskyFactoriser<double>::factorise() {
     size_t n = m_d_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf(m_context->cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
-                               m_d_matrix->get(), n,
-                               m_d_workspace->get(),
+                               m_d_matrix->raw(), n,
+                               m_d_workspace->raw(),
                                m_workspaceSize,
-                               m_d_info->get()));
+                               m_d_info->raw()));
     return (*m_d_info)(0);
 }
 
@@ -1234,10 +1246,10 @@ template<>
 inline int CholeskyFactoriser<float>::factorise() {
     size_t n = m_d_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf(m_context->cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
-                               m_d_matrix->get(), n,
-                               m_d_workspace->get(),
+                               m_d_matrix->raw(), n,
+                               m_d_workspace->raw(),
                                m_workspaceSize,
-                               m_d_info->get()));
+                               m_d_info->raw()));
     return (*m_d_info)(0);
 }
 
@@ -1248,9 +1260,9 @@ inline int CholeskyFactoriser<double>::solve(DeviceVector<double> &rhs) {
     gpuErrChk(cusolverDnDpotrs(m_context->cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
                                n, 1,
-                               m_d_matrix->get(), n,
-                               rhs.get(), n,
-                               m_d_info->get()));
+                               m_d_matrix->raw(), n,
+                               rhs.raw(), n,
+                               m_d_info->raw()));
     return (*m_d_info)(0);
 }
 
@@ -1261,9 +1273,9 @@ inline int CholeskyFactoriser<float>::solve(DeviceVector<float> &rhs) {
     gpuErrChk(cusolverDnSpotrs(m_context->cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
                                n, 1,
-                               m_d_matrix->get(), n,
-                               rhs.get(), n,
-                               m_d_info->get()));
+                               m_d_matrix->raw(), n,
+                               rhs.raw(), n,
+                               m_d_info->raw()));
     return (*m_d_info)(0);
 }
 
