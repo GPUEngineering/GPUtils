@@ -76,7 +76,7 @@ TEST_F(DeviceTest, col2Row) {
  * --------------------------------------- */
 
 template<typename T>
-void vectorCapacity(Context &context) {
+void deviceVectorCapacity(Context &context) {
     DeviceVector<T> four(context, 4);
     EXPECT_EQ(4, four.capacity());
     DeviceVector<T> five(context, 0);
@@ -84,26 +84,26 @@ void vectorCapacity(Context &context) {
     EXPECT_EQ(5, five.capacity());
 }
 
-TEST_F(DeviceTest, vectorCapacity) {
-    vectorCapacity<float>(m_context);
-    vectorCapacity<double>(m_context);
+TEST_F(DeviceTest, deviceVectorCapacity) {
+    deviceVectorCapacity<float>(m_context);
+    deviceVectorCapacity<double>(m_context);
 }
 
 /* ---------------------------------------
  * Basic constructor (extreme cases)
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorBasicConstructor(Context &context) {
+void deviceVectorBasicConstructor(Context &context) {
     DeviceVector<T> empty(context, 0);
     EXPECT_EQ(0, empty.capacity());
     DeviceVector<T> big(context, 24000);
     EXPECT_EQ(24000, big.capacity());
 }
 
-TEST_F(DeviceTest, DeviceVectorBasicConstructor) {
-    DeviceVectorBasicConstructor<float>(m_context);
-    DeviceVectorBasicConstructor<double>(m_context);
-    DeviceVectorBasicConstructor<int>(m_context);
+TEST_F(DeviceTest, deviceVectorBasicConstructor) {
+    deviceVectorBasicConstructor<float>(m_context);
+    deviceVectorBasicConstructor<double>(m_context);
+    deviceVectorBasicConstructor<int>(m_context);
 }
 
 
@@ -112,7 +112,7 @@ TEST_F(DeviceTest, DeviceVectorBasicConstructor) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceVectorSliceConstructor(Context &context) {
+void deviceVectorSliceConstructor(Context &context) {
     std::vector<T> dataX{1, 2, 3, 4, 5};
     DeviceVector<T> x(context, dataX);
     DeviceVector<T> xSlice(x, 1, 3);
@@ -121,10 +121,10 @@ void DeviceVectorSliceConstructor(Context &context) {
     EXPECT_EQ(3, xSlice(1));
 }
 
-TEST_F(DeviceTest, DeviceVectorSliceConstructor) {
-    DeviceVectorSliceConstructor<float>(m_context);
-    DeviceVectorSliceConstructor<double>(m_context);
-    DeviceVectorSliceConstructor<int>(m_context);
+TEST_F(DeviceTest, deviceVectorSliceConstructor) {
+    deviceVectorSliceConstructor<float>(m_context);
+    deviceVectorSliceConstructor<double>(m_context);
+    deviceVectorSliceConstructor<int>(m_context);
 }
 
 /* ---------------------------------------
@@ -132,7 +132,7 @@ TEST_F(DeviceTest, DeviceVectorSliceConstructor) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceVectorCopyConstructor(Context &context) {
+void deviceVectorCopyConstructor(Context &context) {
     std::vector<T> dataX{1, 2, 3, 4, 5};
     DeviceVector<T> x(context, dataX);
     DeviceVector<T> xCopy(x);
@@ -141,17 +141,17 @@ void DeviceVectorCopyConstructor(Context &context) {
     EXPECT_EQ(5, xCopy(4));
 }
 
-TEST_F(DeviceTest, DeviceVectorCopyConstructor) {
-    DeviceVectorCopyConstructor<float>(m_context);
-    DeviceVectorCopyConstructor<double>(m_context);
-    DeviceVectorCopyConstructor<int>(m_context);
+TEST_F(DeviceTest, deviceVectorCopyConstructor) {
+    deviceVectorCopyConstructor<float>(m_context);
+    deviceVectorCopyConstructor<double>(m_context);
+    deviceVectorCopyConstructor<int>(m_context);
 }
 
 /* ---------------------------------------
  * Operator * (dot product)
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorDotProduct(Context &context) {
+void deviceVectorDotProduct(Context &context) {
     std::vector<T> dataX{1, 2, 3, 4, 5};
     DeviceVector<T> x(context, dataX);
     std::vector<T> dataY{-1, 4, -6, 9, 10};
@@ -160,49 +160,49 @@ void DeviceVectorDotProduct(Context &context) {
     EXPECT_EQ(75, dotProduct);
 }
 
-TEST_F(DeviceTest, DeviceVectorDotProduct) {
-    DeviceVectorDotProduct<float>(m_context);
-    DeviceVectorDotProduct<double>(m_context);
+TEST_F(DeviceTest, deviceVectorDotProduct) {
+    deviceVectorDotProduct<float>(m_context);
+    deviceVectorDotProduct<double>(m_context);
 }
 
 
 /* ---------------------------------------
- * Norm2
+ * Norm-2
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorEuclideanNorm(Context &context, T epsilon) {
+void deviceVectorEuclideanNorm(Context &context, T epsilon) {
     std::vector<T> dataX{1, 2, 3, 4, 5};
     DeviceVector<T> x(context, dataX);
     T nrmX = x.norm2();
     EXPECT_NEAR(7.416198487095663, nrmX, epsilon);
 }
 
-TEST_F(DeviceTest, DeviceVectorEuclideanNorm) {
-    DeviceVectorEuclideanNorm<float>(m_context, 1e-4);
-    DeviceVectorEuclideanNorm<double>(m_context, 1e-12);
+TEST_F(DeviceTest, deviceVectorEuclideanNorm) {
+    deviceVectorEuclideanNorm<float>(m_context, 1e-4);
+    deviceVectorEuclideanNorm<double>(m_context, 1e-12);
 }
 
 /* ---------------------------------------
  * Norm-1
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorNorm1(Context &context) {
+void deviceVectorNorm1(Context &context) {
     std::vector<T> dataY{-1., 4., -6., 9., 10.};
     DeviceVector<T> y(context, dataY);
     T nrmX = y.norm1();
     EXPECT_EQ(30, nrmX);
 }
 
-TEST_F(DeviceTest, DeviceVectorNorm1) {
-    DeviceVectorNorm1<float>(m_context);
-    DeviceVectorNorm1<double>(m_context);
+TEST_F(DeviceTest, deviceVectorNorm1) {
+    deviceVectorNorm1<float>(m_context);
+    deviceVectorNorm1<double>(m_context);
 }
 
 /* ---------------------------------------
  * Sum of vectors (operator +)
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorSum(Context &context) {
+void deviceVectorSum(Context &context) {
     std::vector<T> dataX{10., 20., 30., 40., 50.};
     std::vector<T> dataY{-1., 4., -6., 9., 10.};
     DeviceVector<T> x(context, dataX);
@@ -212,9 +212,9 @@ void DeviceVectorSum(Context &context) {
     EXPECT_EQ(60, sum(4));
 }
 
-TEST_F(DeviceTest, DeviceVectorSum) {
-    DeviceVectorSum<float>(m_context);
-    DeviceVectorSum<double>(m_context);
+TEST_F(DeviceTest, deviceVectorSum) {
+    deviceVectorSum<float>(m_context);
+    deviceVectorSum<double>(m_context);
 }
 
 
@@ -222,7 +222,7 @@ TEST_F(DeviceTest, DeviceVectorSum) {
  * Scalar product (scaling)
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorScaling(Context &context) {
+void deviceVectorScaling(Context &context) {
     std::vector<T> dataX{10., 20., 30., 40., -50.};
     DeviceVector<T> x(context, dataX);
     T alpha = 2.;
@@ -231,16 +231,16 @@ void DeviceVectorScaling(Context &context) {
     EXPECT_EQ(-100, scaledX(4));
 }
 
-TEST_F(DeviceTest, DeviceVectorScaling) {
-    DeviceVectorScaling<float>(m_context);
-    DeviceVectorScaling<double>(m_context);
+TEST_F(DeviceTest, deviceVectorScaling) {
+    deviceVectorScaling<float>(m_context);
+    deviceVectorScaling<double>(m_context);
 }
 
 /* ---------------------------------------
  * Scalar product (scaling in place)
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorScalingInPlace(Context &context) {
+void deviceVectorScalingInPlace(Context &context) {
     std::vector<T> dataX{10., 20., 30., 40., -50.};
     DeviceVector<T> x(context, dataX);
     T alpha = 2.;
@@ -249,16 +249,16 @@ void DeviceVectorScalingInPlace(Context &context) {
     EXPECT_EQ(-100, x(4));
 }
 
-TEST_F(DeviceTest, DeviceVectorScalingInPlace) {
-    DeviceVectorScalingInPlace<float>(m_context);
-    DeviceVectorScalingInPlace<double>(m_context);
+TEST_F(DeviceTest, deviceVectorScalingInPlace) {
+    deviceVectorScalingInPlace<float>(m_context);
+    deviceVectorScalingInPlace<double>(m_context);
 }
 
 /* ---------------------------------------
  * Difference of vectors (operator -)
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorDiff(Context &context) {
+void deviceVectorDiff(Context &context) {
     std::vector<T> dataX{10., 20., 30., 40., 50.};
     std::vector<T> dataY{-1., 4., -6., 9., 10.};
     DeviceVector<T> x(context, dataX);
@@ -268,25 +268,22 @@ void DeviceVectorDiff(Context &context) {
     EXPECT_EQ(40, sum(4));
 }
 
-TEST_F(DeviceTest, DeviceVectorDiff) {
-    DeviceVectorDiff<float>(m_context);
-    DeviceVectorDiff<double>(m_context);
+TEST_F(DeviceTest, deviceVectorDiff) {
+    deviceVectorDiff<float>(m_context);
+    deviceVectorDiff<double>(m_context);
 }
 
 /* ---------------------------------------
  * Device-to-device copy with slicing
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorDeviceToDeviceCopy(Context &context) {
+void deviceVectorDeviceToDeviceCopy(Context &context) {
     std::vector<T> dataX{-1., 2., 3., 4., 6.};
     DeviceVector<T> x(context, dataX);
     DeviceVector<T> xSlice(x, 1, 3);
-
     std::vector<T> dataY{5, 5, 5};
     DeviceVector<T> y(context, dataY);
-
     y.deviceCopyTo(xSlice);
-
     std::vector<T> xExpected{-1., 5., 5., 5., 6.};
     std::vector<T> h_x(5);
     x.download(h_x);
@@ -295,17 +292,16 @@ void DeviceVectorDeviceToDeviceCopy(Context &context) {
     }
 }
 
-TEST_F(DeviceTest, DeviceVectorDeviceToDeviceCopy) {
-    DeviceVectorDeviceToDeviceCopy<float>(m_context);
-    DeviceVectorDeviceToDeviceCopy<double>(m_context);
+TEST_F(DeviceTest, deviceVectorDeviceToDeviceCopy) {
+    deviceVectorDeviceToDeviceCopy<float>(m_context);
+    deviceVectorDeviceToDeviceCopy<double>(m_context);
 }
-
 
 /* ---------------------------------------
  * Operator +=
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorOpPlusEq(Context &context) {
+void deviceVectorOpPlusEq(Context &context) {
     std::vector<T> dataX{10., 20., 30., 40., 50.};
     std::vector<T> dataY{-1., 4., -6., 9., 10.};
     DeviceVector<T> x(context, dataX);
@@ -316,16 +312,16 @@ void DeviceVectorOpPlusEq(Context &context) {
     EXPECT_EQ(60, x(4));
 }
 
-TEST_F(DeviceTest, DeviceVectorOpPlusEq) {
-    DeviceVectorOpPlusEq<float>(m_context);
-    DeviceVectorOpPlusEq<double>(m_context);
+TEST_F(DeviceTest, deviceVectorOpPlusEq) {
+    deviceVectorOpPlusEq<float>(m_context);
+    deviceVectorOpPlusEq<double>(m_context);
 }
 
 /* ---------------------------------------
  * Operator -=
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorOpMinusEq(Context &context) {
+void deviceVectorOpMinusEq(Context &context) {
     std::vector<T> dataX{10., 20., 30., 40., 50.};
     std::vector<T> dataY{-1., 4., -6., 9., 10.};
     DeviceVector<T> x(context, dataX);
@@ -336,9 +332,9 @@ void DeviceVectorOpMinusEq(Context &context) {
     EXPECT_EQ(36, x(2));
 }
 
-TEST_F(DeviceTest, DeviceVectorOpMinusEq) {
-    DeviceVectorOpMinusEq<float>(m_context);
-    DeviceVectorOpMinusEq<double>(m_context);
+TEST_F(DeviceTest, deviceVectorOpMinusEq) {
+    deviceVectorOpMinusEq<float>(m_context);
+    deviceVectorOpMinusEq<double>(m_context);
 }
 
 
@@ -346,7 +342,7 @@ TEST_F(DeviceTest, DeviceVectorOpMinusEq) {
  * Upload data
  * --------------------------------------- */
 template<typename T>
-void DeviceVectorUploadData(Context &context) {
+void deviceVectorUploadData(Context &context) {
     std::vector<T> data = {1, 2, 3, 4, 5, 6};
     std::vector<T> result(data.size());
     DeviceVector<T> vec(context, data.size());
@@ -355,11 +351,10 @@ void DeviceVectorUploadData(Context &context) {
     EXPECT_EQ(data, result);
 }
 
-TEST_F(DeviceTest, DeviceVectorUploadData) {
-    DeviceVectorUploadData<float>(m_context);
-    DeviceVectorUploadData<double>(m_context);
+TEST_F(DeviceTest, deviceVectorUploadData) {
+    deviceVectorUploadData<float>(m_context);
+    deviceVectorUploadData<double>(m_context);
 }
-
 
 
 /* =======================================
@@ -373,15 +368,15 @@ TEST_F(DeviceTest, DeviceVectorUploadData) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceMatrixDimensions(Context &context) {
+void deviceMatrixDimensions(Context &context) {
     DeviceMatrix<T> fourByThree(context, 4, 3);
     EXPECT_EQ(4, fourByThree.numRows());
     EXPECT_EQ(3, fourByThree.numCols());
 }
 
-TEST_F(DeviceTest, DeviceMatrixDimensions) {
-    DeviceMatrixDimensions<float>(m_context);
-    DeviceMatrixDimensions<double>(m_context);
+TEST_F(DeviceTest, deviceMatrixDimensions) {
+    deviceMatrixDimensions<float>(m_context);
+    deviceMatrixDimensions<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -390,7 +385,7 @@ TEST_F(DeviceTest, DeviceMatrixDimensions) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceMatrixCopyConstructor(Context &context) {
+void deviceMatrixCopyConstructor(Context &context) {
     std::vector<T> data{1, 2,
                         3, 4,
                         5, 6};
@@ -402,9 +397,9 @@ void DeviceMatrixCopyConstructor(Context &context) {
     EXPECT_EQ(2, XCopy(0, 1));
 }
 
-TEST_F(DeviceTest, DeviceMatrixCopyConstructor) {
-    DeviceMatrixCopyConstructor<float>(m_context);
-    DeviceMatrixCopyConstructor<double>(m_context);
+TEST_F(DeviceTest, deviceMatrixCopyConstructor) {
+    deviceMatrixCopyConstructor<float>(m_context);
+    deviceMatrixCopyConstructor<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -412,7 +407,7 @@ TEST_F(DeviceTest, DeviceMatrixCopyConstructor) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceMatrixColumnRangeShallow(Context &context) {
+void deviceMatrixColumnRangeShallow(Context &context) {
     std::vector<T> data{1, 2, 3, 4, 5,
                         6, 7, 8, 9, 10};
     DeviceMatrix<T> X(context, 2, data, rowMajor);
@@ -424,9 +419,9 @@ void DeviceMatrixColumnRangeShallow(Context &context) {
     EXPECT_EQ(16, X(1, 2));
 }
 
-TEST_F(DeviceTest, DeviceMatrixColumnRangeShallow) {
-    DeviceMatrixColumnRangeShallow<float>(m_context);
-    DeviceMatrixColumnRangeShallow<double>(m_context);
+TEST_F(DeviceTest, deviceMatrixColumnRangeShallow) {
+    deviceMatrixColumnRangeShallow<float>(m_context);
+    deviceMatrixColumnRangeShallow<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -434,7 +429,7 @@ TEST_F(DeviceTest, DeviceMatrixColumnRangeShallow) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceMatrixGetRows(Context &context) {
+void deviceMatrixGetRows(Context &context) {
     std::vector<T> data{1, 2, 3,
                         4, 5, 6,
                         7, 8, 9,
@@ -447,9 +442,9 @@ void DeviceMatrixGetRows(Context &context) {
     EXPECT_EQ(8, Xrows(1, 1));
 }
 
-TEST_F(DeviceTest, DeviceMatrixGetRows) {
-    DeviceMatrixGetRows<float>(m_context);
-    DeviceMatrixGetRows<double>(m_context);
+TEST_F(DeviceTest, deviceMatrixGetRows) {
+    deviceMatrixGetRows<float>(m_context);
+    deviceMatrixGetRows<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -457,7 +452,7 @@ TEST_F(DeviceTest, DeviceMatrixGetRows) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceMatrixAsVector(Context &context) {
+void deviceMatrixAsVector(Context &context) {
     std::vector<T> data{1, 2, 3,
                         4, 5, 6,
                         7, 8, 9,
@@ -470,9 +465,9 @@ void DeviceMatrixAsVector(Context &context) {
     EXPECT_EQ(12, x(11));
 }
 
-TEST_F(DeviceTest, DeviceMatrixAsVector) {
-    DeviceMatrixAsVector<float>(m_context);
-    DeviceMatrixAsVector<double>(m_context);
+TEST_F(DeviceTest, deviceMatrixAsVector) {
+    deviceMatrixAsVector<float>(m_context);
+    deviceMatrixAsVector<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -480,7 +475,7 @@ TEST_F(DeviceTest, DeviceMatrixAsVector) {
  * --------------------------------------- */
 
 template<typename T>
-void DeviceMatrixScalarTimeEq(Context &context) {
+void deviceMatrixScalarTimeEq(Context &context) {
     std::vector<T> data{1, 2, 3,
                         4, 5, 6};
     DeviceMatrix<T> X(context, 2, data, rowMajor);
@@ -489,9 +484,9 @@ void DeviceMatrixScalarTimeEq(Context &context) {
     EXPECT_EQ(12, X(1, 2));
 }
 
-TEST_F(DeviceTest, DeviceMatrixScalarTimeEq) {
-    DeviceMatrixScalarTimeEq<float>(m_context);
-    DeviceMatrixScalarTimeEq<double>(m_context);
+TEST_F(DeviceTest, deviceMatrixScalarTimeEq) {
+    deviceMatrixScalarTimeEq<float>(m_context);
+    deviceMatrixScalarTimeEq<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -532,11 +527,11 @@ TEST_F(DeviceTest, transfer) {
 
 /* ---------------------------------------
  * Matrix-vector multiplication
- * op* and .addAB
+ * operator* and .addAB
  * --------------------------------------- */
 
 template<typename T>
-void matrixVectorOperatorAsterisk(Context &context) {
+void matrixVectorOpAst(Context &context) {
     size_t rows = 4;
     std::vector<T> mat = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     std::vector<T> vec = {1, 2, 3};
@@ -549,9 +544,9 @@ void matrixVectorOperatorAsterisk(Context &context) {
     EXPECT_EQ(expected, result);
 }
 
-TEST_F(DeviceTest, matrixVectorOperatorAsterisk) {
-    matrixVectorOperatorAsterisk<float>(m_context);
-    matrixVectorOperatorAsterisk<double>(m_context);
+TEST_F(DeviceTest, matrixVectorOpAst) {
+    matrixVectorOpAst<float>(m_context);
+    matrixVectorOpAst<double>(m_context);
 }
 
 template<typename T>
@@ -616,7 +611,7 @@ TEST_F(DeviceTest, indexingMatrices) {
  * Get Matrix Rows
  * .getRows
  * --------------------------------------- */
-
+/// repeat ?
 template<typename T>
 void getMatrixRows(Context &context) {
     size_t k = 6;
