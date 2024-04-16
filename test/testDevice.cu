@@ -650,8 +650,8 @@ void deviceTensorConstructPushUpload(Context &context) {
     stdMats.upload();
     // push std::vectors as vectors
     DeviceTensor<T> stdVecs(context, 6, 1, 2);
-    stdVecs.pushBack(b1);
-    stdVecs.pushBack(b2);
+    stdVecs.pushBack(vec);
+    stdVecs.pushBack(vec);
     stdVecs.upload();
 }
 
