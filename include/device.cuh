@@ -78,7 +78,7 @@ public:
 * ------------------------------------------------------------------------------------ */
 
 template<typename T>
-inline void row2col(const std::vector<T> &srcRow, std::vector<T> &dstCol, size_t numRows, size_t numCols) {
+static void row2col(const std::vector<T> &srcRow, std::vector<T> &dstCol, size_t numRows, size_t numCols) {
     if (numRows * numCols != srcRow.size()) std::cerr << "row2col dimension mismatch" << "\n";
     dstCol.resize(srcRow.size());
     std::vector<T> copySrc(srcRow);
@@ -90,7 +90,7 @@ inline void row2col(const std::vector<T> &srcRow, std::vector<T> &dstCol, size_t
 }
 
 template<typename T>
-inline void col2row(const std::vector<T> &srcCol, std::vector<T> &dstRow, size_t numRows, size_t numCols) {
+static void col2row(const std::vector<T> &srcCol, std::vector<T> &dstRow, size_t numRows, size_t numCols) {
     if (numRows * numCols != srcCol.size()) std::cerr << "col2row dimension mismatch" << "\n";
     dstRow.resize(srcCol.size());
     std::vector<T> copySrc(srcCol);
@@ -1199,6 +1199,105 @@ inline void SvdFactoriser<float>::computeWorkspaceSize(size_t m, size_t n) {
 template<>
 inline void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
     gpuErrChk(cusolverDnDgesvd_bufferSize(m_context->cuSolverHandle(), m, n, &m_lwork));
+}
+
+
+template<typename TElement> requires std::floating_point<TElement>
+class CholeskyFactoriser {
+
+private:
+    int m_workspaceSize = 0;
+    Context *m_context;
+    std::unique_ptr<DeviceVector<int>> m_d_info;
+    std::unique_ptr<DeviceVector<TElement>> m_d_workspace;
+    DeviceMatrix<TElement> *m_d_matrix; // do not destroy
+
+    void computeWorkspaceSize();
+
+public:
+
+    CholeskyFactoriser(Context &context, DeviceMatrix<TElement> &A) {
+        if (A.numRows() != A.numCols()) throw std::invalid_argument("Matrix A must be square");
+        m_context = &context;
+        m_d_matrix = &A;
+        computeWorkspaceSize();
+        m_d_workspace = std::make_unique<DeviceVector<TElement>>(*m_context, m_workspaceSize);
+        m_d_info = std::make_unique<DeviceVector<int>>(*m_context, 1);
+    }
+
+    int factorise();
+
+    int solve(DeviceVector<TElement> &rhs);
+
+};
+
+template<>
+void CholeskyFactoriser<double>::computeWorkspaceSize() {
+    size_t n = m_d_matrix->numRows();
+    gpuErrChk(cusolverDnDpotrf_bufferSize(m_context->cuSolverHandle(),
+                                          CUBLAS_FILL_MODE_LOWER,
+                                          n,
+                                          nullptr, n,
+                                          &m_workspaceSize));
+}
+
+template<>
+void CholeskyFactoriser<float>::computeWorkspaceSize() {
+    size_t n = m_d_matrix->numRows();
+    gpuErrChk(cusolverDnSpotrf_bufferSize(m_context->cuSolverHandle(),
+                                          CUBLAS_FILL_MODE_LOWER,
+                                          n,
+                                          nullptr, n,
+                                          &m_workspaceSize));
+}
+
+template<>
+inline int CholeskyFactoriser<double>::factorise() {
+    size_t n = m_d_matrix->numRows();
+    gpuErrChk(cusolverDnDpotrf(m_context->cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
+                               m_d_matrix->get(), n,
+                               m_d_workspace->get(),
+                               m_workspaceSize,
+                               m_d_info->get()));
+    return (*m_d_info)(0);
+}
+
+
+template<>
+inline int CholeskyFactoriser<float>::factorise() {
+    size_t n = m_d_matrix->numRows();
+    gpuErrChk(cusolverDnSpotrf(m_context->cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
+                               m_d_matrix->get(), n,
+                               m_d_workspace->get(),
+                               m_workspaceSize,
+                               m_d_info->get()));
+    return (*m_d_info)(0);
+}
+
+template<>
+inline int CholeskyFactoriser<double>::solve(DeviceVector<double> &rhs) {
+    size_t n = m_d_matrix->numRows();
+    size_t k = rhs.capacity();
+    gpuErrChk(cusolverDnDpotrs(m_context->cuSolverHandle(),
+                               CUBLAS_FILL_MODE_LOWER,
+                               n, 1,
+                               m_d_matrix->get(), n,
+                               rhs.get(), n,
+                               m_d_info->get()));
+    return (*m_d_info)(0);
+}
+
+template<>
+inline int CholeskyFactoriser<float>::solve(DeviceVector<float> &rhs) {
+    size_t n = m_d_matrix->numRows();
+    size_t k = rhs.capacity();
+    gpuErrChk(cusolverDnSpotrs(m_context->cuSolverHandle(),
+                               CUBLAS_FILL_MODE_LOWER,
+                               n, 1,
+                               m_d_matrix->get(), n,
+                               rhs.get(), n,
+                               m_d_info->get()));
+    return (*m_d_info)(0);
 }
 
 #endif
