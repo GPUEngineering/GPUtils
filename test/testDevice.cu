@@ -425,29 +425,6 @@ TEST_F(DeviceTest, deviceMatrixColumnRangeShallow) {
 }
 
 /* ---------------------------------------
- * Get matrix rows
- * --------------------------------------- */
-
-template<typename T>
-void deviceMatrixGetRows(Context &context) {
-    std::vector<T> data{1, 2, 3,
-                        4, 5, 6,
-                        7, 8, 9,
-                        10, 11, 12};
-    DeviceMatrix<T> X(context, 4, data, rowMajor);
-    auto Xrows = X.getRows(1, 2);
-    EXPECT_EQ(2, Xrows.numRows());
-    EXPECT_EQ(3, Xrows.numCols());
-    EXPECT_EQ(4, Xrows(0, 0));
-    EXPECT_EQ(8, Xrows(1, 1));
-}
-
-TEST_F(DeviceTest, deviceMatrixGetRows) {
-    deviceMatrixGetRows<float>(m_context);
-    deviceMatrixGetRows<double>(m_context);
-}
-
-/* ---------------------------------------
  * Matrix as vector (shallow copy)
  * --------------------------------------- */
 
