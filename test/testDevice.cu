@@ -613,6 +613,56 @@ TEST_F(DeviceTest, getMatrixRows) {
 
 
 /* =======================================
+ * DeviceTensor<T>
+ * ======================================= */
+
+/* ---------------------------------------
+ * Constructors
+ * .pushBack and .upload
+ * --------------------------------------- */
+
+template<typename T>
+void deviceTensorConstructPushUpload(Context &context) {
+    size_t rows = 4;
+    std::vector<T> mat{1, 2, 3,
+                       6, 7, 8,
+                       9, 10, 11,
+                       12, 13, 14};
+    DeviceMatrix<T> A1(context, rows, mat, MatrixStorageMode::rowMajor);
+    DeviceMatrix<T> A2(A1);
+    std::vector<T> vec{1, 2, 3, 4, 5, 6};
+    DeviceVector<T> b1(context, vec);
+    DeviceVector<T> b2(b1);
+    // push DeviceMatrices
+    DeviceTensor<T> mats(context, 6, 3, 2);
+    mats.pushBack(A1);
+    mats.pushBack(A2);
+    mats.upload();
+    // push DeviceVectors
+    DeviceTensor<T> vecs(context, 6, 1, 2);
+    vecs.pushBack(b1);
+    vecs.pushBack(b2);
+    vecs.upload();
+    // push std::vectors as matrices
+    DeviceTensor<T> stdMats(context, 6, 3, 2);
+    stdMats.pushBack(mat, MatrixStorageMode::rowMajor);
+    stdMats.pushBack(mat, MatrixStorageMode::columnMajor);
+    stdMats.upload();
+    // push std::vectors as vectors
+    DeviceTensor<T> stdVecs(context, 6, 1, 2);
+    stdVecs.pushBack(vec);
+    stdVecs.pushBack(vec);
+    stdVecs.upload();
+}
+
+TEST_F(DeviceTest, deviceTensorConstructPushUpload) {
+    deviceTensorConstructPushUpload<float>(m_context);
+    deviceTensorConstructPushUpload<double>(m_context);
+    deviceTensorConstructPushUpload<int>(m_context);
+}
+
+
+/* =======================================
  * SVD
  * ======================================= */
 
