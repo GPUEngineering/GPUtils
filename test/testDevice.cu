@@ -695,9 +695,9 @@ void choleskyFactoriserSolve(Context &context, float epsilon) {
     DeviceVector<T> sol(b); // b = x
     chol.solve(sol);
 
-    auto z = A * sol;
-    z -= b;
-    EXPECT_TRUE(z.norm2() < epsilon);
+    auto error = A * sol;
+    error -= b;
+    EXPECT_TRUE(error.norm2() < epsilon);
 }
 
 TEST_F(DeviceTest, choleskyFactoriserSolve) {
