@@ -368,20 +368,130 @@ TEST_F(DeviceTest, DeviceVectorUploadData) {
 
 
 /* ---------------------------------------
- * Matrix Dimensions
+ * Basic constructor and matrix dimensions
  * .numRows and .numCols
  * --------------------------------------- */
 
 template<typename T>
-void matrixDimensions(Context &context) {
+void DeviceMatrixDimensions(Context &context) {
     DeviceMatrix<T> fourByThree(context, 4, 3);
     EXPECT_EQ(4, fourByThree.numRows());
     EXPECT_EQ(3, fourByThree.numCols());
 }
 
-TEST_F(DeviceTest, matrixDimensions) {
-    matrixDimensions<float>(m_context);
-    matrixDimensions<double>(m_context);
+TEST_F(DeviceTest, DeviceMatrixDimensions) {
+    DeviceMatrixDimensions<float>(m_context);
+    DeviceMatrixDimensions<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Copy constructor
+ * .numRows and .numCols
+ * --------------------------------------- */
+
+template<typename T>
+void DeviceMatrixCopyConstructor(Context &context) {
+    std::vector<T> data{1, 2,
+                        3, 4,
+                        5, 6};
+    DeviceMatrix<T> X(context, 3, data, rowMajor);
+    DeviceMatrix<T> XCopy(X);
+    EXPECT_EQ(3, XCopy.numRows());
+    EXPECT_EQ(2, XCopy.numCols());
+    X *= 0;
+    EXPECT_EQ(2, XCopy(0, 1));
+}
+
+TEST_F(DeviceTest, DeviceMatrixCopyConstructor) {
+    DeviceMatrixCopyConstructor<float>(m_context);
+    DeviceMatrixCopyConstructor<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Column range (shallow copy)
+ * --------------------------------------- */
+
+template<typename T>
+void DeviceMatrixColumnRangeShallow(Context &context) {
+    std::vector<T> data{1, 2, 3, 4, 5,
+                        6, 7, 8, 9, 10};
+    DeviceMatrix<T> X(context, 2, data, rowMajor);
+    DeviceMatrix<T> XColSlice(X, 2, 3);
+    EXPECT_EQ(2, XColSlice.numRows());
+    EXPECT_EQ(2, XColSlice.numCols());
+    XColSlice *= 2;
+    EXPECT_EQ(2, X(0, 1));
+    EXPECT_EQ(16, X(1, 2));
+}
+
+TEST_F(DeviceTest, DeviceMatrixColumnRangeShallow) {
+    DeviceMatrixColumnRangeShallow<float>(m_context);
+    DeviceMatrixColumnRangeShallow<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Get matrix rows
+ * --------------------------------------- */
+
+template<typename T>
+void DeviceMatrixGetRows(Context &context) {
+    std::vector<T> data{1, 2, 3,
+                        4, 5, 6,
+                        7, 8, 9,
+                        10, 11, 12};
+    DeviceMatrix<T> X(context, 4, data, rowMajor);
+    auto Xrows = X.getRows(1, 2);
+    EXPECT_EQ(2, Xrows.numRows());
+    EXPECT_EQ(3, Xrows.numCols());
+    EXPECT_EQ(4, Xrows(0, 0));
+    EXPECT_EQ(8, Xrows(1, 1));
+}
+
+TEST_F(DeviceTest, DeviceMatrixGetRows) {
+    DeviceMatrixGetRows<float>(m_context);
+    DeviceMatrixGetRows<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Matrix as vector (shallow copy)
+ * --------------------------------------- */
+
+template<typename T>
+void DeviceMatrixAsVector(Context &context) {
+    std::vector<T> data{1, 2, 3,
+                        4, 5, 6,
+                        7, 8, 9,
+                        10, 11, 12};
+    DeviceMatrix<T> X(context, 4, data, rowMajor);
+    auto x = X.asVector();
+    EXPECT_EQ(12, x.capacity());
+    EXPECT_EQ(1, x(0));
+    EXPECT_EQ(4, x(1));
+    EXPECT_EQ(12, x(11));
+}
+
+TEST_F(DeviceTest, DeviceMatrixAsVector) {
+    DeviceMatrixAsVector<float>(m_context);
+    DeviceMatrixAsVector<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Scalar multiplication (*=)
+ * --------------------------------------- */
+
+template<typename T>
+void DeviceMatrixScalarTimeEq(Context &context) {
+    std::vector<T> data{1, 2, 3,
+                        4, 5, 6};
+    DeviceMatrix<T> X(context, 2, data, rowMajor);
+    X *= 2.;
+    EXPECT_EQ(4, X(0, 1));
+    EXPECT_EQ(12, X(1, 2));
+}
+
+TEST_F(DeviceTest, DeviceMatrixScalarTimeEq) {
+    DeviceMatrixScalarTimeEq<float>(m_context);
+    DeviceMatrixScalarTimeEq<double>(m_context);
 }
 
 /* ---------------------------------------

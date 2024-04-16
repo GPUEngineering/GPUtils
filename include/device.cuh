@@ -638,7 +638,8 @@ public:
     /**
      * Returns a vector, which is a shallow copy of the matrix elements
      * as a vector. This means that editing this vector, will change the
-     * elements of the matrix.
+     * elements of the matrix. Note that the data is stored in column-major
+     * format.
      *
      * @return
      */
