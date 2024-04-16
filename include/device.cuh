@@ -944,115 +944,49 @@ inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatri
 }
 
 
-/* ------------------------------------------------------------------------------------
- *  Device Tensor
- * ------------------------------------------------------------------------------------ */
-
-/**
- * Device tensor
- * @tparam TElement
- */
 template<typename TElement>
-class DeviceTensor {
+class CoolTensor {
 
 private:
-    // the data is always stored in CM format
     Context *m_context;
     size_t m_numRows = 0;  ///< number of rows of each matrix
     size_t m_numCols = 0;  ///< number of columns of each matrix
-    std::vector<TElement *> m_ptrs;
-    std::unique_ptr<DeviceVector<TElement *>> m_d_vec;  ///< stores all useful memory
-
-    /**
-     *
-     */
-    void destroy() {
-        m_numRows = 0;
-        m_numCols = 0;
-    }
+    std::vector<DeviceMatrix<TElement> *> m_cacheDevMatrix;
 
 public:
 
-    DeviceTensor(Context &context, size_t numRows, size_t numCols = 1, size_t capacity = 0) {
+    CoolTensor(Context &context, size_t numRows, size_t numCols = 1, size_t capacity = 0) {
         m_context = &context;
         m_numRows = numRows;
         m_numCols = numCols;
-        m_ptrs.reserve(capacity);
+        m_cacheDevMatrix.reserve(capacity);
     }
 
-    void pushBack(DeviceMatrix<TElement> &anotherOne) {
-        if (anotherOne.numRows() != m_numRows || anotherOne.numCols() != m_numCols) {
-            std::invalid_argument("DeviceMatrix dimensions do not fit tensor");
+    void pushBack(DeviceMatrix<TElement> &o) {
+        m_cacheDevMatrix.push_back(&o);
+    }
+
+    std::vector<TElement *> raw() const {
+        size_t n = m_cacheDevMatrix.size();
+        std::vector<TElement *> rawVecPointers(n);
+        for (size_t i = 0; i < n; i++) {
+            rawVecPointers[i] = m_cacheDevMatrix[i]->get();
         }
-        m_ptrs.push_back(anotherOne.get());
+        return rawVecPointers;
     }
 
-    void pushBack(DeviceVector<TElement> &anotherOne) {
-        if (anotherOne.capacity() != m_numRows || m_numCols != 1) {
-            std::invalid_argument("DeviceVector dimensions do not fit tensor");
-        }
-        m_ptrs.push_back(anotherOne.get());
-    }
-
-    void pushBack(std::vector<TElement> &anotherOne, MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
-        if (anotherOne.size() != m_numRows * m_numCols) {
-            std::invalid_argument("std::vector dimension does not fit tensor");
-        }
-        DeviceMatrix<TElement> d_anotherOne(*m_context, m_numRows, anotherOne, mode);
-        m_ptrs.push_back(d_anotherOne.get());
-    }
-
-    void upload() {
-        m_d_vec = std::make_unique<DeviceVector<TElement *>>(*m_context, m_ptrs.size());
-        m_d_vec->upload(m_ptrs);
-    }
-
-    DeviceTensor(const DeviceTensor &other) {
-        m_context = other.m_context;
-        m_numRows = other.m_numRows;
-        m_numCols = other.m_numCols;
-        m_ptrs = std::vector<TElement *>(other.m_ptrs);
-        m_d_vec = std::make_unique<DeviceVector<TElement>>(*other.m_d_vec);
-    }
-
-    TElement *get() {
-        return m_d_vec->get();
-    }
-
-    ~DeviceTensor() {
-        destroy();
-    }
-
-    /**
-     * Number of rows
-     * @return
-     */
-    size_t numRows() const {
-        return m_numRows;
-    }
-
-    /**
-     * Number of columns
-     * @return
-     */
-    size_t numCols() const {
-        return m_numCols;
-    }
-
-    friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {
-        size_t nTensor = data.m_d_vec->capacity();
-        size_t nMatrix = data.numRows() * data.numCols();
-        out << "DeviceTensor[" << nTensor << "] of [" << data.numRows() << " x " << data.numCols() << "]:" << "\n";
-        for (size_t i = 0; i < nTensor; i++) {
-            std::vector<TElement> temp(nMatrix);
-            auto mat = data.m_d_vec(i);
-            mat.download(temp);
-            print(out, temp, data.numRows(), data.numCols());
+    friend std::ostream &operator<<(std::ostream &out, const CoolTensor<TElement> &data) {
+        out << "DeviceTensor [" << data.m_numRows << " x " << data.m_numCols << " x " << data.m_cacheDevMatrix.size()
+            << "]:" << std::endl;
+        size_t i = 0;
+        for (DeviceMatrix<TElement> *mat: data.m_cacheDevMatrix) {
+            out << "Matrix " << i << ":\n" << *mat;
+            i++;
         }
         return out;
     }
 
-};  // end of class
+};
 
 
 /* ------------------------------------------------------------------------------------
