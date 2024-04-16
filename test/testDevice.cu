@@ -647,3 +647,60 @@ TEST_F(DeviceTest, singularValuesComputation) {
     singularValuesComputation<float>(m_context, 1e-4);
     singularValuesComputation<double>(m_context, 1e-7);
 }
+
+
+/* =======================================
+ * Cholesky factorisation and solution
+ * of linear systems
+ * ======================================= */
+
+/* ---------------------------------------
+ * Factorisation of matrix
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void choleskyFactoriserFactorise(Context &context, float epsilon) {
+    std::vector<T> aData{10.0, 2.0, 3.0,
+                         3.0, 20.0, -1.0,
+                         3.0, -1.0, 30.0};
+    DeviceMatrix<T> A(context, 3, aData, rowMajor);
+    CholeskyFactoriser<T> chol(context, A);
+    EXPECT_EQ(0, chol.factorise());
+    EXPECT_NEAR(3.162277660168380, A(0, 0), epsilon);
+}
+
+TEST_F(DeviceTest, choleskyFactoriserFactorise) {
+    choleskyFactoriserFactorise<float>(m_context, 1e-4);
+    choleskyFactoriserFactorise<double>(m_context, 1e-7);
+}
+
+/* ---------------------------------------
+ * Solve linear system via Cholesky
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void choleskyFactoriserSolve(Context &context, float epsilon) {
+    std::vector<T> aData = {10., 2., 3.,
+                            2., 20., -1.,
+                            3., -1., 30.};
+    DeviceMatrix<T> A(context, 3, aData, rowMajor);
+    DeviceMatrix<T> L(A); // L = A
+    CholeskyFactoriser<T> chol(context, L);
+    EXPECT_EQ(0, chol.factorise());
+
+    std::vector<T> bData = {-1., -3., 5.};
+    DeviceVector<T> b(context, bData);
+    DeviceVector<T> sol(b); // b = x
+    chol.solve(sol);
+
+    auto z = A * sol;
+    z -= b;
+    EXPECT_TRUE(z.norm2() < epsilon);
+}
+
+TEST_F(DeviceTest, choleskyFactoriserSolve) {
+    choleskyFactoriserSolve<float>(m_context, 1e-6);
+    choleskyFactoriserSolve<double>(m_context, 1e-12);
+}

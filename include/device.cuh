@@ -1127,6 +1127,7 @@ private:
 public:
 
     CholeskyFactoriser(Context &context, DeviceMatrix<TElement> &A) {
+        if (A.numRows() != A.numCols()) throw std::invalid_argument("Matrix A must be square");
         m_context = &context;
         m_d_matrix = &A;
         computeWorkspaceSize();
@@ -1136,7 +1137,7 @@ public:
 
     int factorise();
 
-    int solve(DeviceVector<TElement> rhs);
+    int solve(DeviceVector<TElement> &rhs);
 
 };
 
@@ -1184,20 +1185,28 @@ inline int CholeskyFactoriser<float>::factorise() {
 }
 
 template<>
-inline int CholeskyFactoriser<double>::solve(DeviceVector<double> rhs) {
+inline int CholeskyFactoriser<double>::solve(DeviceVector<double> &rhs) {
     size_t n = m_d_matrix->numRows();
     size_t k = rhs.capacity();
-    DeviceMatrix<double> A(*m_d_matrix);
-    std::cout << "A  = " << A << "\n";
-    DeviceVector<double> cp(rhs);
-    DeviceVector<int> info(*m_context, 1);
     gpuErrChk(cusolverDnDpotrs(m_context->cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
                                n, 1,
-                               A.get(), n,
-                               cp.get(), n,
-                               info.get()));
-    std::cout << rhs << A;
+                               m_d_matrix->get(), n,
+                               rhs.get(), n,
+                               m_d_info->get()));
+    return (*m_d_info)(0);
+}
+
+template<>
+inline int CholeskyFactoriser<float>::solve(DeviceVector<float> &rhs) {
+    size_t n = m_d_matrix->numRows();
+    size_t k = rhs.capacity();
+    gpuErrChk(cusolverDnSpotrs(m_context->cuSolverHandle(),
+                               CUBLAS_FILL_MODE_LOWER,
+                               n, 1,
+                               m_d_matrix->get(), n,
+                               rhs.get(), n,
+                               m_d_info->get()));
     return (*m_d_info)(0);
 }
 

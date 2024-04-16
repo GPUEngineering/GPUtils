@@ -15,7 +15,7 @@ int main() {
                                1.0, 1.5, 11.0};
     DeviceMatrix<real_t> B(context, kk, bbData, MatrixStorageMode::rowMajor);
     CholeskyFactoriser<real_t> choleskiser(context, B);
-    std::cout << "status = " << choleskiser.factorise() << std::endl;
+    choleskiser.factorise();
     std::cout << B;
 
     std::vector<real_t> bData = {-1.0, -2.0, 10.0};
