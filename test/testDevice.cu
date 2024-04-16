@@ -588,7 +588,7 @@ TEST_F(DeviceTest, indexingMatrices) {
  * Get Matrix Rows
  * .getRows
  * --------------------------------------- */
-/// repeat ?
+
 template<typename T>
 void getMatrixRows(Context &context) {
     size_t k = 6;
