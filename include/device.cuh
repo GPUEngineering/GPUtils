@@ -477,7 +477,7 @@ bool DeviceVector<TElement>::allocateOnDevice(size_t size) {
 
 template<typename TElement>
 bool DeviceVector<TElement>::upload(const TElement *dataArray, size_t size) {
-    if (!allocateOnDevice(size)) return false;
+    if (!this->allocateOnDevice(size)) return false;
     if (size <= m_numAllocatedElements) {
         size_t buffer_size = size * sizeof(TElement);
         gpuErrChk(cudaMemcpy(m_d_data, dataArray, buffer_size, cudaMemcpyHostToDevice));
@@ -550,35 +550,35 @@ public:
     /**
      *
      * @param context
-     * @param n_rows
-     * @param n_cols
+     * @param numRows
+     * @param numCols
      */
-    DeviceMatrix(Context &context, size_t n_rows, size_t n_cols) {
+    DeviceMatrix(Context &context, size_t numRows, size_t numCols) {
         m_context = &context;
-        m_numRows = n_rows;
-        m_vec = new DeviceVector<TElement>(context, n_rows * n_cols);
+        m_numRows = numRows;
+        m_vec = new DeviceVector<TElement>(context, numRows * numCols);
     }
 
     /**
      *
      * @param context
-     * @param n_rows
+     * @param numRows
      * @param vec
      * @param mode
      */
     DeviceMatrix(Context &context,
-                 size_t n_rows,
+                 size_t numRows,
                  const std::vector<TElement> &vec,
                  MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
         m_context = &context;
         size_t numel = vec.size();
-        m_numRows = n_rows;
+        m_numRows = numRows;
 
-        if (numel % n_rows != 0) throw std::invalid_argument("impossible dimensions");
-        size_t n_cols = numel / n_rows;
+        if (numel % numRows != 0) throw std::invalid_argument("impossible dimensions");
+        size_t numCols = numel / numRows;
         if (mode == MatrixStorageMode::rowMajor) {
             std::vector<TElement> vec_cm(numel);
-            row2col(vec, vec_cm, n_rows, n_cols);  // to column-major
+            row2col(vec, vec_cm, numRows, numCols);  // to column-major
             m_vec = new DeviceVector<TElement>(context, vec_cm);
         } else {
             m_vec = new DeviceVector<TElement>(context, vec);
@@ -606,18 +606,18 @@ public:
     /**
      *
      * @param vec
-     * @param n_rows
+     * @param numRows
      * @param mode
      */
     void upload(const std::vector<TElement> &vec,
-                size_t n_rows,
+                size_t numRows,
                 MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
         size_t n = vec.size();
-        if (n % n_rows != 0) throw std::invalid_argument("impossible dimensions");
-        size_t n_cols = n / n_rows;
+        if (n % numRows != 0) throw std::invalid_argument("impossible dimensions");
+        size_t numCols = n / numRows;
         if (mode == MatrixStorageMode::rowMajor) {
             std::vector<TElement> vec_cm(n);
-            row2col(vec, vec_cm, n_rows, n_cols);  // to column-major
+            row2col(vec, vec_cm, numRows, numCols);  // to column-major
             m_vec->upload(vec_cm);
         } else {
             m_vec->upload(vec);
@@ -927,6 +927,89 @@ inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatri
                           m_vec->get(),
                           m_numRows));
 }
+
+
+/* ------------------------------------------------------------------------------------
+ *  Device Tensor
+ * ------------------------------------------------------------------------------------ */
+
+/**
+ * Device tensor
+ * @tparam TElement
+ */
+template<typename TElement>
+class DeviceTensor {
+
+private:
+    // the data is always stored in CM format
+    Context *m_context;
+    size_t m_numRows = 0;  ///< number of rows of each matrix
+    size_t m_numCols = 0;  ///< number of columns of each matrix
+    std::vector<TElement *> m_ptrs;
+    std::unique_ptr<DeviceVector<TElement *>> m_d_vec;  ///< stores all useful memory
+
+    /**
+     *
+     */
+    void destroy() {
+        m_numRows = 0;
+        m_numCols = 0;
+    }
+
+public:
+
+    DeviceTensor(Context &context, size_t numRows, size_t numCols, size_t capacity = 0) {
+        m_numRows = numRows;
+        m_numCols = numCols;
+        m_context = &context;
+        m_ptrs.reserve(capacity);
+    }
+
+    void pushBack(DeviceMatrix<TElement> &anotherOne) {
+        if (anotherOne.numRows() != m_numRows || anotherOne.numCols() != m_numCols) {
+            std::invalid_argument("DeviceMatrix dimensions do not fit tensor");
+        }
+        m_ptrs.push_back(anotherOne.get());
+    }
+
+    void upload() {
+        m_d_vec = std::make_unique<DeviceVector<TElement *>>(*m_context, m_ptrs.size());
+        m_d_vec->upload(m_ptrs);
+    }
+
+    DeviceTensor(const DeviceTensor &other) {
+        m_context = other.m_context;
+        m_numRows = other.m_numRows;
+        m_numCols = other.m_numCols;
+        m_ptrs = std::vector<TElement *>(other.m_ptrs);
+        m_d_vec = std::make_unique<DeviceVector<TElement>>(*other.m_d_vec);
+    }
+
+    TElement *get() {
+        return m_d_vec->get();
+    }
+
+    ~DeviceTensor() {
+        destroy();
+    }
+
+    /**
+     * Number of rows
+     * @return
+     */
+    size_t numRows() const {
+        return m_numRows;
+    }
+
+    /**
+     * Number of columns
+     * @return
+     */
+    size_t numCols() const {
+        return m_numCols;
+    }
+
+};  // end of class
 
 
 /* ------------------------------------------------------------------------------------
