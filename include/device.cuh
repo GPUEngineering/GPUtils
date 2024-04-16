@@ -959,9 +959,9 @@ private:
 public:
 
     DeviceTensor(Context &context, size_t numRows, size_t numCols = 1, size_t capacity = 0) {
+        m_context = &context;
         m_numRows = numRows;
         m_numCols = numCols;
-        m_context = &context;
         m_ptrs.reserve(capacity);
     }
 
@@ -977,6 +977,14 @@ public:
             std::invalid_argument("DeviceVector dimensions do not fit tensor");
         }
         m_ptrs.push_back(anotherOne.get());
+    }
+
+    void pushBack(std::vector<TElement> &anotherOne, MatrixStorageMode mode = MatrixStorageMode::columnMajor) {
+        if (anotherOne.size() != m_numRows * m_numCols) {
+            std::invalid_argument("std::vector dimension does not fit tensor");
+        }
+        DeviceMatrix<TElement> d_anotherOne(*m_context, m_numRows, anotherOne, mode);
+        m_ptrs.push_back(d_anotherOne.get());
     }
 
     void upload() {
