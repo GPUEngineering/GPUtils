@@ -958,7 +958,7 @@ private:
 
 public:
 
-    DeviceTensor(Context &context, size_t numRows, size_t numCols, size_t capacity = 0) {
+    DeviceTensor(Context &context, size_t numRows, size_t numCols = 1, size_t capacity = 0) {
         m_numRows = numRows;
         m_numCols = numCols;
         m_context = &context;
@@ -968,6 +968,13 @@ public:
     void pushBack(DeviceMatrix<TElement> &anotherOne) {
         if (anotherOne.numRows() != m_numRows || anotherOne.numCols() != m_numCols) {
             std::invalid_argument("DeviceMatrix dimensions do not fit tensor");
+        }
+        m_ptrs.push_back(anotherOne.get());
+    }
+
+    void pushBack(DeviceVector<TElement> &anotherOne) {
+        if (anotherOne.capacity() != m_numRows || m_numCols != 1) {
+            std::invalid_argument("DeviceVector dimensions do not fit tensor");
         }
         m_ptrs.push_back(anotherOne.get());
     }
