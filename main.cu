@@ -17,7 +17,7 @@ int main() {
                                  25.0, -7.0, -8.0};
     DeviceMatrix<real_t> B(context, nRows, bData, rowMajor);
 
-    CoolTensor<real_t> T(context, nRows, nCols, nMats);
+    DeviceTensor<real_t> T(context, nRows, nCols, nMats);
     T.pushBack(A);
     T.pushBack(B);
     T.pushBack(B);

@@ -631,7 +631,7 @@ void deviceTensorConstructPush(Context &context) {
                             10, 11, 12};
     DeviceMatrix<T> B(context, nRows, bData, rowMajor);
     T* rawB = B.raw();
-    CoolTensor<T> W(context, nRows, nCols, nMats);
+    DeviceTensor<T> W(context, nRows, nCols, nMats);
     W.pushBack(A);
     W.pushBack(A);
     W.pushBack(B);

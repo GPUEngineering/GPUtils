@@ -951,10 +951,10 @@ inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatri
 
 
 template<typename TElement>
-class CoolTensor {
+class DeviceTensor {
 
 private:
-    Context *m_context;
+    Context *m_context; ///< not used yet
     size_t m_numRows = 0;  ///< number of rows of each matrix
     size_t m_numCols = 0;  ///< number of columns of each matrix
 
@@ -966,7 +966,7 @@ private:
 
 public:
 
-    CoolTensor(Context &context, size_t numRows, size_t numCols = 1, size_t capacity = 0) {
+    DeviceTensor(Context &context, size_t numRows, size_t numCols = 1, size_t capacity = 0) {
         m_context = &context;
         m_numRows = numRows;
         m_numCols = numCols;
@@ -977,7 +977,7 @@ public:
         m_cacheDevMatrix.push_back(o);
     }
 
-
+    // TODO This is a host-side vector of device-side pointers, but I guess we need this on the device, right?
     std::vector<TElement *> raw() const {
         size_t n = m_cacheDevMatrix.size();
         std::vector<TElement *> rawVecPointers(n);
@@ -987,7 +987,7 @@ public:
         return rawVecPointers;
     }
 
-    friend std::ostream &operator<<(std::ostream &out, const CoolTensor<TElement> &data) {
+    friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {
         out << "DeviceTensor [" << data.m_numRows << " x " << data.m_numCols << " x " << data.m_cacheDevMatrix.size()
             << "]:" << std::endl;
         size_t i = 0;
