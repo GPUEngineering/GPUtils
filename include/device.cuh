@@ -1137,6 +1137,7 @@ public:
 
     int factorise();
 
+    // TODO do we need to allow rhs to be a matrix?
     int solve(DeviceVector<TElement> &rhs);
 
 };
@@ -1145,20 +1146,16 @@ template<>
 void CholeskyFactoriser<double>::computeWorkspaceSize() {
     size_t n = m_d_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf_bufferSize(m_context->cuSolverHandle(),
-                                          CUBLAS_FILL_MODE_LOWER,
-                                          n,
-                                          nullptr, n,
-                                          &m_workspaceSize));
+                                          CUBLAS_FILL_MODE_LOWER, n,
+                                          nullptr, n, &m_workspaceSize));
 }
 
 template<>
 void CholeskyFactoriser<float>::computeWorkspaceSize() {
     size_t n = m_d_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf_bufferSize(m_context->cuSolverHandle(),
-                                          CUBLAS_FILL_MODE_LOWER,
-                                          n,
-                                          nullptr, n,
-                                          &m_workspaceSize));
+                                          CUBLAS_FILL_MODE_LOWER, n,
+                                          nullptr, n, &m_workspaceSize));
 }
 
 template<>
