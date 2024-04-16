@@ -76,7 +76,7 @@ TEST_F(DeviceTest, col2Row) {
  * --------------------------------------- */
 
 template<typename T>
-void vectorCapacity(Context &context) {
+void deviceVectorCapacity(Context &context) {
     DeviceVector<T> four(context, 4);
     EXPECT_EQ(4, four.capacity());
     DeviceVector<T> five(context, 0);
@@ -84,9 +84,9 @@ void vectorCapacity(Context &context) {
     EXPECT_EQ(5, five.capacity());
 }
 
-TEST_F(DeviceTest, vectorCapacity) {
-    vectorCapacity<float>(m_context);
-    vectorCapacity<double>(m_context);
+TEST_F(DeviceTest, deviceVectorCapacity) {
+    deviceVectorCapacity<float>(m_context);
+    deviceVectorCapacity<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -167,7 +167,7 @@ TEST_F(DeviceTest, deviceVectorDotProduct) {
 
 
 /* ---------------------------------------
- * Norm2
+ * Norm-2
  * --------------------------------------- */
 template<typename T>
 void deviceVectorEuclideanNorm(Context &context, T epsilon) {
@@ -281,12 +281,9 @@ void deviceVectorDeviceToDeviceCopy(Context &context) {
     std::vector<T> dataX{-1., 2., 3., 4., 6.};
     DeviceVector<T> x(context, dataX);
     DeviceVector<T> xSlice(x, 1, 3);
-
     std::vector<T> dataY{5, 5, 5};
     DeviceVector<T> y(context, dataY);
-
     y.deviceCopyTo(xSlice);
-
     std::vector<T> xExpected{-1., 5., 5., 5., 6.};
     std::vector<T> h_x(5);
     x.download(h_x);
@@ -299,7 +296,6 @@ TEST_F(DeviceTest, deviceVectorDeviceToDeviceCopy) {
     deviceVectorDeviceToDeviceCopy<float>(m_context);
     deviceVectorDeviceToDeviceCopy<double>(m_context);
 }
-
 
 /* ---------------------------------------
  * Operator +=
@@ -359,7 +355,6 @@ TEST_F(DeviceTest, deviceVectorUploadData) {
     deviceVectorUploadData<float>(m_context);
     deviceVectorUploadData<double>(m_context);
 }
-
 
 
 /* =======================================
@@ -532,11 +527,11 @@ TEST_F(DeviceTest, transfer) {
 
 /* ---------------------------------------
  * Matrix-vector multiplication
- * op* and .addAB
+ * operator* and .addAB
  * --------------------------------------- */
 
 template<typename T>
-void matrixVectorOperatorAsterisk(Context &context) {
+void matrixVectorOpAst(Context &context) {
     size_t rows = 4;
     std::vector<T> mat = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     std::vector<T> vec = {1, 2, 3};
@@ -549,9 +544,9 @@ void matrixVectorOperatorAsterisk(Context &context) {
     EXPECT_EQ(expected, result);
 }
 
-TEST_F(DeviceTest, matrixVectorOperatorAsterisk) {
-    matrixVectorOperatorAsterisk<float>(m_context);
-    matrixVectorOperatorAsterisk<double>(m_context);
+TEST_F(DeviceTest, matrixVectorOpAst) {
+    matrixVectorOpAst<float>(m_context);
+    matrixVectorOpAst<double>(m_context);
 }
 
 template<typename T>
@@ -616,7 +611,7 @@ TEST_F(DeviceTest, indexingMatrices) {
  * Get Matrix Rows
  * .getRows
  * --------------------------------------- */
-
+/// repeat ?
 template<typename T>
 void getMatrixRows(Context &context) {
     size_t k = 6;
