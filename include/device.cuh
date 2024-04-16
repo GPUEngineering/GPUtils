@@ -102,6 +102,21 @@ static void col2row(const std::vector<T> &srcCol, std::vector<T> &dstRow, size_t
 }
 
 /* ------------------------------------------------------------------------------------
+*  Print vectors and matrices
+* ------------------------------------------------------------------------------------ */
+
+template<typename T>
+static void print(std::ostream &out, std::vector<T> A, size_t numRows, size_t numCols) {
+    for (size_t r = 0; r < numRows; r++) {
+        for (size_t c = 0; c < numCols; c++) {
+            out << A[r * numCols + c] << "\t";
+        }
+        out << "\n";
+    }
+    out << "\n";
+}
+
+/* ------------------------------------------------------------------------------------
  *  Device Vector
  * ------------------------------------------------------------------------------------ */
 
@@ -1022,6 +1037,19 @@ public:
      */
     size_t numCols() const {
         return m_numCols;
+    }
+
+    friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {
+        size_t nTensor = data.m_d_vec->capacity();
+        size_t nMatrix = data.numRows() * data.numCols();
+        out << "DeviceTensor[" << nTensor << "] of [" << data.numRows() << " x " << data.numCols() << "]:" << "\n";
+        for (size_t i = 0; i < nTensor; i++) {
+            std::vector<TElement> temp(nMatrix);
+            auto mat = data.m_d_vec(i);
+            mat.download(temp);
+            print(out, temp, data.numRows(), data.numCols());
+        }
+        return out;
     }
 
 };  // end of class
