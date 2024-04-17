@@ -1,7 +1,7 @@
 #include <vector>
 #include <iostream>
 #include <cublas_v2.h>
-#include "include/device.cuh"
+#include "include/gputils.cuh"
 
 #define real_t double
 

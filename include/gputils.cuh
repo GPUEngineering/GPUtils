@@ -9,8 +9,8 @@
 #include <optional>
 #include <source_location>
 
-#ifndef DEVICE_VECTOR_CUH
-#define DEVICE_VECTOR_CUH
+#ifndef GPUTILS_CUH
+#define GPUTILS_CUH
 
 /**
  * Check for errors when calling GPU functions

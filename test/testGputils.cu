@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../include/device.cuh"
+#include "../include/gputils.cuh"
 #define PRECISION 1e-6
 
 
