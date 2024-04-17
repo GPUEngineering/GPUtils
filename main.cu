@@ -42,6 +42,6 @@ int main() {
     C.pushBack(C1);
     C.pushBack(C2);
     C.addAB(A, B);
-    std::cout << C;
+
     return 0;
 }
