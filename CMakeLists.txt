@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 project(GPUtils
         DESCRIPTION "Easy use of vectors and matrices on GPGPU devices."
         HOMEPAGE_URL "https://github.com/GPUEngineering/GPUtils"
-        LANGUAGES CXX)
+        LANGUAGES CXX
+)
 # ----
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)  # required for calling cuda kernels from cuda kernels
 set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")
@@ -13,7 +14,8 @@ enable_language(CUDA)
 add_library(device_compiler_flags INTERFACE)
 target_compile_features(device_compiler_flags
         INTERFACE
-        cxx_std_20)
+        cxx_std_20
+)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
 add_library(developer_flags INTERFACE)
@@ -28,9 +30,9 @@ target_compile_options(developer_flags
 )
 target_link_libraries(device_compiler_flags
         INTERFACE
-        $<BUILD_INTERFACE:developer_flags>)
+        $<BUILD_INTERFACE:developer_flags>
+)
 # ----
-add_subdirectory(include)
 add_subdirectory(test)  # comment out to not build tests
 # ----
 add_executable(main)
@@ -40,7 +42,11 @@ target_sources(main  # add files
 )
 target_link_libraries(main
         PRIVATE
-        device)
+        device_compiler_flags
+        cublas
+        cusolver
+        cudadevrt
+)
 target_include_directories(main
         PRIVATE
         "${PROJECT_BINARY_DIR}"

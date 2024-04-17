@@ -36,8 +36,9 @@ include(FetchContent)
 FetchContent_Declare(
         gputils
         URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v0.0.1.zip
+        EXCLUDE_FROM_ALL ON
 )
-FetchContent_MakeAvailable(GPUtils)
+FetchContent_MakeAvailable(gputils)
 FetchContent_GetProperties(
         gputils
         SOURCE_DIR GPUTILS_SOURCE_DIR
