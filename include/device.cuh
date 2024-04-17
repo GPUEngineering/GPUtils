@@ -9,8 +9,8 @@
 #include <optional>
 #include <source_location>
 
-#ifndef DEVICE_VECTOR_CUH__
-#define DEVICE_VECTOR_CUH__
+#ifndef DEVICE_VECTOR_CUH
+#define DEVICE_VECTOR_CUH
 
 /**
  * Check for errors when calling GPU functions
@@ -733,6 +733,7 @@ public:
         float alpha = 1.;
         float beta = 0.;
         DeviceVector<float> resultVector(*A.m_context, nRowsA);
+        // TODO use addAB in this implementation
         gpuErrChk(cublasSgemv(A.m_context->cuBlasHandle(),
                               CUBLAS_OP_N,
                               nRowsA,
@@ -769,6 +770,19 @@ public:
         return resultVector;
     }
 
+    friend DeviceMatrix operator+(DeviceMatrix &first, const DeviceMatrix &second) {
+        DeviceMatrix resultVec(*first.m_context, first.numRows(), first.numCols());
+        first.m_vec->deviceCopyTo(*resultVec.m_vec);
+        resultVec += second;
+        return resultVec;
+    }
+
+    friend DeviceMatrix operator-(DeviceMatrix &first, const DeviceMatrix &second) {
+        DeviceMatrix resultVec(*first.m_context, first.numRows(), first.numCols());
+        first.m_vec->deviceCopyTo(*resultVec.m_vec);
+        resultVec -= second;
+        return resultVec;
+    }
     /**
      * C = AB
      */
@@ -776,30 +790,15 @@ public:
         size_t nRowsA = A.numRows();
         size_t nColsA = A.numCols();
         size_t nColsB = B.numCols();
-        float alpha = 1.;
-        float beta = 0.;
         DeviceMatrix resultMatrix(*A.m_context, nRowsA, nColsB);
-        gpuErrChk(cublasSgemm(A.m_context->cuBlasHandle(),
-                              CUBLAS_OP_N,
-                              CUBLAS_OP_N,
-                              nRowsA,
-                              nColsB,
-                              nColsA,
-                              &alpha,
-                              A.m_vec->raw(),
-                              nRowsA,
-                              B.m_vec->raw(),
-                              nColsA,
-                              &beta,
-                              resultMatrix.m_vec->raw(),
-                              nRowsA));
+        resultMatrix.deviceMatrixAddAB(A, B, 1., 0.);
         return resultMatrix;
     }
 
     /**
-     * C += AB
+     * C <- beta C + alpha AB
      */
-    void addAB(const DeviceMatrix &A, const DeviceMatrix &B);
+    void addAB(const DeviceMatrix &A, const DeviceMatrix &B, TElement alpha=1., TElement beta=1.);
 
     /**
      *
@@ -892,51 +891,51 @@ inline DeviceMatrix<double> &DeviceMatrix<double>::operator*=(double scalar) {
 }
 
 template<>
-inline void DeviceMatrix<float>::addAB(const DeviceMatrix &A, const DeviceMatrix &B) {
+inline void DeviceMatrix<float>::addAB(const DeviceMatrix &A, const DeviceMatrix &B, float alpha, float beta) {
     size_t nColsC = this->numCols();
     size_t nColsA = A.numCols();
     if (A.numRows() != m_numRows || B.numCols() != nColsC || nColsA != B.numRows()) {
-        std::invalid_argument("impossible dimensions");
+        throw std::invalid_argument("impossible dimensions");
     }
-    float alpha = 1.;
-    float beta = 1.;
+    float _alpha = alpha;
+    float _beta = beta;
     gpuErrChk(cublasSgemm(A.m_context->cuBlasHandle(),
                           CUBLAS_OP_N,
                           CUBLAS_OP_N,
                           m_numRows,
                           nColsC,
                           nColsA,
-                          &alpha,
+                          &_alpha,
                           A.m_vec->raw(),
                           m_numRows,
                           B.m_vec->raw(),
                           nColsA,
-                          &beta,
+                          &_beta,
                           m_vec->raw(),
                           m_numRows));
 }
 
 template<>
-inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatrix &B) {
+inline void DeviceMatrix<double>::addAB(const DeviceMatrix &A, const DeviceMatrix &B, double alpha, double beta) {
     size_t nColsC = this->numCols();
     size_t nColsA = A.numCols();
     if (A.numRows() != m_numRows || B.numCols() != nColsC || nColsA != B.numRows()) {
-        std::invalid_argument("impossible dimensions");
+        throw std::invalid_argument("impossible dimensions");
     }
-    double alpha = 1.;
-    double beta = 1.;
+    double _alpha = alpha;
+    double _beta = beta;
     gpuErrChk(cublasDgemm(A.m_context->cuBlasHandle(),
                           CUBLAS_OP_N,
                           CUBLAS_OP_N,
                           m_numRows,
                           nColsC,
                           nColsA,
-                          &alpha,
+                          &_alpha,
                           A.m_vec->raw(),
                           m_numRows,
                           B.m_vec->raw(),
                           nColsA,
-                          &beta,
+                          &_beta,
                           m_vec->raw(),
                           m_numRows));
 }
