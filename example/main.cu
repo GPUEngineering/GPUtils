@@ -1,4 +1,4 @@
-#include <gputils.cuh>
+#include <device.cuh>
 #include "src/data.cuh"
 
 
