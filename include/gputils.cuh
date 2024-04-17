@@ -677,19 +677,7 @@ public:
         return m_vec->capacity() / m_numRows;
     }
 
-    DeviceMatrix<TElement> tr() {
-        size_t m = numRows();
-        size_t n = numCols();
-        DeviceMatrix<TElement> transpose(*m_context, n, m);
-        float alpha = 1.0f, beta = 0;
-        gpuErrChk(cublasSgeam(m_context->cuBlasHandle(),
-                              CUBLAS_OP_T, CUBLAS_OP_N,
-                              n, m,
-                              &alpha, m_vec->raw(), m,
-                              &beta, nullptr, n,
-                              transpose.raw(), n));
-        return transpose;
-    }
+    DeviceMatrix<TElement> tr();
 
 
     TElement operator()(size_t i, size_t j) {
@@ -823,6 +811,36 @@ public:
     }
 
 };
+
+template<>
+DeviceMatrix<float> DeviceMatrix<float>::tr() {
+    size_t m = numRows();
+    size_t n = numCols();
+    DeviceMatrix<float> transpose(*m_context, n, m);
+    float alpha = 1.0f, beta = 0;
+    gpuErrChk(cublasSgeam(m_context->cuBlasHandle(),
+                          CUBLAS_OP_T, CUBLAS_OP_N,
+                          n, m,
+                          &alpha, m_vec->raw(), m,
+                          &beta, nullptr, n,
+                          transpose.raw(), n));
+    return transpose;
+}
+
+template<>
+DeviceMatrix<double> DeviceMatrix<double>::tr() {
+    size_t m = numRows();
+    size_t n = numCols();
+    DeviceMatrix<double> transpose(*m_context, n, m);
+    double alpha = 1.0f, beta = 0;
+    gpuErrChk(cublasDgeam(m_context->cuBlasHandle(),
+                          CUBLAS_OP_T, CUBLAS_OP_N,
+                          n, m,
+                          &alpha, m_vec->raw(), m,
+                          &beta, nullptr, n,
+                          transpose.raw(), n));
+    return transpose;
+}
 
 template<>
 inline DeviceMatrix<double> DeviceMatrix<double>::getRows(size_t rowsFrom, size_t rowsTo) {
@@ -1000,7 +1018,11 @@ public:
 
     void leastSquares(DeviceTensor &b);
 
-//    void nullSpaceProject()
+
+//    void project(DeviceTensor &rhs) {
+//        leastSquares(rhs);
+//        // TODO tensor batch multiplication
+//    }
 
     friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {
         out << "DeviceTensor [" << data.m_numRows << " x " << data.m_numCols << " x " << data.m_cacheDevMatrix.size()
@@ -1385,4 +1407,5 @@ public:
 
 
 };
+
 #endif

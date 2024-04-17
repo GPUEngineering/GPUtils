@@ -527,6 +527,27 @@ TEST_F(DeviceTest, transfer) {
 }
 
 /* ---------------------------------------
+ * Transposition
+ * --------------------------------------- */
+
+template<typename T>
+void deviceMatrixTranspose(Context &context) {
+    std::vector<T> aData = {1, 2, 3,
+                            4, 5, 6};
+    DeviceMatrix<T> A(context, 2, aData, rowMajor);
+    DeviceMatrix<T> At = A.tr();
+
+    EXPECT_EQ(3, At.numRows());
+    EXPECT_EQ(2, At.numCols());
+    EXPECT_EQ(2, At(1, 0));
+}
+
+TEST_F(DeviceTest, deviceMatrixTranspose) {
+    deviceMatrixTranspose<float>(m_context);
+    deviceMatrixTranspose<double>(m_context);
+}
+
+/* ---------------------------------------
  * Matrix-vector multiplication
  * operator* and .addAB
  * --------------------------------------- */
