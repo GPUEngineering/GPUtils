@@ -33,6 +33,7 @@ target_link_libraries(device_compiler_flags
         $<BUILD_INTERFACE:developer_flags>
 )
 # ----
+add_subdirectory(include)
 add_subdirectory(test)  # comment out to not build tests
 # ----
 add_executable(main)
