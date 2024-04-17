@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "../include/device.cuh"
+#define PRECISION 1e-12
 
 
 class DeviceTest : public testing::Test {
@@ -779,6 +780,58 @@ TEST_F(DeviceTest, deviceTensorConstructPush) {
     deviceTensorConstructPush<float>(m_context);
     deviceTensorConstructPush<double>(m_context);
     deviceTensorConstructPush<int>(m_context);
+}
+
+/* ---------------------------------------
+ * Batched least squares
+ * .leastSquares
+ * --------------------------------------- */
+
+template<typename T>
+void deviceTensorLeastSquares(Context &context) {
+    size_t rows = 3;
+    size_t cols = 2;
+
+    std::vector<T> A1 = {1, 0, 0, 3, 2, 6};
+    DeviceMatrix<T> d_A1(context, rows, A1, MatrixStorageMode::rowMajor);
+    std::vector<T> b1 = {1, 2, 3};
+    DeviceMatrix<T> d_b1(context, rows, b1);
+
+    std::vector<T> A2 = {1, 3, 3, 2, 2, 1};
+    DeviceMatrix<T> d_A2(context, rows, A2, MatrixStorageMode::rowMajor);
+    std::vector<T> b2 = {1, 2, 3};
+    DeviceMatrix<T> d_b2(context, rows, b2);
+
+    DeviceTensor<T> d_As(context, rows, cols, 2);
+    DeviceTensor<T> d_bs(context, rows, 1, 2);
+    d_As.pushBack(d_A1);
+    d_As.pushBack(d_A2);
+    d_bs.pushBack(d_b1);
+    d_bs.pushBack(d_b2);
+    d_As.leastSquares(d_bs);
+
+    std::vector<T> hostData(cols);
+    size_t from = 0;
+    size_t to = cols - 1;
+
+//    DeviceVector<T> d_x1(d_b1.asVector(), from, to);
+//    d_x1.download(hostData);
+//    std::vector<T> expectedResult1{0.33333333333333, 0.444444444444444};
+//    for (size_t i = 0; i < cols; i++) {
+//        EXPECT_NEAR(hostData[i], expectedResult1[i], PRECISION);
+//    }
+//
+//    DeviceVector<T> d_x2(d_b2.asVector(), from, to);
+//    d_x2.download(hostData);
+//    std::vector<T> expectedResult2{0.96, -0.04};
+//    for (size_t i = 0; i < cols; i++) {
+//        EXPECT_NEAR(hostData[i], expectedResult2[i], PRECISION);
+//    }
+}
+
+TEST_F(DeviceTest, deviceTensorLeastSquares) {
+    deviceTensorLeastSquares<float>(m_context);
+//    deviceTensorLeastSquares<double>(m_context);
 }
 
 

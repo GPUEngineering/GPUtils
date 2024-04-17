@@ -299,7 +299,6 @@ public:
         return out;
     }
 
-
     TElement operator()(size_t i) {
         return fetchElementFromDevice(i);
     }
@@ -973,12 +972,28 @@ public:
         return m_cacheDevMatrix.size();
     }
 
+    size_t numRows() const {
+        return m_numRows;
+    }
+
+    size_t numCols() const {
+        return m_numCols;
+    }
+
     void pushBack(DeviceMatrix<TElement> &o) {
         if (o.numRows() != m_numRows || o.numCols() != m_numCols) {
             throw std::invalid_argument("Given matrix has incompatible dimensions");
         }
         m_cacheDevMatrix.push_back(o);
     }
+
+//    void pushBack(DeviceVector<TElement> &o) {
+//        if (o.capacity() != m_numRows || m_numCols != 1) {
+//            throw std::invalid_argument("Given vector has incompatible dimensions");
+//        }
+//        DeviceMatrix<TElement> oMat(*m_context, o);
+//        m_cacheDevMatrix.push_back(oMat);
+//    }
 
     DeviceVector<TElement *> devicePointersToMatrices() {
         size_t n = m_cacheDevMatrix.size();
@@ -989,6 +1004,8 @@ public:
         m_d_bunchPointers->upload(rawVecPointers);
         return *m_d_bunchPointers;
     }
+
+    void leastSquares(DeviceTensor &b);
 
     friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {
         out << "DeviceTensor [" << data.m_numRows << " x " << data.m_numCols << " x " << data.m_cacheDevMatrix.size()
@@ -1002,6 +1019,31 @@ public:
     }
 
 };
+
+template<>
+inline void DeviceTensor<float>::leastSquares(DeviceTensor &B) {
+    size_t batchSize = numMatrices();
+    size_t nColsB = B.numCols();
+    if (B.numRows() != m_numRows || nColsB != 1 || B.numMatrices() != batchSize) {
+        throw std::invalid_argument("Least squares rhs size does not equal lhs size");
+    }
+    int info = 0;
+    DeviceVector<int> infoArray(*m_context, batchSize);
+    DeviceVector<float *> As = devicePointersToMatrices();
+    DeviceVector<float *> Bs = B.devicePointersToMatrices();
+    gpuErrChk(cublasSgelsBatched(m_context->cuBlasHandle(),
+                                 CUBLAS_OP_N,
+                                 m_numRows,
+                                 m_numCols,
+                                 nColsB,
+                                 As.raw(),
+                                 m_numRows,
+                                 Bs.raw(),
+                                 m_numRows,
+                                 &info,
+                                 infoArray.raw(),
+                                 batchSize));
+}
 
 
 /* ------------------------------------------------------------------------------------
@@ -1187,6 +1229,10 @@ inline void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
 }
 
 
+/* ------------------------------------------------------------------------------------
+ *  Cholesky Factoriser
+ * ------------------------------------------------------------------------------------ */
+
 template<typename TElement> requires std::floating_point<TElement>
 class CholeskyFactoriser {
 
@@ -1281,5 +1327,6 @@ inline int CholeskyFactoriser<float>::solve(DeviceVector<float> &rhs) {
                                m_d_info->raw()));
     return (*m_d_info)(0);
 }
+
 
 #endif
