@@ -2,7 +2,7 @@
 add_library(device INTERFACE)
 target_sources(device
         PRIVATE
-        device.cuh
+        gputils.cuh
 )
 target_link_libraries(device
         INTERFACE

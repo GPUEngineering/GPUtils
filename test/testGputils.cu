@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
-#include "../include/device.cuh"
+#include "../include/gputils.cuh"
+#define PRECISION 1e-6
 
 
 class DeviceTest : public testing::Test {
@@ -425,6 +426,29 @@ TEST_F(DeviceTest, deviceMatrixColumnRangeShallow) {
 }
 
 /* ---------------------------------------
+ * Constructor from DeviceVector
+ * This does not allocate new memory
+ * --------------------------------------- */
+
+template<typename T>
+void deviceMatrixConstructorFromVector(Context &context) {
+    std::vector<T> od{1, 1, 1, 3, 4};
+    DeviceVector<T> o(context, od);
+    DeviceMatrix<T> p(context, o);
+    EXPECT_EQ(1, p.numCols());
+    EXPECT_EQ(5, p.numRows());
+    EXPECT_EQ(1, p(0, 0));
+    EXPECT_EQ(3, p(3, 0));
+    EXPECT_EQ(4, p(4, 0));
+}
+
+TEST_F(DeviceTest, deviceMatrixConstructorFromVector) {
+    deviceMatrixConstructorFromVector<float>(m_context);
+    deviceMatrixConstructorFromVector<double>(m_context);
+    deviceMatrixConstructorFromVector<int>(m_context);
+}
+
+/* ---------------------------------------
  * Matrix as vector (shallow copy)
  * --------------------------------------- */
 
@@ -526,8 +550,14 @@ TEST_F(DeviceTest, matrixVectorOpAst) {
     matrixVectorOpAst<double>(m_context);
 }
 
+
+/* ---------------------------------------
+ * Matrix: addAB
+ * C += AB
+ * --------------------------------------- */
+
 template<typename T>
-void addAB(Context &context) {
+void deviceMatrixAddAB(Context &context) {
     size_t nRowsC = 4;
     size_t nColsC = 3;
     size_t k = 2;
@@ -544,9 +574,114 @@ void addAB(Context &context) {
     EXPECT_EQ(expected, result);
 }
 
-TEST_F(DeviceTest, addAB) {
-    addAB<float>(m_context);
-    addAB<double>(m_context);
+TEST_F(DeviceTest, deviceMatrixAddAB) {
+    deviceMatrixAddAB<float>(m_context);
+    deviceMatrixAddAB<double>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Matrix: addAB complete
+ * C = beta C + alpha AB
+ * --------------------------------------- */
+
+template<typename T>
+void deviceMatrixAddABComplete(Context &context) {
+    size_t nRowsC = 4;
+    size_t nColsC = 3;
+    size_t k = 2;
+    std::vector<T> matC = {1, 2, 3,
+                           4, 5, 6,
+                           7, 8, 9,
+                           10, 11, 12};
+    std::vector<T> matA = {1, 2,
+                           3, 4,
+                           5, 6,
+                           7, 8};
+    std::vector<T> matB = {1, 2, 3,
+                           4, 5, 6};
+    std::vector<T> result(nRowsC * nColsC);
+    DeviceMatrix<T> d_matC(context, nRowsC, matC, MatrixStorageMode::rowMajor);
+    DeviceMatrix<T> d_matA(context, nRowsC, matA, MatrixStorageMode::rowMajor);
+    DeviceMatrix<T> d_matB(context, k, matB, MatrixStorageMode::rowMajor);
+    d_matC.addAB(d_matA, d_matB, -4., 2.);
+    d_matC.asVector().download(result);
+    std::vector<T> expected = {-34, -68, -102, -136, -44, -94, -144, -194, -54, -120, -186, -252};
+    EXPECT_EQ(expected, result);
+}
+
+TEST_F(DeviceTest, deviceMatrixAddABComplete) {
+    deviceMatrixAddABComplete<float>(m_context);
+    deviceMatrixAddABComplete<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Matvec (*=)
+ * --------------------------------------- */
+
+template<typename T>
+void deviceMatrixMatvec(Context &context) {
+    std::vector<T> aData = {1, 2, 3,
+                            4, 5, 6};
+    std::vector<T> xData = {10, -20, 30};
+    std::vector<T> result(2);
+    DeviceMatrix<T> A(context, 2, aData, rowMajor);
+    DeviceVector<T> x(context, xData);
+    auto res = A * x;
+    EXPECT_EQ(2, res.capacity());
+    res.download(result);
+    std::vector<T> expected = {60, 120};
+    EXPECT_EQ(expected, result);
+}
+
+TEST_F(DeviceTest, deviceMatrixMatvec) {
+    deviceMatrixMatvec<float>(m_context);
+    deviceMatrixMatvec<double>(m_context);
+}
+
+/* ---------------------------------------
+ * Matrix addition
+ * --------------------------------------- */
+
+template<typename T>
+void deviceMatrixAddition(Context &context) {
+    std::vector<T> aData = {1, 2, 3, 4, 5, 6};
+    std::vector<T> bData = {10, 20, 30, 40, 50, 60};
+    std::vector<T> result(6);
+    DeviceMatrix<T> A(context, 2, aData, rowMajor);
+    DeviceMatrix<T> B(context, 2, bData, rowMajor);
+    DeviceMatrix<T> res = A + B;
+    res.asVector().download(result);
+    std::vector<T> expected = {11, 44, 22, 55, 33, 66};
+    EXPECT_EQ(expected, result);
+}
+
+TEST_F(DeviceTest, deviceMatrixAddition) {
+    deviceMatrixAddition<float>(m_context);
+    deviceMatrixAddition<double>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Matrix subtraction
+ * --------------------------------------- */
+
+template<typename T>
+void deviceMatrixSubtraction(Context &context) {
+    std::vector<T> aData = {1, 2, 3, 4, 5, 6};
+    std::vector<T> bData = {10, 20, 30, 40, 50, 60};
+    std::vector<T> result(6);
+    DeviceMatrix<T> A(context, 2, aData, rowMajor);
+    DeviceMatrix<T> B(context, 2, bData, rowMajor);
+    DeviceMatrix<T> res = B - A;
+    res.asVector().download(result);
+    std::vector<T> expected = {9, 36, 18, 45, 27, 54};
+    EXPECT_EQ(expected, result);
+}
+
+TEST_F(DeviceTest, deviceMatrixSubtraction) {
+    deviceMatrixSubtraction<float>(m_context);
+    deviceMatrixSubtraction<double>(m_context);
 }
 
 /* ---------------------------------------
@@ -617,48 +752,82 @@ TEST_F(DeviceTest, getMatrixRows) {
  * ======================================= */
 
 /* ---------------------------------------
- * Constructors
- * .pushBack and .upload
+ * Constructors and .pushBack
  * --------------------------------------- */
 
 template<typename T>
-void deviceTensorConstructPushUpload(Context &context) {
-    size_t rows = 4;
-    std::vector<T> mat{1, 2, 3,
-                       6, 7, 8,
-                       9, 10, 11,
-                       12, 13, 14};
-    DeviceMatrix<T> A1(context, rows, mat, MatrixStorageMode::rowMajor);
-    DeviceMatrix<T> A2(A1);
-    std::vector<T> vec{1, 2, 3, 4, 5, 6};
-    DeviceVector<T> b1(context, vec);
-    DeviceVector<T> b2(b1);
-    // push DeviceMatrices
-    DeviceTensor<T> mats(context, 6, 3, 2);
-    mats.pushBack(A1);
-    mats.pushBack(A2);
-    mats.upload();
-    // push DeviceVectors
-    DeviceTensor<T> vecs(context, 6, 1, 2);
-    vecs.pushBack(b1);
-    vecs.pushBack(b2);
-    vecs.upload();
-    // push std::vectors as matrices
-    DeviceTensor<T> stdMats(context, 6, 3, 2);
-    stdMats.pushBack(mat, MatrixStorageMode::rowMajor);
-    stdMats.pushBack(mat, MatrixStorageMode::columnMajor);
-    stdMats.upload();
-    // push std::vectors as vectors
-    DeviceTensor<T> stdVecs(context, 6, 1, 2);
-    stdVecs.pushBack(vec);
-    stdVecs.pushBack(vec);
-    stdVecs.upload();
+void deviceTensorConstructPush(Context &context) {
+    size_t nRows = 2, nCols = 3, nMats = 3;
+    std::vector<T> aData = {1, 2, 3,
+                            4, 5, 6};
+    std::vector<T> bData = {7, 8, 9,
+                            10, 11, 12};
+    DeviceMatrix<T> matrixA(context, nRows, aData, rowMajor);
+    DeviceMatrix<T> matrixB(context, nRows, bData, rowMajor);
+    T *rawA = matrixA.raw();
+    T *rawB = matrixB.raw();
+    DeviceTensor<T> myTensor(context, nRows, nCols, nMats);
+    myTensor.pushBack(matrixA);
+    myTensor.pushBack(matrixA);
+    myTensor.pushBack(matrixB);
+    DeviceVector<T *> pointersToMatrices = myTensor.devicePointersToMatrices();
+    EXPECT_EQ(rawA, pointersToMatrices(0));
+    EXPECT_EQ(rawA, pointersToMatrices(1));
+    EXPECT_EQ(rawB, pointersToMatrices(2));
 }
 
-TEST_F(DeviceTest, deviceTensorConstructPushUpload) {
-    deviceTensorConstructPushUpload<float>(m_context);
-    deviceTensorConstructPushUpload<double>(m_context);
-    deviceTensorConstructPushUpload<int>(m_context);
+TEST_F(DeviceTest, deviceTensorConstructPush) {
+    deviceTensorConstructPush<float>(m_context);
+    deviceTensorConstructPush<double>(m_context);
+    deviceTensorConstructPush<int>(m_context);
+}
+
+/* ---------------------------------------
+ * Batched least squares
+ * .leastSquares
+ * --------------------------------------- */
+
+template<typename T>
+void deviceTensorLeastSquares(Context &context) {
+    size_t rows = 3;
+    size_t cols = 2;
+    std::vector<T> A1 = {1, 0, 0, 3, 2, 6};
+    DeviceMatrix<T> d_A1(context, rows, A1, MatrixStorageMode::rowMajor);
+    std::vector<T> b1 = {1, 2, 3};
+    DeviceVector<T> d_b1(context, b1);
+    std::vector<T> A2 = {1, 3, 3, 2, 2, 1};
+    DeviceMatrix<T> d_A2(context, rows, A2, MatrixStorageMode::rowMajor);
+    std::vector<T> b2 = {1, 2, 3};
+    DeviceVector<T> d_b2(context, b2);
+    DeviceTensor<T> d_As(context, rows, cols, 2);
+    DeviceTensor<T> d_bs(context, rows, 1, 2);
+    d_As.pushBack(d_A1);
+    d_As.pushBack(d_A2);
+    DeviceMatrix<T> d_B1(context, d_b1);
+    d_bs.pushBack(d_B1);
+    DeviceMatrix<T> d_B2(context, d_b2);
+    d_bs.pushBack(d_B2);
+    d_As.leastSquares(d_bs);
+    std::vector<T> hostData(cols);
+    size_t from = 0;
+    size_t to = cols - 1;
+    DeviceVector<T> d_x1(d_b1, from, to);
+    d_x1.download(hostData);
+    std::vector<T> expectedResult1{0.33333333333333, 0.444444444444444};
+    for (size_t i = 0; i < cols; i++) {
+        EXPECT_NEAR(hostData[i], expectedResult1[i], PRECISION);
+    }
+    DeviceVector<T> d_x2(d_b2, from, to);
+    d_x2.download(hostData);
+    std::vector<T> expectedResult2{0.96, -0.04};
+    for (size_t i = 0; i < cols; i++) {
+        EXPECT_NEAR(hostData[i], expectedResult2[i], PRECISION);
+    }
+}
+
+TEST_F(DeviceTest, deviceTensorLeastSquares) {
+    deviceTensorLeastSquares<float>(m_context);
+    deviceTensorLeastSquares<double>(m_context);
 }
 
 

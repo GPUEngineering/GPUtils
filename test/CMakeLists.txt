@@ -12,7 +12,7 @@ enable_testing()
 add_executable(device_test)
 target_sources(device_test  # add files
         PRIVATE
-        testDevice.cu
+        testGputils.cu
 )
 target_link_libraries(device_test
         PRIVATE
