@@ -8,7 +8,7 @@
 
 int main() {
     Context context;
-    std::vector<float> od{1,1,1,3,4};
+    std::vector<float> od{1, 1, 1, 3, 4};
     DeviceVector<float> o(context, od);
     DeviceMatrix<float> p(context, o);
     std::cout << "p = " << p << std::endl;

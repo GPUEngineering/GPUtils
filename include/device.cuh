@@ -791,7 +791,7 @@ public:
         size_t nColsA = A.numCols();
         size_t nColsB = B.numCols();
         DeviceMatrix resultMatrix(*A.m_context, nRowsA, nColsB);
-        resultMatrix.deviceMatrixAddAB(A, B, 1., 0.);
+        resultMatrix.addAB(A, B, 1., 0.);
         return resultMatrix;
     }
 
@@ -987,6 +987,14 @@ public:
         }
         m_cacheDevMatrix.push_back(o);
     }
+
+//    void pushBack(DeviceVector<TElement> &o) {
+//        if (o.capacity() != m_numRows || m_numCols != 1) {
+//            throw std::invalid_argument("Given vector has incompatible dimensions");
+//        }
+//        DeviceMatrix<TElement> oMat(*m_context, o);
+//        m_cacheDevMatrix.push_back(oMat);
+//    }
 
     DeviceVector<TElement *> devicePointersToMatrices() {
         size_t n = m_cacheDevMatrix.size();
