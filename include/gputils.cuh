@@ -210,7 +210,7 @@ public:
      * Allocates memory on the device for `size` elements
      *
      * @param size number of elements
-     * @return true if and only if no errors occured during
+     * @return true if and only if no errors occurred during
      *         the memory allocation
      */
     bool allocateOnDevice(size_t size);
@@ -988,14 +988,6 @@ public:
         m_cacheDevMatrix.push_back(o);
     }
 
-//    void pushBack(DeviceVector<TElement> &o) {
-//        if (o.capacity() != m_numRows || m_numCols != 1) {
-//            throw std::invalid_argument("Given vector has incompatible dimensions");
-//        }
-//        DeviceMatrix<TElement> oMat(*m_context, o);
-//        m_cacheDevMatrix.push_back(oMat);
-//    }
-
     DeviceVector<TElement *> devicePointersToMatrices() {
         size_t n = m_cacheDevMatrix.size();
         std::vector<TElement *> rawVecPointers(n);
@@ -1007,6 +999,8 @@ public:
     }
 
     void leastSquares(DeviceTensor &b);
+
+//    void nullSpaceProject()
 
     friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {
         out << "DeviceTensor [" << data.m_numRows << " x " << data.m_numCols << " x " << data.m_cacheDevMatrix.size()
@@ -1355,4 +1349,40 @@ inline int CholeskyFactoriser<float>::solve(DeviceVector<float> &rhs) {
 }
 
 
+/* ------------------------------------------------------------------------------------
+ *  Nullspace Project
+ * ------------------------------------------------------------------------------------ */
+
+template<typename TElement> requires std::floating_point<TElement>
+class Nullspace {
+
+private:
+    DeviceMatrix<TElement> *m_matrix = nullptr;
+    size_t m_rankA;
+    DeviceMatrix<TElement> *m_N = nullptr;
+
+public:
+
+    Nullspace(Context &context, DeviceMatrix<TElement> &A, bool destroyA = true) {
+        m_matrix = &A;
+        SvdFactoriser<TElement> svd(context, A, false, destroyA);
+        svd.factorise();
+        m_rankA = svd.rank();
+        DeviceMatrix<TElement> Vtr = svd.rightSingularVectors();
+        size_t k = Vtr.numRows();
+        DeviceMatrix<TElement> Ntr = Vtr.getRows(m_rankA, k - 1);
+        DeviceMatrix<TElement> N = Ntr.tr();
+        m_N = new DeviceMatrix<TElement>(N);
+    }
+
+    ~Nullspace() {
+        if (m_N) delete m_N;
+    }
+
+    DeviceMatrix<TElement> get() {
+        return *m_N;
+    }
+
+
+};
 #endif

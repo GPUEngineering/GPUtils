@@ -803,8 +803,8 @@ void deviceTensorLeastSquares(Context &context) {
     DeviceTensor<T> d_bs(context, rows, 1, 2);
     d_As.pushBack(d_A1);
     d_As.pushBack(d_A2);
-    DeviceMatrix<T> d_B1(context, d_b1);
-    d_bs.pushBack(d_B1);
+    DeviceMatrix<T> db1_mat(context, d_b1);
+    d_bs.pushBack(db1_mat);
     DeviceMatrix<T> d_B2(context, d_b2);
     d_bs.pushBack(d_B2);
     d_As.leastSquares(d_bs);
