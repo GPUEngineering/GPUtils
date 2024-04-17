@@ -1238,6 +1238,10 @@ inline void SvdFactoriser<double>::computeWorkspaceSize(size_t m, size_t n) {
 }
 
 
+/* ------------------------------------------------------------------------------------
+ *  Cholesky Factoriser
+ * ------------------------------------------------------------------------------------ */
+
 template<typename TElement> requires std::floating_point<TElement>
 class CholeskyFactoriser {
 
@@ -1332,5 +1336,6 @@ inline int CholeskyFactoriser<float>::solve(DeviceVector<float> &rhs) {
                                m_d_info->get()));
     return (*m_d_info)(0);
 }
+
 
 #endif
