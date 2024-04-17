@@ -1024,6 +1024,8 @@ public:
 //        // TODO tensor batch multiplication
 //    }
 
+    void addAB(DeviceTensor<TElement> &A, DeviceTensor<TElement> &B, TElement alpha = 1, TElement beta = 0);
+
     friend std::ostream &operator<<(std::ostream &out, const DeviceTensor<TElement> &data) {
         out << "DeviceTensor [" << data.m_numRows << " x " << data.m_numCols << " x " << data.m_cacheDevMatrix.size()
             << "]:" << std::endl;
@@ -1036,6 +1038,40 @@ public:
     }
 
 };
+
+template<>
+inline void DeviceTensor<float>::addAB(DeviceTensor<float> &A, DeviceTensor<float> &B, float alpha, float beta) {
+    size_t nMat = A.numMatrices();
+    size_t nRA = A.numRows();
+    size_t nCA = A.numCols();
+    size_t nCB = B.numCols();
+    float _alpha = alpha, _beta = beta;
+    gpuErrChk(cublasSgemmBatched(m_context->cuBlasHandle(),
+                                 CUBLAS_OP_N, CUBLAS_OP_N,
+                                 nRA, nCB, nCA, &_alpha,
+                                 A.devicePointersToMatrices().raw(), nRA,
+                                 B.devicePointersToMatrices().raw(), nCA,
+                                 &_beta,
+                                 devicePointersToMatrices().raw(), nRA,
+                                 nMat));
+}
+
+template<>
+inline void DeviceTensor<double>::addAB(DeviceTensor<double> &A, DeviceTensor<double> &B, double alpha, double beta) {
+    size_t nMat = A.numMatrices();
+    size_t nRA = A.numRows();
+    size_t nCA = A.numCols();
+    size_t nCB = B.numCols();
+    double _alpha = alpha, _beta = beta;
+    gpuErrChk(cublasDgemmBatched(m_context->cuBlasHandle(),
+                                 CUBLAS_OP_N, CUBLAS_OP_N,
+                                 nRA, nCB, nCA, &_alpha,
+                                 A.devicePointersToMatrices().raw(), nRA,
+                                 B.devicePointersToMatrices().raw(), nCA,
+                                 &_beta,
+                                 devicePointersToMatrices().raw(), nRA,
+                                 nMat));
+}
 
 template<>
 inline void DeviceTensor<float>::leastSquares(DeviceTensor &B) {

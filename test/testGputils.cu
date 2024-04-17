@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "../include/gputils.cuh"
+
 #define PRECISION 1e-6
 
 
@@ -801,6 +802,67 @@ TEST_F(DeviceTest, deviceTensorConstructPush) {
     deviceTensorConstructPush<float>(m_context);
     deviceTensorConstructPush<double>(m_context);
     deviceTensorConstructPush<int>(m_context);
+}
+
+
+/* ---------------------------------------
+ * Tensor-tensor multiplication
+ * .addAB
+ * --------------------------------------- */
+
+template<typename T>
+void deviceTensorAddAB(Context &context) {
+    std::vector<T> a1Data = {1.0, 2.0, 3.0,
+                             6.0, 7.0, 8.0,
+                             9.0, -10.0, -1.0,
+                             6.0, 6.6, 6.0};
+    std::vector<T> a2Data = {5.0, 2.0, 3.0,
+                             6.0, 7.0, 9.0,
+                             6.0, -7.0, 8.0,
+                             -1.0, 0.0, 8.0};
+    std::vector<T> b1Data = {5.0, 12.0,
+                             7.0, 17.0,
+                             11.0, 97.0};
+    std::vector<T> b2Data = {-2.0, 12.0,
+                             7.0, 17.0,
+                             11.0, -0.1};
+
+    // Tensor A = (A1, A2)
+    DeviceMatrix<T> A1(context, 4, a1Data, rowMajor);
+    DeviceMatrix<T> A2(context, 4, a2Data, rowMajor);
+    DeviceTensor<T> A(context, 4, 3, 2);
+    A.pushBack(A1);
+    A.pushBack(A2);
+
+    // Tensor B = (B1, B2)
+    DeviceMatrix<T> B1(context, 3, b1Data, rowMajor);
+    DeviceMatrix<T> B2(context, 3, b2Data, rowMajor);
+    DeviceTensor<T> B(context, 3, 2, 2);
+    B.pushBack(B1);
+    B.pushBack(B2);
+
+    // Tensor C = (C1, C2)
+    DeviceMatrix<T> C1(context, 4, 2);
+    DeviceMatrix<T> C2(context, 4, 2);
+    DeviceTensor<T> C(context, 4, 2, 2);
+    C.pushBack(C1);
+    C.pushBack(C2);
+    C.addAB(A, B); // C = A * B
+
+    DeviceMatrix<T> A1B1 = A1 * B1;
+    DeviceMatrix<T> error1 = C1 - A1B1;
+    auto errVec1 = error1.asVector();
+    EXPECT_TRUE(errVec1.norm2() < PRECISION);
+
+    DeviceMatrix<T> A2B2 = A2 * B2;
+    DeviceMatrix<T> error2 = C2 - A2B2;
+    auto errVec2 = error1.asVector();
+    EXPECT_TRUE(errVec2.norm2() < PRECISION);
+}
+
+TEST_F(DeviceTest, deviceTensorAddAB) {
+    deviceTensorAddAB<float>(m_context);
+    deviceTensorAddAB<double>(m_context);
 }
 
 /* ---------------------------------------
