@@ -10,13 +10,16 @@ FetchContent_MakeAvailable(googletest)
 # ----
 enable_testing()
 add_executable(device_test)
-target_sources(device_test  # add files
+target_sources(device_test
         PRIVATE
         testDevice.cu
 )
 target_link_libraries(device_test
         PRIVATE
-        device
+        device_compiler_flags
+        cublas
+        cusolver
+        cudadevrt
         GTest::gtest_main)
 target_include_directories(device_test
         PRIVATE

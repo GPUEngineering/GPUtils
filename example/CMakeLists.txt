@@ -8,13 +8,14 @@ project(yourCoolProject
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)  # required for calling cuda kernels from cuda kernels
 set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.3/bin/nvcc")  # or, wherever your cuda toolkit is stored
 set(CMAKE_CUDA_ARCHITECTURES 86)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CUDA_FLAGS "-std=c++20")
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}; -std=c++20)
 enable_language(CUDA)
 # ----
 add_library(example_compiler_flags INTERFACE)
-target_compile_features(example_compiler_flags
-        INTERFACE
-        cxx_std_20
-)
+target_compile_features(example_compiler_flags INTERFACE cxx_std_20)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
 add_library(example_developer_flags INTERFACE)
@@ -27,9 +28,7 @@ target_compile_options(example_developer_flags
         # flags for CUDA builds
         $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>
 )
-target_link_libraries(example_compiler_flags
-        INTERFACE
-        $<BUILD_INTERFACE:example_developer_flags>
+target_link_libraries(example_compiler_flags INTERFACE $<BUILD_INTERFACE:example_developer_flags>
 )
 # ----
 include(FetchContent)
