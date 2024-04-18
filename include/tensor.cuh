@@ -159,6 +159,16 @@ public:
                              cudaMemcpyDeviceToDevice));
     }
 
+    DTensor(DTensor&& other) {
+        m_numCols = other.m_numCols;
+        m_numRows = other.m_numRows;
+        m_numMats = other.m_numMats;
+        m_d_data = other.m_d_data;
+        m_doDestroy = true;
+        other.m_doDestroy = false;
+        other.m_d_data = nullptr;
+    }
+
     /**
      * Slicing constructor
      * @param other

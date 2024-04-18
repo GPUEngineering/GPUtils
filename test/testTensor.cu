@@ -42,6 +42,25 @@ TEST_F(TensorTest, tensorConstructionZero) {
 }
 
 /* ---------------------------------------
+ * Move constructor
+ * --------------------------------------- */
+
+template<typename T>
+void tensorMoveConstructor() {
+    DTensor<T> zero(2, 3, 4, true);
+    DTensor<T> x(std::move(zero));
+    DTensor<T> y(DTensor<T>{100, 10, 1000});
+}
+
+TEST_F(TensorTest, tensorMoveConstructor) {
+    tensorMoveConstructor<float>();
+    tensorMoveConstructor<double>();
+    tensorMoveConstructor<int>();
+    tensorMoveConstructor<int *>();
+    tensorMoveConstructor<double *>();
+}
+
+/* ---------------------------------------
  * New tensor from data (std::vector)
  * Constructor
  * --------------------------------------- */
@@ -448,11 +467,11 @@ TEST_F(TensorTest, tensorAddAB) {
 template<typename T>
 void tensorGetRows() {
     std::vector<T> aData{10.5, 25.0, 60.0,
-                              -21.0, 720.0, -1.0,
-                              11.0, -1.0, 30.0,
-                              5., 6., 7.,
-                              8., 9., 10.,
-                              11., 12., 13};
+                         -21.0, 720.0, -1.0,
+                         11.0, -1.0, 30.0,
+                         5., 6., 7.,
+                         8., 9., 10.,
+                         11., 12., 13};
     DTensor<T> A(aData, 3, 3, 2);
     DTensor<T> Ar0 = A.getRows(1, 1, 0);
     std::vector<T> expected0 = {25., 720., -1.};
@@ -610,7 +629,7 @@ void choleskyFactorisationSolution(T epsilon) {
     std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
     std::vector<T> actual(3);
     sol.download(actual);
-    for (size_t i=0; i<3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);
+    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);
 
     DTensor<T> error = A * sol;
     error -= rhs;
