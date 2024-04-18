@@ -441,6 +441,36 @@ TEST_F(TensorTest, tensorAddAB) {
     tensorAddAB<float>();
 }
 
+/* ---------------------------------------
+ * Tensor: getRows
+ * --------------------------------------- */
+
+template<typename T>
+void tensorGetRows() {
+    std::vector<T> aData{10.5, 25.0, 60.0,
+                              -21.0, 720.0, -1.0,
+                              11.0, -1.0, 30.0,
+                              5., 6., 7.,
+                              8., 9., 10.,
+                              11., 12., 13};
+    DTensor<T> A(aData, 3, 3, 2);
+    DTensor<T> Ar0 = A.getRows(1, 1, 0);
+    std::vector<T> expected0 = {25., 720., -1.};
+    std::vector<T> actual0(3);
+    Ar0.download(actual0);
+    EXPECT_EQ(expected0, actual0);
+
+    DTensor<T> Ar1 = A.getRows(1, 2, 1);
+    std::vector<T> expected1 = {6., 7., 9., 10., 12., 13.};
+    std::vector<T> actual1(6);
+    Ar1.download(actual1);
+    EXPECT_EQ(expected1, actual1);
+}
+
+TEST_F(TensorTest, tensorGetRows) {
+    tensorGetRows<double>();
+}
+
 /* ================================================================================================
  *  LEAST SQUARES TESTS
  * ================================================================================================ */

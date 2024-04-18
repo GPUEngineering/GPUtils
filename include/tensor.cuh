@@ -50,10 +50,11 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
 #define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
 #endif
 
-/* ------------------------------------------------------------------------------------
- *  Session
- * ------------------------------------------------------------------------------------ */
 
+
+/* ================================================================================================
+ *  SESSION
+ * ================================================================================================ */
 
 class Session {
 public:
@@ -87,6 +88,11 @@ public:
     cusolverDnHandle_t &cuSolverHandle() { return m_cusolverHandle; }
 };
 
+
+
+/* ================================================================================================
+ *  TENSOR
+ * ================================================================================================ */
 
 template<typename T>
 class DTensor {
@@ -218,6 +224,8 @@ public:
     DTensor &operator-=(const DTensor &rhs);
 
     DTensor<T *> pointersToMatrices();
+
+    DTensor<T> getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx);
 
     friend DTensor operator+(DTensor &first, const DTensor &second) {
         DTensor result(first);
@@ -537,6 +545,20 @@ inline void DTensor<float>::leastSquares(DTensor &B) {
                                  batchSize));
 }
 
+template<>
+DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) {
+    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
+    size_t n = numCols(), m = numRows();
+    DTensor<double> rowsOnly(rowsRangeLength, numCols(), 1);
+    for (size_t i = 0; i < rowsRangeLength; i++) {
+        gpuErrChk(cublasDcopy(Session::getInstance().cuBlasHandle(),
+                              n, // # values to copy
+                              raw() + rowsFrom + i + matIdx * n * m, m,
+                              rowsOnly.raw() + i,
+                              rowsRangeLength));
+    }
+    return rowsOnly;
+}
 
 /* ================================================================================================
  *  SINGULAR VALUE DECOMPOSITION (SVD)
