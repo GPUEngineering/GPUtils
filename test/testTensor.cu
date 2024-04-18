@@ -14,6 +14,7 @@ protected:
 #define TENSOR_DATA_234A {1, 2,  3, 4, 5, 6, 7, 8, 9, 8, 7, 10, 5, 4, 3, 2, 1, -1, 4, 3, 4, 3, 4, 8}
 #define TENSOR_DATA_234B {7, -6, 9, 2, 1, 11, 34, -1, -4, -3, 12, 7, 9, 9, 2, 9, -9, -3, 2, 5, 4, -5, 4, 5}
 #define TENSOR_DATA_234APB {8, -4, 12, 6, 6, 17, 41, 7, 5, 5, 19, 17, 14, 13, 5, 11, -8, -4, 6, 8, 8, -2, 8, 13}
+#define TENSOR_DATA_234AMB {-6, 8, -6, 2, 4, -5, -27, 9, 13, 11, -5, 3, -4, -5, 1, -7, 10, 2, 2, -2, 0, 8, 0, 3};
 
 /* ---------------------------------------
  * Zero Tensor (Constructor)
@@ -301,5 +302,95 @@ void tensorPlusEqualsTensor() {
 TEST_F(TensorTest, tensorPlusEqualsTensor) {
     tensorPlusEqualsTensor<float>();
     tensorPlusEqualsTensor<double>();
+}
+
+/* ---------------------------------------
+ * Tensor minus-equals tensor
+ * --------------------------------------- */
+
+template<typename T>
+void tensorMinusEqualsTensor() {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    std::vector<T> dataB = TENSOR_DATA_234B;
+    Tenzor<T> A(dataA, 2, 3, 4);
+    Tenzor<T> B(dataB, 2, 3, 4);
+    A -= B;
+    std::vector<T> expected = TENSOR_DATA_234AMB;
+    std::vector<T> actual;
+    A.download(actual);
+    EXPECT_EQ(expected, actual);
+}
+
+TEST_F(TensorTest, tensorMinusEqualsTensor) {
+    tensorMinusEqualsTensor<float>();
+    tensorMinusEqualsTensor<double>();
+}
+
+/* ---------------------------------------
+ * Tensor + Tensor
+ * --------------------------------------- */
+
+template<typename T>
+void tensorPlusTensor() {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    std::vector<T> dataB = TENSOR_DATA_234B;
+    Tenzor<T> A(dataA, 2, 3, 4);
+    Tenzor<T> B(dataB, 2, 3, 4);
+    Tenzor<T>  C = A + B;
+    std::vector<T> expected = TENSOR_DATA_234APB;
+    std::vector<T> actual;
+    C.download(actual);
+    EXPECT_EQ(expected, actual);
+}
+
+TEST_F(TensorTest, tensorPlusTensor) {
+    tensorPlusTensor<float>();
+    tensorPlusTensor<double>();
+}
+
+/* ---------------------------------------
+ * Tensor - Tensor
+ * --------------------------------------- */
+
+template<typename T>
+void tensorMinusTensor() {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    std::vector<T> dataB = TENSOR_DATA_234B;
+    Tenzor<T> A(dataA, 2, 3, 4);
+    Tenzor<T> B(dataB, 2, 3, 4);
+    Tenzor<T>  C = A - B;
+    std::vector<T> expected = TENSOR_DATA_234AMB;
+    std::vector<T> actual;
+    C.download(actual);
+    EXPECT_EQ(expected, actual);
+}
+
+TEST_F(TensorTest, tensorMinusTensor) {
+    tensorMinusTensor<float>();
+    tensorMinusTensor<double>();
+}
+
+/* ---------------------------------------
+ * Tensor: pointers to matrices (on device)
+ * --------------------------------------- */
+
+template<typename T>
+void tensorPointersToMatrices() {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    Tenzor<T> A(dataA, 2, 3, 4);
+    Tenzor<T*> pointers = A.pointersToMatrices();
+    EXPECT_EQ(4, pointers.numRows());
+    EXPECT_EQ(1, pointers.numCols());
+    EXPECT_EQ(1, pointers.numMats());
+    T* p1 = pointers(1, 0, 0); // pointer to matrix #1
+    T hostDst; // let's see what's there...
+    cudaMemcpy(&hostDst, p1, sizeof(T), cudaMemcpyDeviceToHost);
+    EXPECT_EQ(dataA[6], hostDst);
+}
+
+TEST_F(TensorTest, tensorPointersToMatrices) {
+    tensorPointersToMatrices<float>();
+    tensorPointersToMatrices<double>();
+    tensorPointersToMatrices<int>();
 }
 

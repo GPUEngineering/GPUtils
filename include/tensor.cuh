@@ -222,6 +222,20 @@ public:
 
     Tenzor &operator-=(const Tenzor &rhs);
 
+    Tenzor<T*> pointersToMatrices();
+
+    friend Tenzor operator+(Tenzor &first, const Tenzor &second) {
+        Tenzor result(first);
+        result += second;
+        return result;
+    }
+
+    friend Tenzor operator-(Tenzor &first, const Tenzor &second) {
+        Tenzor result(first);
+        result -= second;
+        return result;
+    }
+
     friend std::ostream &operator<<(std::ostream &out, const Tenzor<T> &data) {
         size_t nr = data.m_numRows, nc = data.m_numCols, nm = data.m_numMats;
         out << "Tensor [" << data.m_numRows << " x "
@@ -385,6 +399,18 @@ T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
     size_t offset = i + m_numRows * (j + m_numCols * k);
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
     return hostDst;
+}
+
+template<typename T>
+Tenzor<T*> Tenzor<T>::pointersToMatrices() {
+    std::vector<T*> h_pointers(m_numMats);
+    size_t numelMat = m_numRows * m_numCols;
+    h_pointers[0] = m_d_data;
+    for (size_t i = 1; i < m_numMats; i++)  {
+        h_pointers[i] = m_d_data + i * numelMat;
+    }
+    Tenzor<T*> t(h_pointers, m_numMats, 1, 1);
+    return t;
 }
 
 
