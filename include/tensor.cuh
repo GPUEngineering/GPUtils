@@ -14,7 +14,7 @@
 
 
 /* ------------------------------------------------------------------------------------
- *  Context
+ *  Session
  * ------------------------------------------------------------------------------------ */
 
 
@@ -72,11 +72,17 @@ private:
         return true;
     }
 
+    bool allocateOnDevice(size_t size);
+
 public:
     /**
     * Constructs a DeviceVector object
     */
     Tenzor() = default;
+
+    ~Tenzor() {
+        destroy();
+    }
 
     /**
      * Allocates (m, n, k)-tensor
@@ -90,17 +96,54 @@ public:
         allocateOnDevice(size);
     }
 
-    bool allocateOnDevice(size_t size);
+    /**
+     * Copy constructor
+     */
+    Tenzor(const Tenzor &other) {
+        m_numMats = other.m_numMats;
+        m_numRows = other.m_numRows;
+        m_numCols = other.m_numCols;
+        allocateOnDevice(other.m_numAllocatedElements);
+        cudaMemcpy(m_d_data, other.raw(), m_numAllocatedElements * sizeof(T), cudaMemcpyDeviceToDevice);
+    }
 
-    T *raw();
+    T *raw() const;
 
-    bool upload(const T *dataArray, size_t size);
+    size_t numRows() const;
+
+    size_t numCols() const;
+
+    size_t numMats() const;
+
+    size_t numel() const;
 
     bool upload(const std::vector<T> &vec);
 
-    void download(T *hostData) const;
-
     void download(std::vector<T> &vec) const;
+
+    void deviceCopyTo(Tenzor<T> &other) const;
+
+    T normF() const;
+
+
+    /* OPERATORS */
+    Tenzor &operator=(const Tenzor &other) {
+        m_numMats = other.m_numMats;
+        m_numRows = other.m_numRows;
+        m_numCols = other.m_numCols;
+        m_doDestroy = false;
+        m_d_data = other.m_d_data;
+        m_numAllocatedElements = other.m_numAllocatedElements;
+        return *this;
+    }
+
+    T operator()(size_t i, size_t j, size_t k);
+
+    Tenzor &operator*=(T scalar);
+
+    Tenzor &operator+=(const Tenzor &rhs);
+
+    Tenzor &operator-=(const Tenzor &rhs);
 
     friend std::ostream &operator<<(std::ostream &out, const Tenzor<T> &data) {
         size_t nr = data.m_numRows, nc = data.m_numCols, nm = data.m_numMats;
@@ -111,22 +154,51 @@ public:
         data.download(temp);
         for (size_t k = 0; k < nm; k++) {
             out << ">> layer: " << k << std::endl;
-            for (size_t i = 0; i < nr ; i++) {
+            for (size_t i = 0; i < nr; i++) {
                 for (size_t j = 0; j < nc; j++) {
                     out << std::setw(10) << temp[nr * (nc * k + j) + i] << ", ";
                 }
                 out << std::endl;
             }
         }
-//        for (size_t i = 0; i < data.m_numAllocatedElements - 1; i++) {
-//            out << std::setw(10) << temp[i] << std::endl;
-//        }
-//        out << std::setw(10) << temp[data.m_numAllocatedElements - 1] << std::endl;
         return out;
     }
 
 }; /* END OF TENZOR */
 
+template<typename T>
+inline size_t Tenzor<T>::numRows() const {
+    return m_numRows;
+}
+
+template<typename T>
+inline size_t Tenzor<T>::numCols() const {
+    return m_numCols;
+}
+
+template<typename T>
+inline size_t Tenzor<T>::numMats() const {
+    return m_numMats;
+}
+
+template<typename T>
+inline size_t Tenzor<T>::numel() const {
+    return m_numAllocatedElements;
+}
+
+template<>
+inline double Tenzor<double>::normF() const {
+    double the_norm;
+    cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
+    return the_norm;
+}
+
+template<>
+inline float Tenzor<float>::normF() const {
+    float the_norm;
+    cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
+    return the_norm;
+}
 
 template<typename T>
 inline bool Tenzor<T>::allocateOnDevice(size_t size) {
@@ -143,36 +215,90 @@ inline bool Tenzor<T>::allocateOnDevice(size_t size) {
 
 template<typename T>
 bool Tenzor<T>::upload(const std::vector<T> &vec) {
-    return upload(vec.data(), vec.size());
-}
-
-template<typename T>
-bool Tenzor<T>::upload(const T *dataArray, size_t size) {
-    if (!this->allocateOnDevice(size)) return false;
+    size_t size = vec.size();
+    // make sure vec is of right size
+    if (size != m_numAllocatedElements) throw std::invalid_argument("vec has wrong size");
     if (size <= m_numAllocatedElements) {
         size_t buffer_size = size * sizeof(T);
-        cudaMemcpy(m_d_data, dataArray, buffer_size, cudaMemcpyHostToDevice);
+        cudaMemcpy(m_d_data, vec.data(), buffer_size, cudaMemcpyHostToDevice);
     }
     return true;
 }
 
 template<typename T>
-void Tenzor<T>::download(T *hostData) const {
-    cudaMemcpy(hostData,
+void Tenzor<T>::download(std::vector<T> &vec) const {
+    vec.reserve(m_numAllocatedElements);
+    cudaMemcpy(vec.data(),
                m_d_data,
                m_numAllocatedElements * sizeof(T),
                cudaMemcpyDeviceToHost);
 }
 
 template<typename T>
-void Tenzor<T>::download(std::vector<T> &vec) const {
-    vec.reserve(m_numAllocatedElements);
-    download(vec.data());
+inline T *Tenzor<T>::raw() const {
+    return m_d_data;
 }
 
 template<typename T>
-inline T *Tenzor<T>::raw() {
-    return m_d_data;
+void Tenzor<T>::deviceCopyTo(Tenzor<T> &elsewhere) const {
+    elsewhere.allocateOnDevice(m_numAllocatedElements);
+    cudaMemcpy(elsewhere.raw(),
+               m_d_data,
+               m_numAllocatedElements * sizeof(T),
+               cudaMemcpyDeviceToDevice);
 }
+
+template<>
+inline Tenzor<double> &Tenzor<double>::operator*=(double scalar) {
+    double alpha = scalar;
+    cublasDscal(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline Tenzor<float> &Tenzor<float>::operator*=(float scalar) {
+    float alpha = scalar;
+    cublasSscal(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline Tenzor<double> &Tenzor<double>::operator+=(const Tenzor<double> &rhs) {
+    const double alpha = 1.;
+    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline Tenzor<float> &Tenzor<float>::operator+=(const Tenzor<float> &rhs) {
+    const float alpha = 1.;
+    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline Tenzor<float> &Tenzor<float>::operator-=(const Tenzor<float> &rhs) {
+    const float alpha = -1.;
+    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1,
+                m_d_data, 1);
+    return *this;
+}
+
+template<>
+inline Tenzor<double> &Tenzor<double>::operator-=(const Tenzor<double> &rhs) {
+    const double alpha = -1.;
+    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1,
+                m_d_data, 1);
+    return *this;
+}
+
+template<typename T>
+T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
+    T hostDst;
+    size_t offset = i + m_numRows * (j + m_numCols * k);
+    cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost);
+    return hostDst;
+}
+
 
 #endif
