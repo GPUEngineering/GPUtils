@@ -493,11 +493,6 @@ protected:
     virtual ~SvdTest() {}
 };
 
-
-/* ---------------------------------------
- * Tensor: Least squares
- * --------------------------------------- */
-
 /* ---------------------------------------
  * Computation of singular values
  * and matrix rank
@@ -525,4 +520,71 @@ void singularValuesComputation(float epsilon) {
 TEST_F(SvdTest, singularValuesComputation) {
     singularValuesComputation<float>(1e-4);
     singularValuesComputation<double>(1e-7);
+}
+
+
+/* ================================================================================================
+ *  SVD TESTS
+ * ================================================================================================ */
+class CholeskyTest : public testing::Test {
+protected:
+    CholeskyTest() {}
+
+    virtual ~CholeskyTest() {}
+};
+
+
+/* ---------------------------------------
+ * Cholesky factorisation
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void choleskyFactorisation(T epsilon) {
+    std::vector<T> aData{10.0, 2.0, 3.0,
+                         2.0, 20.0, -1.0,
+                         3.0, -1.0, 30.0};
+    DTensor<T> A(aData, 3, 3, 1);
+    CholeskyFactoriser<T> chol(A);
+    chol.factorise();
+    EXPECT_NEAR(3.162277660168380, A(0, 0), epsilon);
+    EXPECT_NEAR(-0.361403161162101, A(2, 1), epsilon);
+    EXPECT_NEAR(5.382321781081287, A(2, 2), epsilon);
+}
+
+TEST_F(CholeskyTest, choleskyFactorisation) {
+    choleskyFactorisation<float>(1e-4);
+    choleskyFactorisation<double>(1e-12);
+}
+
+/* ---------------------------------------
+ * Cholesky factorisation: solve system
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void choleskyFactorisationSolution(T epsilon) {
+    std::vector<T> aData{10.0, 2.0, 3.0,
+                         2.0, 20.0, -1.0,
+                         3.0, -1.0, 30.0};
+    DTensor<T> A(aData, 3, 3, 1);
+    DTensor<T> L(A); // L = A
+    CholeskyFactoriser<T> chol(L);
+    chol.factorise();
+
+    std::vector<T> bData = {-1., -3., 5.};
+    DTensor<T> rhs(bData, 3, 1, 1);
+    DTensor<T> sol(rhs);
+    chol.solve(sol);
+
+    std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
+    std::vector<T> actual(3);
+    sol.download(actual);
+    for (size_t i=0; i<3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);
+
+}
+
+TEST_F(CholeskyTest, choleskyFactorisationSolution) {
+    choleskyFactorisationSolution<float>(1e-4);
+    choleskyFactorisationSolution<double>(1e-12);
 }

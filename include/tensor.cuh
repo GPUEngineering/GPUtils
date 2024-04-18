@@ -16,7 +16,6 @@
  * Check for errors when calling GPU functions
  */
 
-#ifndef gpuErrChk
 #define gpuErrChk(status) { gpuAssert((status), std::source_location::current()); }
 
 template<typename T>
@@ -45,7 +44,6 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
     }
 }
 
-#endif
 
 #ifndef THREADS_PER_BLOCK
 #define THREADS_PER_BLOCK 512
@@ -700,4 +698,105 @@ inline int Svd<float>::factorise() {
     return info;
 }
 
+
+
+/* ================================================================================================
+ *  CHOLESKY FACTORISATION
+ * ================================================================================================ */
+
+template<typename T> requires std::floating_point<T>
+class CholeskyFactoriser {
+
+private:
+    int m_workspaceSize = 0;
+    std::unique_ptr<DTensor<int>> m_d_info;
+    std::unique_ptr<DTensor<T>> m_d_workspace;
+    DTensor<T> *m_d_matrix; // do not destroy
+
+    void computeWorkspaceSize();
+
+public:
+
+    CholeskyFactoriser(DTensor<T> &A) {
+        if (A.numMats() > 1) throw std::invalid_argument("3D Tensors are not supported (for now); only matrices");
+        if (A.numRows() != A.numCols()) throw std::invalid_argument("Matrix A must be square");
+        m_d_matrix = &A;
+        computeWorkspaceSize();
+        m_d_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
+        m_d_info = std::make_unique<DTensor<int>>(1);
+    }
+
+    int factorise();
+
+    // TODO do we need to allow rhs to be a matrix?
+    int solve(DTensor<T> &rhs);
+
+};
+
+template<>
+void CholeskyFactoriser<double>::computeWorkspaceSize() {
+    size_t n = m_d_matrix->numRows();
+
+    gpuErrChk(cusolverDnDpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
+                                          CUBLAS_FILL_MODE_LOWER, n,
+                                          nullptr, n, &m_workspaceSize));
+}
+
+template<>
+void CholeskyFactoriser<float>::computeWorkspaceSize() {
+    size_t n = m_d_matrix->numRows();
+
+    gpuErrChk(cusolverDnSpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
+                                          CUBLAS_FILL_MODE_LOWER, n,
+                                          nullptr, n, &m_workspaceSize));
+}
+
+template<>
+inline int CholeskyFactoriser<double>::factorise() {
+    size_t n = m_d_matrix->numRows();
+    gpuErrChk(cusolverDnDpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
+                               m_d_matrix->raw(), n,
+                               m_d_workspace->raw(),
+                               m_workspaceSize,
+                               m_d_info->raw()));
+    return (*m_d_info)(0);
+}
+
+
+template<>
+inline int CholeskyFactoriser<float>::factorise() {
+    size_t n = m_d_matrix->numRows();
+    gpuErrChk(cusolverDnSpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
+                               m_d_matrix->raw(), n,
+                               m_d_workspace->raw(),
+                               m_workspaceSize,
+                               m_d_info->raw()));
+    return (*m_d_info)(0);
+}
+
+template<>
+inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
+    size_t n = m_d_matrix->numRows();
+    size_t k = rhs.numel();
+    gpuErrChk(cusolverDnDpotrs(Session::getInstance().cuSolverHandle(),
+                               CUBLAS_FILL_MODE_LOWER,
+                               n, 1,
+                               m_d_matrix->raw(), n,
+                               rhs.raw(), n,
+                               m_d_info->raw()));
+    return (*m_d_info)(0);
+}
+
+template<>
+inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
+    size_t n = m_d_matrix->numRows();
+    size_t k = rhs.numel();
+    gpuErrChk(cusolverDnSpotrs(Session::getInstance().cuSolverHandle(),
+                               CUBLAS_FILL_MODE_LOWER,
+                               n, 1,
+                               m_d_matrix->raw(), n,
+                               rhs.raw(), n,
+                               m_d_info->raw()));
+    return (*m_d_info)(0);
+}
 #endif

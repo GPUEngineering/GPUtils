@@ -7,17 +7,12 @@
 
 
 int main() {
-    std::vector<real_t> bData{1.0, 2.0, 3.0,
-                         6.0, 7.0, 8.0,
-                         6.0, 7.0, 8.0,
-                         6.0, 7.0, 8.0,
-                         6.0, 7.0, 8.0,
-                         6.0, 7.0, 8.0,
-                         6.0, 7.0, 8.0,
-                         6.0, 7.0, 8.0,};
-    DTensor<real_t> B(bData, 8, 3);
-    Svd<real_t> svd(B);
-    svd.factorise();
-    std::cout << svd.singularValues();
+    std::vector<real_t> aData{10.0, 2.0, 3.0,
+                         2.0, 20.0, -1.0,
+                         3.0, -1.0, 30.0};
+    DTensor<real_t> A(aData, 3, 3, 1);
+    CholeskyFactoriser<real_t> chol(A);
+    chol.factorise();
+    std::cout << A;
     return 0;
 }
