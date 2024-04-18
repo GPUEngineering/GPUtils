@@ -91,7 +91,7 @@ public:
 
 
 template<typename T>
-class Tenzor {
+class DTensor {
 
 private:
     /** Pointer to device data */
@@ -115,9 +115,9 @@ public:
     /**
     * Constructs a DeviceVector object
     */
-    Tenzor() = default;
+    DTensor() = default;
 
-    ~Tenzor() {
+    ~DTensor() {
         destroy();
     }
 
@@ -125,7 +125,7 @@ public:
      * Allocates (m, n, k)-tensor
      * @param n
      */
-    Tenzor(size_t m, size_t n = 1, size_t k = 1, bool zero = false) {
+    DTensor(size_t m, size_t n = 1, size_t k = 1, bool zero = false) {
         m_numRows = m;
         m_numCols = n;
         m_numMats = k;
@@ -133,7 +133,7 @@ public:
         allocateOnDevice(size, zero);
     }
 
-    Tenzor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1) {
+    DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1) {
         m_numRows = m;
         m_numCols = n;
         m_numMats = k;
@@ -145,7 +145,7 @@ public:
     /**
      * Copy constructor
      */
-    Tenzor(const Tenzor &other) {
+    DTensor(const DTensor &other) {
         m_numMats = other.m_numMats;
         m_numRows = other.m_numRows;
         m_numCols = other.m_numCols;
@@ -162,7 +162,7 @@ public:
      * @param from
      * @param to
      */
-    Tenzor(const Tenzor &other, size_t axis, size_t from, size_t to) {
+    DTensor(const DTensor &other, size_t axis, size_t from, size_t to) {
         if (from > to) throw std::invalid_argument("from > to");
         size_t offset = 0, len = to - from + 1;
         if (axis == 2) {
@@ -199,43 +199,43 @@ public:
 
     void download(std::vector<T> &vec) const;
 
-    void deviceCopyTo(Tenzor<T> &other) const;
+    void deviceCopyTo(DTensor<T> &other) const;
 
     T normF() const;
 
     T sumAbs() const;
 
-    void leastSquares(Tenzor &b);
+    void leastSquares(DTensor &b);
 
     /* ------------- OPERATORS ------------- */
 
-    Tenzor &operator=(const Tenzor &other);
+    DTensor &operator=(const DTensor &other);
 
     T operator()(size_t i, size_t j=0, size_t k=0);
 
-    Tenzor &operator*=(T scalar);
+    DTensor &operator*=(T scalar);
 
-    Tenzor &operator+=(const Tenzor &rhs);
+    DTensor &operator+=(const DTensor &rhs);
 
-    Tenzor &operator-=(const Tenzor &rhs);
+    DTensor &operator-=(const DTensor &rhs);
 
-    Tenzor<T *> pointersToMatrices();
+    DTensor<T *> pointersToMatrices();
 
-    friend Tenzor operator+(Tenzor &first, const Tenzor &second) {
-        Tenzor result(first);
+    friend DTensor operator+(DTensor &first, const DTensor &second) {
+        DTensor result(first);
         result += second;
         return result;
     }
 
-    friend Tenzor operator-(Tenzor &first, const Tenzor &second) {
-        Tenzor result(first);
+    friend DTensor operator-(DTensor &first, const DTensor &second) {
+        DTensor result(first);
         result -= second;
         return result;
     }
 
-    void addAB(Tenzor<T> &A, Tenzor<T> &B, T alpha = 1, T beta = 0);
+    void addAB(DTensor<T> &A, DTensor<T> &B, T alpha = 1, T beta = 0);
 
-    friend std::ostream &operator<<(std::ostream &out, const Tenzor<T> &data) {
+    friend std::ostream &operator<<(std::ostream &out, const DTensor<T> &data) {
         size_t nr = data.m_numRows, nc = data.m_numCols, nm = data.m_numMats;
         out << "Tensor [" << data.m_numRows << " x "
             << data.m_numCols << " x "
@@ -257,27 +257,27 @@ public:
 }; /* END OF TENZOR */
 
 template<typename T>
-inline size_t Tenzor<T>::numRows() const {
+inline size_t DTensor<T>::numRows() const {
     return m_numRows;
 }
 
 template<typename T>
-inline size_t Tenzor<T>::numCols() const {
+inline size_t DTensor<T>::numCols() const {
     return m_numCols;
 }
 
 template<typename T>
-inline size_t Tenzor<T>::numMats() const {
+inline size_t DTensor<T>::numMats() const {
     return m_numMats;
 }
 
 template<typename T>
-inline size_t Tenzor<T>::numel() const {
+inline size_t DTensor<T>::numel() const {
     return m_numRows * m_numCols * m_numMats;
 }
 
 template<>
-inline double Tenzor<double>::normF() const {
+inline double DTensor<double>::normF() const {
     double the_norm;
     gpuErrChk(cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
                           &the_norm));
@@ -285,7 +285,7 @@ inline double Tenzor<double>::normF() const {
 }
 
 template<>
-inline float Tenzor<float>::normF() const {
+inline float DTensor<float>::normF() const {
     float the_norm;
     gpuErrChk(cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
                           &the_norm));
@@ -294,7 +294,7 @@ inline float Tenzor<float>::normF() const {
 
 
 template<>
-inline float Tenzor<float>::sumAbs() const {
+inline float DTensor<float>::sumAbs() const {
     float sumAbsAllElements;
     gpuErrChk(cublasSasum(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
                           &sumAbsAllElements));
@@ -302,7 +302,7 @@ inline float Tenzor<float>::sumAbs() const {
 }
 
 template<>
-inline double Tenzor<double>::sumAbs() const {
+inline double DTensor<double>::sumAbs() const {
     double sumAbsAllElements;
     gpuErrChk(cublasDasum(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
                           &sumAbsAllElements));
@@ -310,7 +310,7 @@ inline double Tenzor<double>::sumAbs() const {
 }
 
 template<typename T>
-inline bool Tenzor<T>::allocateOnDevice(size_t size, bool zero) {
+inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     if (size <= 0) return false;
     destroy();
     m_doDestroy = true;
@@ -322,7 +322,7 @@ inline bool Tenzor<T>::allocateOnDevice(size_t size, bool zero) {
 }
 
 template<typename T>
-inline bool Tenzor<T>::upload(const std::vector<T> &vec) {
+inline bool DTensor<T>::upload(const std::vector<T> &vec) {
     size_t size = vec.size();
     // make sure vec is of right size
     if (size != m_numRows * m_numCols * m_numMats) throw std::invalid_argument("vec has wrong size");
@@ -334,7 +334,7 @@ inline bool Tenzor<T>::upload(const std::vector<T> &vec) {
 }
 
 template<typename T>
-inline void Tenzor<T>::download(std::vector<T> &vec) const {
+inline void DTensor<T>::download(std::vector<T> &vec) const {
     vec.resize(m_numRows * m_numCols * m_numMats);
     gpuErrChk(cudaMemcpy(vec.data(),
                          m_d_data,
@@ -343,12 +343,12 @@ inline void Tenzor<T>::download(std::vector<T> &vec) const {
 }
 
 template<typename T>
-inline T *Tenzor<T>::raw() const {
+inline T *DTensor<T>::raw() const {
     return m_d_data;
 }
 
 template<typename T>
-inline void Tenzor<T>::deviceCopyTo(Tenzor<T> &elsewhere) const {
+inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
     if (elsewhere.numel() < numel()) {
         throw std::invalid_argument("tensor does not fit into destination");
     }
@@ -359,7 +359,7 @@ inline void Tenzor<T>::deviceCopyTo(Tenzor<T> &elsewhere) const {
 }
 
 template<>
-inline Tenzor<double> &Tenzor<double>::operator*=(double scalar) {
+inline DTensor<double> &DTensor<double>::operator*=(double scalar) {
     double alpha = scalar;
     gpuErrChk(
             cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
@@ -367,7 +367,7 @@ inline Tenzor<double> &Tenzor<double>::operator*=(double scalar) {
 }
 
 template<typename T>
-Tenzor<T> &Tenzor<T>::operator=(const Tenzor<T> &other) {
+DTensor<T> &DTensor<T>::operator=(const DTensor<T> &other) {
     m_numMats = other.m_numMats;
     m_numRows = other.m_numRows;
     m_numCols = other.m_numCols;
@@ -377,7 +377,7 @@ Tenzor<T> &Tenzor<T>::operator=(const Tenzor<T> &other) {
 }
 
 template<>
-inline Tenzor<float> &Tenzor<float>::operator*=(float scalar) {
+inline DTensor<float> &DTensor<float>::operator*=(float scalar) {
     float alpha = scalar;
     gpuErrChk(
             cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
@@ -385,7 +385,7 @@ inline Tenzor<float> &Tenzor<float>::operator*=(float scalar) {
 }
 
 template<>
-inline Tenzor<double> &Tenzor<double>::operator+=(const Tenzor<double> &rhs) {
+inline DTensor<double> &DTensor<double>::operator+=(const DTensor<double> &rhs) {
     const double alpha = 1.;
     gpuErrChk(
             cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
@@ -394,7 +394,7 @@ inline Tenzor<double> &Tenzor<double>::operator+=(const Tenzor<double> &rhs) {
 }
 
 template<>
-inline Tenzor<float> &Tenzor<float>::operator+=(const Tenzor<float> &rhs) {
+inline DTensor<float> &DTensor<float>::operator+=(const DTensor<float> &rhs) {
     const float alpha = 1.;
     gpuErrChk(
             cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
@@ -403,7 +403,7 @@ inline Tenzor<float> &Tenzor<float>::operator+=(const Tenzor<float> &rhs) {
 }
 
 template<>
-inline Tenzor<float> &Tenzor<float>::operator-=(const Tenzor<float> &rhs) {
+inline DTensor<float> &DTensor<float>::operator-=(const DTensor<float> &rhs) {
     const float alpha = -1.;
     cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1,
                 m_d_data, 1);
@@ -411,7 +411,7 @@ inline Tenzor<float> &Tenzor<float>::operator-=(const Tenzor<float> &rhs) {
 }
 
 template<>
-inline Tenzor<double> &Tenzor<double>::operator-=(const Tenzor<double> &rhs) {
+inline DTensor<double> &DTensor<double>::operator-=(const DTensor<double> &rhs) {
     const double alpha = -1.;
     gpuErrChk(
             cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
@@ -420,7 +420,7 @@ inline Tenzor<double> &Tenzor<double>::operator-=(const Tenzor<double> &rhs) {
 }
 
 template<typename T>
-inline T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
+inline T DTensor<T>::operator()(size_t i, size_t j, size_t k) {
     T hostDst;
     size_t offset = i + m_numRows * (j + m_numCols * k);
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
@@ -428,26 +428,26 @@ inline T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
 }
 
 template<typename T>
-inline Tenzor<T *> Tenzor<T>::pointersToMatrices() {
+inline DTensor<T *> DTensor<T>::pointersToMatrices() {
     std::vector<T *> h_pointers(m_numMats);
     size_t numelMat = m_numRows * m_numCols;
     h_pointers[0] = m_d_data;
     for (size_t i = 1; i < m_numMats; i++) {
         h_pointers[i] = m_d_data + i * numelMat;
     }
-    Tenzor<T *> t(h_pointers, m_numMats, 1, 1);
+    DTensor<T *> t(h_pointers, m_numMats, 1, 1);
     return t;
 }
 
 template<>
-inline void Tenzor<double>::addAB(Tenzor<double> &A, Tenzor<double> &B, double alpha, double beta) {
+inline void DTensor<double>::addAB(DTensor<double> &A, DTensor<double> &B, double alpha, double beta) {
     size_t nMat = A.numMats();
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    Tenzor<double *> ptrA = A.pointersToMatrices();
-    Tenzor<double *> ptrB = B.pointersToMatrices();
-    Tenzor<double *> ptr = pointersToMatrices();
+    DTensor<double *> ptrA = A.pointersToMatrices();
+    DTensor<double *> ptrB = B.pointersToMatrices();
+    DTensor<double *> ptr = pointersToMatrices();
     double _alpha = alpha, _beta = beta;
     gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N, CUBLAS_OP_N,
@@ -460,14 +460,14 @@ inline void Tenzor<double>::addAB(Tenzor<double> &A, Tenzor<double> &B, double a
 }
 
 template<>
-inline void Tenzor<float>::addAB(Tenzor<float> &A, Tenzor<float> &B, float alpha, float beta) {
+inline void DTensor<float>::addAB(DTensor<float> &A, DTensor<float> &B, float alpha, float beta) {
     size_t nMat = A.numMats();
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    Tenzor<float *> ptrA = A.pointersToMatrices();
-    Tenzor<float *> ptrB = B.pointersToMatrices();
-    Tenzor<float *> ptr = pointersToMatrices();
+    DTensor<float *> ptrA = A.pointersToMatrices();
+    DTensor<float *> ptrB = B.pointersToMatrices();
+    DTensor<float *> ptr = pointersToMatrices();
     float _alpha = alpha, _beta = beta;
     gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N, CUBLAS_OP_N,
@@ -480,7 +480,7 @@ inline void Tenzor<float>::addAB(Tenzor<float> &A, Tenzor<float> &B, float alpha
 }
 
 template<>
-inline void Tenzor<double>::leastSquares(Tenzor &B) {
+inline void DTensor<double>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows || nColsB != 1 || B.numMats() != batchSize)
@@ -488,9 +488,9 @@ inline void Tenzor<double>::leastSquares(Tenzor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("Least squares supports tall matrices only");
     int info = 0;
-    Tenzor<int> infoArray(batchSize);
-    Tenzor<double *> As = pointersToMatrices();
-    Tenzor<double *> Bs = B.pointersToMatrices();
+    DTensor<int> infoArray(batchSize);
+    DTensor<double *> As = pointersToMatrices();
+    DTensor<double *> Bs = B.pointersToMatrices();
     gpuErrChk(cublasDgelsBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N,
                                  m_numRows,
@@ -506,7 +506,7 @@ inline void Tenzor<double>::leastSquares(Tenzor &B) {
 }
 
 template<>
-inline void Tenzor<float>::leastSquares(Tenzor &B) {
+inline void DTensor<float>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows || nColsB != 1 || B.numMats() != batchSize)
@@ -514,9 +514,9 @@ inline void Tenzor<float>::leastSquares(Tenzor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("Least squares supports tall matrices only");
     int info = 0;
-    Tenzor<int> infoArray(batchSize);
-    Tenzor<float *> As = pointersToMatrices();
-    Tenzor<float *> Bs = B.pointersToMatrices();
+    DTensor<int> infoArray(batchSize);
+    DTensor<float *> As = pointersToMatrices();
+    DTensor<float *> Bs = B.pointersToMatrices();
     gpuErrChk(cublasSgelsBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N,
                                  m_numRows,
@@ -560,13 +560,13 @@ class Svd {
 private:
 
     int m_lwork = -1; /**< size of workspace needed for SVD */
-    Tenzor<T> *m_tensor = nullptr;  /**< pointer to original matrix to be factorised */
-    std::unique_ptr<Tenzor<T>> m_Vtr;  /**< matrix V' or right singular vectors */
-    std::unique_ptr<Tenzor<T>> m_S;
-    std::unique_ptr<Tenzor<T>> m_U;  /**< matrix U or left singular vectors*/
-    std::unique_ptr<Tenzor<T>> m_workspace;  /**< workspace vector */
-    std::unique_ptr<Tenzor<int>> m_info;  /**< status code of computation */
-    std::unique_ptr<Tenzor<unsigned int>> m_rank;
+    DTensor<T> *m_tensor = nullptr;  /**< pointer to original matrix to be factorised */
+    std::unique_ptr<DTensor<T>> m_Vtr;  /**< matrix V' or right singular vectors */
+    std::unique_ptr<DTensor<T>> m_S;
+    std::unique_ptr<DTensor<T>> m_U;  /**< matrix U or left singular vectors*/
+    std::unique_ptr<DTensor<T>> m_workspace;  /**< workspace vector */
+    std::unique_ptr<DTensor<int>> m_info;  /**< status code of computation */
+    std::unique_ptr<DTensor<unsigned int>> m_rank;
     bool m_computeU = false;  /**< whether to compute U */
     bool m_destroyMatrix = true; /**< whether to sacrifice original matrix */
 
@@ -574,7 +574,7 @@ private:
      * Checks whether matrix is tall; throws invalid_argument if not
      * @param mat given matrix
      */
-    void checkMatrix(Tenzor<T> &tenz) {
+    void checkMatrix(DTensor<T> &tenz) {
         if (tenz.numMats() > 1) {
             throw std::invalid_argument("Only (m, n, 1) tensors are supported for now");
         }
@@ -592,23 +592,23 @@ public:
      * @param mat matrix to be factorised
      * @param computeU whether to compute U (default is false)
      */
-    Svd(Tenzor<T> &mat,
+    Svd(DTensor<T> &mat,
         bool computeU = false,
         bool destroyMatrix = true) {
         checkMatrix(mat);
         m_destroyMatrix = destroyMatrix;
-        m_tensor = (destroyMatrix) ? &mat : new Tenzor<T>(mat);
+        m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
         m_computeU = computeU;
         size_t m = mat.numRows();
         size_t n = mat.numCols();
         size_t k = std::min(m, n);
         computeWorkspaceSize(m, n);
-        m_workspace = std::make_unique<Tenzor<T>>(m_lwork, 1, 1);
-        m_Vtr = std::make_unique<Tenzor<T>>(n, n, 1);
-        m_S = std::make_unique<Tenzor<T>>(k, 1, 1);
-        m_info = std::make_unique<Tenzor<int>>(1, 1, 1);
-        m_rank = std::make_unique<Tenzor<unsigned int>>(1, 1, 1);
-        if (computeU) m_U = std::make_unique<Tenzor<T>>(m, m, 1);
+        m_workspace = std::make_unique<DTensor<T>>(m_lwork, 1, 1);
+        m_Vtr = std::make_unique<DTensor<T>>(n, n, 1);
+        m_S = std::make_unique<DTensor<T>>(k, 1, 1);
+        m_info = std::make_unique<DTensor<int>>(1, 1, 1);
+        m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, 1);
+        if (computeU) m_U = std::make_unique<DTensor<T>>(m, m, 1);
     }
 
     /**
@@ -619,15 +619,15 @@ public:
      */
     int factorise();
 
-    Tenzor<T> singularValues() const {
+    DTensor<T> singularValues() const {
         return *m_S;
     }
 
-    Tenzor<T> rightSingularVectors() const {
+    DTensor<T> rightSingularVectors() const {
         return *m_Vtr;
     }
 
-    std::optional<Tenzor<T>> leftSingularVectors() const {
+    std::optional<DTensor<T>> leftSingularVectors() const {
         if (!m_computeU) return std::nullopt;
         return *m_U;
     }

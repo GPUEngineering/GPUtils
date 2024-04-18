@@ -25,7 +25,7 @@ protected:
 
 template<typename T>
 void tensorConstructionZero() {
-    Tenzor<T> zero(2, 3, 4, true);
+    DTensor<T> zero(2, 3, 4, true);
     EXPECT_EQ(2, zero.numRows());
     EXPECT_EQ(3, zero.numCols());
     EXPECT_EQ(4, zero.numMats());
@@ -49,7 +49,7 @@ TEST_F(TensorTest, tensorConstructionZero) {
 template<typename T>
 void tensorConstructionFromVector() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenz(data, 2, 3, 4);
     EXPECT_EQ(2, tenz.numRows());
     EXPECT_EQ(3, tenz.numCols());
     EXPECT_EQ(4, tenz.numMats());
@@ -69,8 +69,8 @@ TEST_F(TensorTest, tensorConstructionFromVector) {
 template<typename T>
 void tensorCopyConstructor() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
-    Tenzor<T> tenzCp(tenz);
+    DTensor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenzCp(tenz);
     EXPECT_EQ(2, tenzCp.numRows());
     EXPECT_EQ(3, tenzCp.numCols());
     EXPECT_EQ(4, tenzCp.numMats());
@@ -95,12 +95,12 @@ TEST_F(TensorTest, tensorCopyConstructor) {
 template<typename T>
 void tensorSlicingConstructorAxis2() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
-    Tenzor<T> tenzSlice(tenz, 2, 0, 1); // matrices #0 and #1
-    EXPECT_EQ(2, tenzSlice.numRows());
-    EXPECT_EQ(3, tenzSlice.numCols());
-    EXPECT_EQ(2, tenzSlice.numMats());
-    EXPECT_EQ(tenz.raw(), tenzSlice.raw()); // it is indeed a slice
+    DTensor<T> tens(data, 2, 3, 4);
+    DTensor<T> tensSlice(tens, 2, 0, 1); // matrices #0 and #1
+    EXPECT_EQ(2, tensSlice.numRows());
+    EXPECT_EQ(3, tensSlice.numCols());
+    EXPECT_EQ(2, tensSlice.numMats());
+    EXPECT_EQ(tens.raw(), tensSlice.raw()); // it is indeed a slice
 }
 
 TEST_F(TensorTest, tensorSlicingConstructorAxis2) {
@@ -117,8 +117,8 @@ TEST_F(TensorTest, tensorSlicingConstructorAxis2) {
 template<typename T>
 void tensorSlicingConstructorAxis1() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
-    Tenzor<T> tenzSlice(tenz, 1, 1, 2); // matrices #0 and #1
+    DTensor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenzSlice(tenz, 1, 1, 2); // columns from 1 to 2
     EXPECT_EQ(2, tenzSlice.numRows());
     EXPECT_EQ(2, tenzSlice.numCols());
     EXPECT_EQ(1, tenzSlice.numMats());
@@ -142,8 +142,8 @@ TEST_F(TensorTest, tensorSlicingConstructorAxis1) {
 template<typename T>
 void tensorSlicingConstructorAxis0() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
-    Tenzor<T> tenzSlice(tenz, 0, 2, 3); // matrices #0 and #1
+    DTensor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenzSlice(tenz, 0, 2, 3); // elements 2..3
     EXPECT_EQ(2, tenzSlice.numRows());
     EXPECT_EQ(1, tenzSlice.numCols());
     EXPECT_EQ(1, tenzSlice.numMats());
@@ -166,7 +166,7 @@ TEST_F(TensorTest, tensorSlicingConstructorAxis0) {
 template<typename T>
 void tensorUpload() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(2, 3, 4);
+    DTensor<T> tenz(2, 3, 4);
     tenz.upload(data);
     EXPECT_EQ(2, tenz.numRows());
     EXPECT_EQ(3, tenz.numCols());
@@ -189,9 +189,9 @@ TEST_F(TensorTest, tensorUpload) {
 template<typename T>
 void tensorDeviceCopyTo() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
-    Tenzor<T> other(2, 3, 5, true);
-    Tenzor<T> z(other, 2, 1, 4);
+    DTensor<T> tenz(data, 2, 3, 4);
+    DTensor<T> other(2, 3, 5, true);
+    DTensor<T> z(other, 2, 1, 4);
     tenz.deviceCopyTo(z);
     std::vector<T> expected = {0, 0, 0, 0, 0, 0,
                                1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 10, 5, 4, 3, 2, 1, -1, 4, 3, 4, 3, 4, 8};
@@ -213,7 +213,7 @@ TEST_F(TensorTest, tensorDeviceCopyTo) {
 template<typename T>
 void tensorNormF(T epsilon) {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenz(data, 2, 3, 4);
     EXPECT_NEAR(26.153393661244042, tenz.normF(), epsilon); // from MATLAB
 }
 
@@ -230,7 +230,7 @@ TEST_F(TensorTest, tensorNormF) {
 template<typename T>
 void tensorSumAbs() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenz(data, 2, 3, 4);
     EXPECT_NEAR(112, tenz.sumAbs(), PRECISION); // from MATLAB
 }
 
@@ -247,7 +247,7 @@ TEST_F(TensorTest, tensorNormFtensorSumAbs) {
 template<typename T>
 void tensorBracketOperator() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenz(data, 2, 3, 4);
     EXPECT_EQ(1, tenz(0, 0, 0));
     EXPECT_EQ(3, tenz(0, 1, 2));
     EXPECT_EQ(8, tenz(1, 2, 3));
@@ -266,8 +266,8 @@ TEST_F(TensorTest, tensorBracketOperator) {
 template<typename T>
 void tensorAssignmentOperator() {
     std::vector<T> data = TENSOR_DATA_234A;
-    Tenzor<T> tenz(data, 2, 3, 4);
-    Tenzor<T> other;
+    DTensor<T> tenz(data, 2, 3, 4);
+    DTensor<T> other;
     other = tenz;
     EXPECT_EQ(tenz.raw(), other.raw());
     EXPECT_EQ(2, other.numRows());
@@ -290,7 +290,7 @@ void tensorTimesEqualsScalar() {
     std::vector<T> data = TENSOR_DATA_234A;
     std::vector<T> dataTimes3 = {3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
                                  24};
-    Tenzor<T> tenz(data, 2, 3, 4);
+    DTensor<T> tenz(data, 2, 3, 4);
     tenz *= 3.0;
     std::vector<T> actual;
     tenz.download(actual);
@@ -310,8 +310,8 @@ template<typename T>
 void tensorPlusEqualsTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
-    Tenzor<T> A(dataA, 2, 3, 4);
-    Tenzor<T> B(dataB, 2, 3, 4);
+    DTensor<T> A(dataA, 2, 3, 4);
+    DTensor<T> B(dataB, 2, 3, 4);
     A += B;
     std::vector<T> expected = TENSOR_DATA_234APB;
     std::vector<T> actual;
@@ -332,8 +332,8 @@ template<typename T>
 void tensorMinusEqualsTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
-    Tenzor<T> A(dataA, 2, 3, 4);
-    Tenzor<T> B(dataB, 2, 3, 4);
+    DTensor<T> A(dataA, 2, 3, 4);
+    DTensor<T> B(dataB, 2, 3, 4);
     A -= B;
     std::vector<T> expected = TENSOR_DATA_234AMB;
     std::vector<T> actual;
@@ -354,9 +354,9 @@ template<typename T>
 void tensorPlusTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
-    Tenzor<T> A(dataA, 2, 3, 4);
-    Tenzor<T> B(dataB, 2, 3, 4);
-    Tenzor<T> C = A + B;
+    DTensor<T> A(dataA, 2, 3, 4);
+    DTensor<T> B(dataB, 2, 3, 4);
+    DTensor<T> C = A + B;
     std::vector<T> expected = TENSOR_DATA_234APB;
     std::vector<T> actual;
     C.download(actual);
@@ -376,9 +376,9 @@ template<typename T>
 void tensorMinusTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
-    Tenzor<T> A(dataA, 2, 3, 4);
-    Tenzor<T> B(dataB, 2, 3, 4);
-    Tenzor<T> C = A - B;
+    DTensor<T> A(dataA, 2, 3, 4);
+    DTensor<T> B(dataB, 2, 3, 4);
+    DTensor<T> C = A - B;
     std::vector<T> expected = TENSOR_DATA_234AMB;
     std::vector<T> actual;
     C.download(actual);
@@ -397,8 +397,8 @@ TEST_F(TensorTest, tensorMinusTensor) {
 template<typename T>
 void tensorPointersToMatrices() {
     std::vector<T> dataA = TENSOR_DATA_234A;
-    Tenzor<T> A(dataA, 2, 3, 4);
-    Tenzor<T *> pointers = A.pointersToMatrices();
+    DTensor<T> A(dataA, 2, 3, 4);
+    DTensor<T *> pointers = A.pointersToMatrices();
     EXPECT_EQ(4, pointers.numRows());
     EXPECT_EQ(1, pointers.numCols());
     EXPECT_EQ(1, pointers.numMats());
@@ -426,9 +426,9 @@ void tensorAddAB() {
     std::vector<T> bData = {6, 5, 4, 3, 2, 1,
                             7, 6, 5, 4, 3, 2,
                             1, 2, 1, 5, -6, 8};
-    Tenzor<T> A(aData, 2, 3, 3);
-    Tenzor<T> B(bData, 3, 2, 3);
-    Tenzor<T> C(2, 2, 3, true);
+    DTensor<T> A(aData, 2, 3, 3);
+    DTensor<T> B(bData, 3, 2, 3);
+    DTensor<T> C(2, 2, 3, true);
     C.addAB(A, B);
     std::vector<T> expected = {41, 56, 14, 20, 158, 176, 77, 86, 60, 64, 111, 118};
     std::vector<T> actual;
@@ -465,12 +465,12 @@ void tensorLeastSquares1(T epsilon) {
                             6, 8,
                             -9, 20};
     std::vector<T> bData = {1, 1, -1, 2, 30, -80};
-    Tenzor<T> A0(aData, 2, 2, 3);
-    Tenzor<T> A(A0);
-    Tenzor<T> B(bData, 2, 1, 3);
-    Tenzor<T> sol(B);
+    DTensor<T> A0(aData, 2, 2, 3);
+    DTensor<T> A(A0);
+    DTensor<T> B(bData, 2, 1, 3);
+    DTensor<T> sol(B);
     A0.leastSquares(sol);
-    Tenzor<T> C(2, 1, 3);
+    DTensor<T> C(2, 1, 3);
     C.addAB(A, sol);
     C -= B;
     T nrmErr = C.normF();
@@ -509,7 +509,7 @@ void singularValuesComputation(float epsilon) {
     std::vector<T> bData{1, 6, 6, 6, 6, 6, 6, 6,
                          2, 7, 7, 7, 7, 7, 7, 7,
                          3, 8, 8, 8, 8, 8, 8, 8,};
-    Tenzor<T> B(bData, 8, 3);
+    DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
     EXPECT_EQ(0, svd.factorise());
     auto S = svd.singularValues();

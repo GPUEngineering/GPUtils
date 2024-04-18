@@ -15,7 +15,7 @@ int main() {
                          6.0, 7.0, 8.0,
                          6.0, 7.0, 8.0,
                          6.0, 7.0, 8.0,};
-    Tenzor<real_t> B(bData, 8, 3);
+    DTensor<real_t> B(bData, 8, 3);
     Svd<real_t> svd(B);
     svd.factorise();
     std::cout << svd.singularValues();
