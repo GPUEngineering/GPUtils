@@ -107,6 +107,30 @@ public:
         cudaMemcpy(m_d_data, other.raw(), m_numAllocatedElements * sizeof(T), cudaMemcpyDeviceToDevice);
     }
 
+    Tenzor(const Tenzor &other, size_t axis, size_t from, size_t to) {
+        if (from > to) throw std::invalid_argument("from > to");
+        size_t offset = 0;
+        if (axis == 2) {
+            offset = other.m_numRows * other.m_numCols * from;
+            m_numRows = other.m_numRows;
+            m_numCols = other.m_numCols;
+            m_numMats = to - from + 1;
+        } else if (axis == 1) {
+            offset = other.m_numCols * from;
+            m_numRows = other.m_numRows;
+            m_numCols = to - from + 1;
+            m_numMats = 1;
+        } else if (axis == 0) {
+            offset = from;
+            m_numRows = to - from + 1;
+            m_numCols = 1;
+            m_numMats = 1;
+        }
+        m_d_data = other.m_d_data + offset;
+        m_numAllocatedElements = m_numRows * m_numCols * m_numMats;
+        m_doDestroy = false;
+    }
+
     T *raw() const;
 
     size_t numRows() const;
@@ -124,7 +148,6 @@ public:
     void deviceCopyTo(Tenzor<T> &other) const;
 
     T normF() const;
-
 
     /* OPERATORS */
     Tenzor &operator=(const Tenzor &other) {

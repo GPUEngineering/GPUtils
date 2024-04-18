@@ -13,32 +13,11 @@ int main() {
     Tenzor<real_t> tenz(2, 3, 2);
     tenz.upload(tData);
 
-//    std::cout << tenz << std::endl;
-    std::vector<real_t> v;
-    tenz.download(v);
-//    std::cout << v[1] << std::endl;
 
-    Tenzor<real_t> other(2, 3, 2);
-    tenz.deviceCopyTo(other);
-//    std::cout << other << std::endl;
+    Tenzor<real_t> r(tenz, 1, 0, 1); // r = [:, :, 0:0]
+    std::cout << r;
 
-    other *= 10.;
-//    std::cout << other << std::endl;
-
-    tenz += other;
-//    std::cout << tenz << std::endl;
-
-    other *= 0.24;
-    tenz -= other;
-
-
-    Tenzor<real_t> y;
-    y = tenz;
-    std::cout << y;
-
-    Tenzor<real_t> z(y);
-    std::cout << z;
-
-    std::cout << z.normF();
+    Tenzor<real_t> f(tenz, 0, 0, 3); // r = [:, :, 0:0]
+    std::cout << f;
     return 0;
 }
