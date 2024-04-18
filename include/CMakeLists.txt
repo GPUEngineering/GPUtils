@@ -2,7 +2,6 @@
 add_library(device INTERFACE)
 target_sources(device
         PRIVATE
-        gputils.cuh
         tensor.cuh
 )
 target_link_libraries(device

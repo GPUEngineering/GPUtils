@@ -203,13 +203,15 @@ public:
 
     T normF() const;
 
+    T sumAbs() const;
+
     void leastSquares(Tenzor &b);
 
     /* ------------- OPERATORS ------------- */
 
     Tenzor &operator=(const Tenzor &other);
 
-    T operator()(size_t i, size_t j, size_t k);
+    T operator()(size_t i, size_t j=0, size_t k=0);
 
     Tenzor &operator*=(T scalar);
 
@@ -288,6 +290,23 @@ inline float Tenzor<float>::normF() const {
     gpuErrChk(cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
                           &the_norm));
     return the_norm;
+}
+
+
+template<>
+inline float Tenzor<float>::sumAbs() const {
+    float sumAbsAllElements;
+    gpuErrChk(cublasSasum(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                          &sumAbsAllElements));
+    return sumAbsAllElements;
+}
+
+template<>
+inline double Tenzor<double>::sumAbs() const {
+    double sumAbsAllElements;
+    gpuErrChk(cublasDasum(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                          &sumAbsAllElements));
+    return sumAbsAllElements;
 }
 
 template<typename T>
@@ -513,6 +532,28 @@ inline void Tenzor<float>::leastSquares(Tenzor &B) {
 }
 
 
+/* ================================================================================================
+ *  SINGULAR VALUE DECOMPOSITION (SVD)
+ * ================================================================================================ */
+
+/**
+ * Kernel that counts the number of elements of a vector that are higher than epsilon
+ * @tparam TElement either float or double
+ * @param d_array device array
+ * @param n length of device array
+ * @param d_count on exit, count of elements (int on device)
+ * @param epsilon threshold
+ */
+template<typename T>
+requires std::floating_point<T>
+__global__ void k_countNonzeroSingularValues(T *d_array, size_t n, unsigned int *d_count, T epsilon) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < n && d_array[idx] > epsilon) {
+        atomicAdd(d_count, 1);
+    }
+}
+
+
 template<typename T> requires std::floating_point<T>
 class Svd {
 
@@ -596,20 +637,27 @@ public:
         if (!m_destroyMatrix && m_tensor) delete m_tensor;
     }
 
-    unsigned int rank(T epsilon = 1e-6);
+    unsigned int rank(T epsilon = 1e-6) {
+        int k = m_S->numel();
+        k_countNonzeroSingularValues<T><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->raw(), k,
+                m_rank->raw(),
+                epsilon);
+        return (*m_rank)(0);
+    }
 
 };
 
 
 template<>
 inline void Svd<float>::computeWorkspaceSize(size_t m, size_t n) {
-    gpuErrChk(cusolverDnSgesvd_bufferSize(Context::getInstance().cuSolverHandle(), m, n, &m_lwork));
+    gpuErrChk(cusolverDnSgesvd_bufferSize(Session::getInstance().cuSolverHandle(), m, n, &m_lwork));
 }
 
 template<>
 inline void Svd<double>::computeWorkspaceSize(size_t m, size_t n) {
-    gpuErrChk(cusolverDnDgesvd_bufferSize(Context::getInstance().cuSolverHandle(), m, n, &m_lwork));
+    gpuErrChk(cusolverDnDgesvd_bufferSize(Session::getInstance().cuSolverHandle(), m, n, &m_lwork));
 }
+
 
 
 template<>
@@ -617,7 +665,27 @@ inline int Svd<double>::factorise() {
     size_t m = m_tensor->numRows();
     size_t n = m_tensor->numCols();
     gpuErrChk(
-            cusolverDnDgesvd(Context::getInstance().cuSolverHandle(),
+            cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
+                             (m_computeU) ? 'A' : 'N', 'A',
+                             m, n,
+                             m_tensor->raw(), m,
+                             m_S->raw(),
+                             (m_computeU) ? m_U->raw() : nullptr, m,
+                             m_Vtr->raw(), n,
+                             m_workspace->raw(),
+                             m_lwork,
+                             nullptr,  // rwork (used only if SVD fails)
+                             m_info->raw()));
+    int info = (*m_info)(0, 0, 0);
+    return info;
+}
+
+template<>
+inline int Svd<float>::factorise() {
+    size_t m = m_tensor->numRows();
+    size_t n = m_tensor->numCols();
+    gpuErrChk(
+            cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
                              (m_computeU) ? 'A' : 'N', 'A',
                              m, n,
                              m_tensor->raw(), m,

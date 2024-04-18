@@ -1,7 +1,6 @@
 #include <vector>
 #include <iostream>
 #include <cublas_v2.h>
-#include "include/gputils.cuh"
 #include "include/tensor.cuh"
 
 #define real_t double
@@ -16,7 +15,7 @@ int main() {
                          6.0, 7.0, 8.0,
                          6.0, 7.0, 8.0,
                          6.0, 7.0, 8.0,};
-    Tenzor<real_t> B(bData, 8, 3, 1);
+    Tenzor<real_t> B(bData, 8, 3);
     Svd<real_t> svd(B);
     svd.factorise();
     std::cout << svd.singularValues();

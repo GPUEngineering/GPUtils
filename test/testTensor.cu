@@ -4,6 +4,9 @@
 #define PRECISION 1e-6
 
 
+/* ================================================================================================
+ *  TENSOR<T> TESTS
+ * ================================================================================================ */
 class TensorTest : public testing::Test {
 protected:
     TensorTest() {}
@@ -220,6 +223,23 @@ TEST_F(TensorTest, tensorNormF) {
 }
 
 /* ---------------------------------------
+ * Tensor: sum of absolute value of
+ * all elements
+ * --------------------------------------- */
+
+template<typename T>
+void tensorSumAbs() {
+    std::vector<T> data = TENSOR_DATA_234A;
+    Tenzor<T> tenz(data, 2, 3, 4);
+    EXPECT_NEAR(112, tenz.sumAbs(), PRECISION); // from MATLAB
+}
+
+TEST_F(TensorTest, tensorNormFtensorSumAbs) {
+    tensorSumAbs<float>();
+    tensorSumAbs<double>();
+}
+
+/* ---------------------------------------
  * Tensor operator() to access element
  * e.g., t(2, 3, 4)
  * --------------------------------------- */
@@ -421,6 +441,20 @@ TEST_F(TensorTest, tensorAddAB) {
     tensorAddAB<float>();
 }
 
+/* ================================================================================================
+ *  LEAST SQUARES TESTS
+ * ================================================================================================ */
+class LeastSquaresTest : public testing::Test {
+protected:
+    LeastSquaresTest() {}
+
+    virtual ~LeastSquaresTest() {}
+};
+
+/* ---------------------------------------
+ * Tensor: Least squares
+ * --------------------------------------- */
+
 template<typename T>
 void tensorLeastSquares1(T epsilon) {
     // TODO test with tall matrices too
@@ -443,7 +477,52 @@ void tensorLeastSquares1(T epsilon) {
     EXPECT_LT(nrmErr, epsilon);
 }
 
-TEST_F(TensorTest, tensorLS1) {
+TEST_F(LeastSquaresTest, tensorLS1) {
     tensorLeastSquares1<double>(1e-12);
     tensorLeastSquares1<float>(1e-4);
+}
+
+
+/* ================================================================================================
+ *  SVD TESTS
+ * ================================================================================================ */
+class SvdTest : public testing::Test {
+protected:
+    SvdTest() {}
+
+    virtual ~SvdTest() {}
+};
+
+
+/* ---------------------------------------
+ * Tensor: Least squares
+ * --------------------------------------- */
+
+/* ---------------------------------------
+ * Computation of singular values
+ * and matrix rank
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void singularValuesComputation(float epsilon) {
+    std::vector<T> bData{1, 6, 6, 6, 6, 6, 6, 6,
+                         2, 7, 7, 7, 7, 7, 7, 7,
+                         3, 8, 8, 8, 8, 8, 8, 8,};
+    Tenzor<T> B(bData, 8, 3);
+    Svd<T> svd(B, true, false);
+    EXPECT_EQ(0, svd.factorise());
+    auto S = svd.singularValues();
+    unsigned int r = svd.rank();
+    EXPECT_EQ(2, r);
+    EXPECT_NEAR(32.496241123753592, S(0), epsilon); // value from MATLAB
+    EXPECT_NEAR(0.997152358903242, S(1), epsilon); // value from MATLAB
+
+    auto U = svd.leftSingularVectors();
+    EXPECT_TRUE(U.has_value());
+}
+
+TEST_F(SvdTest, singularValuesComputation) {
+    singularValuesComputation<float>(1e-4);
+    singularValuesComputation<double>(1e-7);
 }
