@@ -336,7 +336,7 @@ void tensorPlusTensor() {
     std::vector<T> dataB = TENSOR_DATA_234B;
     Tenzor<T> A(dataA, 2, 3, 4);
     Tenzor<T> B(dataB, 2, 3, 4);
-    Tenzor<T>  C = A + B;
+    Tenzor<T> C = A + B;
     std::vector<T> expected = TENSOR_DATA_234APB;
     std::vector<T> actual;
     C.download(actual);
@@ -358,7 +358,7 @@ void tensorMinusTensor() {
     std::vector<T> dataB = TENSOR_DATA_234B;
     Tenzor<T> A(dataA, 2, 3, 4);
     Tenzor<T> B(dataB, 2, 3, 4);
-    Tenzor<T>  C = A - B;
+    Tenzor<T> C = A - B;
     std::vector<T> expected = TENSOR_DATA_234AMB;
     std::vector<T> actual;
     C.download(actual);
@@ -378,11 +378,11 @@ template<typename T>
 void tensorPointersToMatrices() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     Tenzor<T> A(dataA, 2, 3, 4);
-    Tenzor<T*> pointers = A.pointersToMatrices();
+    Tenzor<T *> pointers = A.pointersToMatrices();
     EXPECT_EQ(4, pointers.numRows());
     EXPECT_EQ(1, pointers.numCols());
     EXPECT_EQ(1, pointers.numMats());
-    T* p1 = pointers(1, 0, 0); // pointer to matrix #1
+    T *p1 = pointers(1, 0, 0); // pointer to matrix #1
     T hostDst; // let's see what's there...
     cudaMemcpy(&hostDst, p1, sizeof(T), cudaMemcpyDeviceToHost);
     EXPECT_EQ(dataA[6], hostDst);
@@ -393,4 +393,32 @@ TEST_F(TensorTest, tensorPointersToMatrices) {
     tensorPointersToMatrices<double>();
     tensorPointersToMatrices<int>();
 }
+
+/* ---------------------------------------
+ * Tensor: C = AB
+ * --------------------------------------- */
+
+template<typename T>
+void tensorAddAB() {
+    std::vector<T> aData = {1, 2, 3, 4, 5, 6,
+                            7, 8, 9, 10, 11, 12,
+                            13, 14, 15, 16, 17, 18};
+    std::vector<T> bData = {6, 5, 4, 3, 2, 1,
+                            7, 6, 5, 4, 3, 2,
+                            1, 2, 1, 5, -6, 8};
+    Tenzor<T> A(aData, 2, 3, 3);
+    Tenzor<T> B(bData, 3, 2, 3);
+    Tenzor<T> C(2, 2, 3, true);
+    C.addAB(A, B);
+    std::vector<T> expected = {41, 56, 14, 20, 158, 176, 77, 86, 60, 64, 111, 118};
+    std::vector<T> actual;
+    C.download(actual);
+    EXPECT_EQ(expected, actual);
+}
+
+TEST_F(TensorTest, tensorAddAB) {
+    tensorAddAB<double>();
+}
+
+
 

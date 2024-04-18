@@ -236,6 +236,8 @@ public:
         return result;
     }
 
+    void addAB(Tenzor<T> &A, Tenzor<T> &B, T alpha = 1, T beta = 0);
+
     friend std::ostream &operator<<(std::ostream &out, const Tenzor<T> &data) {
         size_t nr = data.m_numRows, nc = data.m_numCols, nm = data.m_numMats;
         out << "Tensor [" << data.m_numRows << " x "
@@ -306,7 +308,7 @@ inline bool Tenzor<T>::allocateOnDevice(size_t size, bool zero) {
 }
 
 template<typename T>
-bool Tenzor<T>::upload(const std::vector<T> &vec) {
+inline bool Tenzor<T>::upload(const std::vector<T> &vec) {
     size_t size = vec.size();
     // make sure vec is of right size
     if (size != m_numRows * m_numCols * m_numMats) throw std::invalid_argument("vec has wrong size");
@@ -318,7 +320,7 @@ bool Tenzor<T>::upload(const std::vector<T> &vec) {
 }
 
 template<typename T>
-void Tenzor<T>::download(std::vector<T> &vec) const {
+inline void Tenzor<T>::download(std::vector<T> &vec) const {
     vec.resize(m_numRows * m_numCols * m_numMats);
     gpuErrChk(cudaMemcpy(vec.data(),
                          m_d_data,
@@ -332,7 +334,7 @@ inline T *Tenzor<T>::raw() const {
 }
 
 template<typename T>
-void Tenzor<T>::deviceCopyTo(Tenzor<T> &elsewhere) const {
+inline void Tenzor<T>::deviceCopyTo(Tenzor<T> &elsewhere) const {
     if (elsewhere.numel() < numel()) {
         throw std::invalid_argument("tensor does not fit into destination");
     }
@@ -394,7 +396,7 @@ inline Tenzor<double> &Tenzor<double>::operator-=(const Tenzor<double> &rhs) {
 }
 
 template<typename T>
-T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
+inline T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
     T hostDst;
     size_t offset = i + m_numRows * (j + m_numCols * k);
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
@@ -402,7 +404,7 @@ T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
 }
 
 template<typename T>
-Tenzor<T*> Tenzor<T>::pointersToMatrices() {
+inline Tenzor<T*> Tenzor<T>::pointersToMatrices() {
     std::vector<T*> h_pointers(m_numMats);
     size_t numelMat = m_numRows * m_numCols;
     h_pointers[0] = m_d_data;
@@ -413,5 +415,24 @@ Tenzor<T*> Tenzor<T>::pointersToMatrices() {
     return t;
 }
 
+template<>
+inline void Tenzor<double>::addAB(Tenzor<double> &A, Tenzor<double> &B, double alpha, double beta) {
+    size_t nMat = A.numMats();
+    size_t nRA = A.numRows();
+    size_t nCA = A.numCols();
+    size_t nCB = B.numCols();
+    Tenzor<double*> ptrA = A.pointersToMatrices();
+    Tenzor<double*> ptrB = B.pointersToMatrices();
+    Tenzor<double*> ptr = pointersToMatrices();
+    double _alpha = alpha, _beta = beta;
+    gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
+                                 CUBLAS_OP_N, CUBLAS_OP_N,
+                                 nRA, nCB, nCA, &_alpha,
+                                 ptrA.raw(), nRA,
+                                 ptrB.raw(), nCA,
+                                 &_beta,
+                                 ptr.raw(), nRA,
+                                 nMat));
+}
 
 #endif
