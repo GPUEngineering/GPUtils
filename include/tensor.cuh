@@ -435,4 +435,24 @@ inline void Tenzor<double>::addAB(Tenzor<double> &A, Tenzor<double> &B, double a
                                  nMat));
 }
 
+template<>
+inline void Tenzor<float>::addAB(Tenzor<float> &A, Tenzor<float> &B, float alpha, float beta) {
+    size_t nMat = A.numMats();
+    size_t nRA = A.numRows();
+    size_t nCA = A.numCols();
+    size_t nCB = B.numCols();
+    Tenzor<float*> ptrA = A.pointersToMatrices();
+    Tenzor<float*> ptrB = B.pointersToMatrices();
+    Tenzor<float*> ptr = pointersToMatrices();
+    float _alpha = alpha, _beta = beta;
+    gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
+                                 CUBLAS_OP_N, CUBLAS_OP_N,
+                                 nRA, nCB, nCA, &_alpha,
+                                 ptrA.raw(), nRA,
+                                 ptrB.raw(), nCA,
+                                 &_beta,
+                                 ptr.raw(), nRA,
+                                 nMat));
+}
+
 #endif

@@ -418,6 +418,7 @@ void tensorAddAB() {
 
 TEST_F(TensorTest, tensorAddAB) {
     tensorAddAB<double>();
+    tensorAddAB<float>();
 }
 
 
