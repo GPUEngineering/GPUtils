@@ -31,6 +31,7 @@ target_compile_options(example_developer_flags
 target_link_libraries(example_compiler_flags INTERFACE $<BUILD_INTERFACE:example_developer_flags>
 )
 # ----
+set(GPUTILS_BUILD_TESTING OFF)
 include(FetchContent)
 FetchContent_Declare(
     gputils
