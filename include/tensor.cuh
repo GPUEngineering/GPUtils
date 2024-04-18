@@ -58,7 +58,6 @@ private:
     /** Pointer to device data */
     T *m_d_data = nullptr;
     /** Number of allocated elements */
-    size_t m_numAllocatedElements = 0;
     size_t m_numRows = 0;
     size_t m_numCols = 0;
     size_t m_numMats = 0;
@@ -67,7 +66,6 @@ private:
     bool destroy() {
         if (!m_doDestroy) return false;
         if (m_d_data) cudaFree(m_d_data);
-        m_numAllocatedElements = 0;
         m_d_data = nullptr;
         return true;
     }
@@ -103,8 +101,9 @@ public:
         m_numMats = other.m_numMats;
         m_numRows = other.m_numRows;
         m_numCols = other.m_numCols;
-        allocateOnDevice(other.m_numAllocatedElements);
-        cudaMemcpy(m_d_data, other.raw(), m_numAllocatedElements * sizeof(T), cudaMemcpyDeviceToDevice);
+
+        allocateOnDevice(m_numRows * m_numCols * m_numMats);
+        cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T), cudaMemcpyDeviceToDevice);
     }
 
     Tenzor(const Tenzor &other, size_t axis, size_t from, size_t to) {
@@ -127,7 +126,6 @@ public:
             m_numMats = 1;
         }
         m_d_data = other.m_d_data + offset;
-        m_numAllocatedElements = m_numRows * m_numCols * m_numMats;
         m_doDestroy = false;
     }
 
@@ -156,7 +154,6 @@ public:
         m_numCols = other.m_numCols;
         m_doDestroy = false;
         m_d_data = other.m_d_data;
-        m_numAllocatedElements = other.m_numAllocatedElements;
         return *this;
     }
 
@@ -206,33 +203,31 @@ inline size_t Tenzor<T>::numMats() const {
 
 template<typename T>
 inline size_t Tenzor<T>::numel() const {
-    return m_numAllocatedElements;
+    return m_numRows * m_numCols * m_numMats;
 }
 
 template<>
 inline double Tenzor<double>::normF() const {
     double the_norm;
-    cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
+    cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1, &the_norm);
     return the_norm;
 }
 
 template<>
 inline float Tenzor<float>::normF() const {
     float the_norm;
-    cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, m_d_data, 1, &the_norm);
+    cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1, &the_norm);
     return the_norm;
 }
 
 template<typename T>
 inline bool Tenzor<T>::allocateOnDevice(size_t size) {
     if (size <= 0) return false;
-    if (size <= m_numAllocatedElements) return true;
     destroy();
     m_doDestroy = true;
     size_t buffer_size = size * sizeof(T);
     bool cudaStatus = cudaMalloc(&m_d_data, buffer_size);
     if (cudaStatus != cudaSuccess) return false;
-    m_numAllocatedElements = size;
     return true;
 }
 
@@ -240,8 +235,8 @@ template<typename T>
 bool Tenzor<T>::upload(const std::vector<T> &vec) {
     size_t size = vec.size();
     // make sure vec is of right size
-    if (size != m_numAllocatedElements) throw std::invalid_argument("vec has wrong size");
-    if (size <= m_numAllocatedElements) {
+    if (size != m_numRows * m_numCols * m_numMats) throw std::invalid_argument("vec has wrong size");
+    if (size <= m_numRows * m_numCols * m_numMats) {
         size_t buffer_size = size * sizeof(T);
         cudaMemcpy(m_d_data, vec.data(), buffer_size, cudaMemcpyHostToDevice);
     }
@@ -250,10 +245,10 @@ bool Tenzor<T>::upload(const std::vector<T> &vec) {
 
 template<typename T>
 void Tenzor<T>::download(std::vector<T> &vec) const {
-    vec.reserve(m_numAllocatedElements);
+    vec.reserve(m_numRows * m_numCols * m_numMats);
     cudaMemcpy(vec.data(),
                m_d_data,
-               m_numAllocatedElements * sizeof(T),
+               m_numRows * m_numCols * m_numMats * sizeof(T),
                cudaMemcpyDeviceToHost);
 }
 
@@ -264,45 +259,45 @@ inline T *Tenzor<T>::raw() const {
 
 template<typename T>
 void Tenzor<T>::deviceCopyTo(Tenzor<T> &elsewhere) const {
-    elsewhere.allocateOnDevice(m_numAllocatedElements);
+    elsewhere.allocateOnDevice(m_numRows * m_numCols * m_numMats);
     cudaMemcpy(elsewhere.raw(),
                m_d_data,
-               m_numAllocatedElements * sizeof(T),
+               m_numRows * m_numCols * m_numMats * sizeof(T),
                cudaMemcpyDeviceToDevice);
 }
 
 template<>
 inline Tenzor<double> &Tenzor<double>::operator*=(double scalar) {
     double alpha = scalar;
-    cublasDscal(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1);
     return *this;
 }
 
 template<>
 inline Tenzor<float> &Tenzor<float>::operator*=(float scalar) {
     float alpha = scalar;
-    cublasSscal(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, m_d_data, 1);
+    cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1);
     return *this;
 }
 
 template<>
 inline Tenzor<double> &Tenzor<double>::operator+=(const Tenzor<double> &rhs) {
     const double alpha = 1.;
-    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1, m_d_data, 1);
     return *this;
 }
 
 template<>
 inline Tenzor<float> &Tenzor<float>::operator+=(const Tenzor<float> &rhs) {
     const float alpha = 1.;
-    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1, m_d_data, 1);
     return *this;
 }
 
 template<>
 inline Tenzor<float> &Tenzor<float>::operator-=(const Tenzor<float> &rhs) {
     const float alpha = -1.;
-    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1,
+    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1,
                 m_d_data, 1);
     return *this;
 }
@@ -310,7 +305,7 @@ inline Tenzor<float> &Tenzor<float>::operator-=(const Tenzor<float> &rhs) {
 template<>
 inline Tenzor<double> &Tenzor<double>::operator-=(const Tenzor<double> &rhs) {
     const double alpha = -1.;
-    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numAllocatedElements, &alpha, rhs.m_d_data, 1,
+    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1,
                 m_d_data, 1);
     return *this;
 }
