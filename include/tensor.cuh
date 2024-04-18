@@ -233,6 +233,13 @@ public:
 
     void addAB(DTensor<T> &A, DTensor<T> &B, T alpha = 1, T beta = 0);
 
+    friend DTensor<T> operator*(DTensor &A, DTensor &B) {
+        size_t nrA = A.m_numRows, ncB = B.m_numCols, nmB = B.m_numMats;
+        DTensor<T> result(nrA, ncB, nmB);
+        result.addAB(A, B);
+        return result;
+    }
+
     friend std::ostream &operator<<(std::ostream &out, const DTensor<T> &data) {
         size_t nr = data.m_numRows, nc = data.m_numCols, nm = data.m_numMats;
         out << "Tensor [" << data.m_numRows << " x "
@@ -253,6 +260,7 @@ public:
     }
 
 }; /* END OF TENZOR */
+
 
 template<typename T>
 inline size_t DTensor<T>::numRows() const {

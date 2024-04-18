@@ -582,6 +582,10 @@ void choleskyFactorisationSolution(T epsilon) {
     sol.download(actual);
     for (size_t i=0; i<3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);
 
+    DTensor<T> error = A * sol;
+    error -= rhs;
+    EXPECT_TRUE(error.normF() < epsilon);
+
 }
 
 TEST_F(CholeskyTest, choleskyFactorisationSolution) {
