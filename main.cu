@@ -9,6 +9,9 @@
 
 int main() {
 
+    Tenzor<real_t> zero(4, 6, 3, true);
+    std::cout << zero;
+
     std::vector<real_t> tData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 10};
     Tenzor<real_t> tenz(2, 3, 2);
     tenz.upload(tData);

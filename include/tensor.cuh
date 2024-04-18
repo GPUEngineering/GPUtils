@@ -12,6 +12,45 @@
 #ifndef TENSOR_CUH
 #define TENSOR_CUH
 
+/**
+ * Check for errors when calling GPU functions
+ */
+
+#ifndef gpuErrChk
+#define gpuErrChk(status) { gpuAssert((status), std::source_location::current()); }
+
+template<typename T>
+inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
+    if constexpr (std::is_same_v<T, cudaError_t>) {
+        if (code != cudaSuccess) {
+            std::cerr << "cuda error. String: " << cudaGetErrorString(code)
+                      << ", file: " << loc.file_name() << ", line: " << loc.line() << "\n";
+            if (abort) exit(code);
+        }
+    } else if constexpr (std::is_same_v<T, cublasStatus_t>) {
+        if (code != CUBLAS_STATUS_SUCCESS) {
+            std::cerr << "cublas error. Name: " << cublasGetStatusName(code)
+                      << ", string: " << cublasGetStatusString(code)
+                      << ", file: " << loc.file_name() << ", line: " << loc.line() << "\n";
+            if (abort) exit(code);
+        }
+    } else if constexpr (std::is_same_v<T, cusolverStatus_t>) {
+        if (code != CUSOLVER_STATUS_SUCCESS) {
+            std::cerr << "cusolver error. Status: " << code
+                      << ", file: " << loc.file_name() << ", line: " << loc.line() << "\n";
+            if (abort) exit(code);
+        }
+    } else {
+        std::cerr << "Error: library status parser not implemented" << "\n";
+    }
+}
+
+#endif
+
+#ifndef THREADS_PER_BLOCK
+#define THREADS_PER_BLOCK 512
+#define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
+#endif
 
 /* ------------------------------------------------------------------------------------
  *  Session
@@ -27,13 +66,13 @@ public:
 
 private:
     Session() {
-        cublasCreate(&m_cublasHandle);
-        cusolverDnCreate(&m_cusolverHandle);
+        gpuErrChk(cublasCreate(&m_cublasHandle));
+        gpuErrChk(cusolverDnCreate(&m_cusolverHandle));
     }
 
     ~Session() {
-        cublasDestroy(m_cublasHandle);
-        cusolverDnDestroy(m_cusolverHandle);
+        gpuErrChk(cublasDestroy(m_cublasHandle));
+        gpuErrChk(cusolverDnDestroy(m_cusolverHandle));
     }
 
     cublasHandle_t m_cublasHandle;
@@ -70,7 +109,7 @@ private:
         return true;
     }
 
-    bool allocateOnDevice(size_t size);
+    bool allocateOnDevice(size_t size, bool zero = false);
 
 public:
     /**
@@ -86,12 +125,21 @@ public:
      * Allocates (m, n, k)-tensor
      * @param n
      */
-    Tenzor(size_t m, size_t n = 1, size_t k = 1) {
+    Tenzor(size_t m, size_t n = 1, size_t k = 1, bool zero = false) {
+        m_numRows = m;
+        m_numCols = n;
+        m_numMats = k;
+        size_t size = m * n * k;
+        allocateOnDevice(size, zero);
+    }
+
+    Tenzor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1) {
         m_numRows = m;
         m_numCols = n;
         m_numMats = k;
         size_t size = m * n * k;
         allocateOnDevice(size);
+        upload(data);
     }
 
     /**
@@ -103,21 +151,29 @@ public:
         m_numCols = other.m_numCols;
 
         allocateOnDevice(m_numRows * m_numCols * m_numMats);
-        cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T), cudaMemcpyDeviceToDevice);
+        gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
+                             cudaMemcpyDeviceToDevice));
     }
 
+    /**
+     * Slicing constructor
+     * @param other
+     * @param axis
+     * @param from
+     * @param to
+     */
     Tenzor(const Tenzor &other, size_t axis, size_t from, size_t to) {
         if (from > to) throw std::invalid_argument("from > to");
-        size_t offset = 0;
+        size_t offset = 0, len = to - from + 1;
         if (axis == 2) {
             offset = other.m_numRows * other.m_numCols * from;
             m_numRows = other.m_numRows;
             m_numCols = other.m_numCols;
-            m_numMats = to - from + 1;
+            m_numMats = len;
         } else if (axis == 1) {
             offset = other.m_numCols * from;
             m_numRows = other.m_numRows;
-            m_numCols = to - from + 1;
+            m_numCols = len;
             m_numMats = 1;
         } else if (axis == 0) {
             offset = from;
@@ -147,7 +203,8 @@ public:
 
     T normF() const;
 
-    /* OPERATORS */
+    /* ------------- OPERATORS ------------- */
+
     Tenzor &operator=(const Tenzor &other) {
         m_numMats = other.m_numMats;
         m_numRows = other.m_numRows;
@@ -209,25 +266,28 @@ inline size_t Tenzor<T>::numel() const {
 template<>
 inline double Tenzor<double>::normF() const {
     double the_norm;
-    cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1, &the_norm);
+    gpuErrChk(cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                          &the_norm));
     return the_norm;
 }
 
 template<>
 inline float Tenzor<float>::normF() const {
     float the_norm;
-    cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1, &the_norm);
+    gpuErrChk(cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                          &the_norm));
     return the_norm;
 }
 
 template<typename T>
-inline bool Tenzor<T>::allocateOnDevice(size_t size) {
+inline bool Tenzor<T>::allocateOnDevice(size_t size, bool zero) {
     if (size <= 0) return false;
     destroy();
     m_doDestroy = true;
     size_t buffer_size = size * sizeof(T);
     bool cudaStatus = cudaMalloc(&m_d_data, buffer_size);
     if (cudaStatus != cudaSuccess) return false;
+    if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
     return true;
 }
 
@@ -238,18 +298,18 @@ bool Tenzor<T>::upload(const std::vector<T> &vec) {
     if (size != m_numRows * m_numCols * m_numMats) throw std::invalid_argument("vec has wrong size");
     if (size <= m_numRows * m_numCols * m_numMats) {
         size_t buffer_size = size * sizeof(T);
-        cudaMemcpy(m_d_data, vec.data(), buffer_size, cudaMemcpyHostToDevice);
+        gpuErrChk(cudaMemcpy(m_d_data, vec.data(), buffer_size, cudaMemcpyHostToDevice));
     }
     return true;
 }
 
 template<typename T>
 void Tenzor<T>::download(std::vector<T> &vec) const {
-    vec.reserve(m_numRows * m_numCols * m_numMats);
-    cudaMemcpy(vec.data(),
-               m_d_data,
-               m_numRows * m_numCols * m_numMats * sizeof(T),
-               cudaMemcpyDeviceToHost);
+    vec.resize(m_numRows * m_numCols * m_numMats);
+    gpuErrChk(cudaMemcpy(vec.data(),
+                         m_d_data,
+                         m_numRows * m_numCols * m_numMats * sizeof(T),
+                         cudaMemcpyDeviceToHost));
 }
 
 template<typename T>
@@ -259,38 +319,46 @@ inline T *Tenzor<T>::raw() const {
 
 template<typename T>
 void Tenzor<T>::deviceCopyTo(Tenzor<T> &elsewhere) const {
-    elsewhere.allocateOnDevice(m_numRows * m_numCols * m_numMats);
-    cudaMemcpy(elsewhere.raw(),
-               m_d_data,
-               m_numRows * m_numCols * m_numMats * sizeof(T),
-               cudaMemcpyDeviceToDevice);
+    if (elsewhere.numel() < numel()) {
+        throw std::invalid_argument("tensor does not fit into destination");
+    }
+    gpuErrChk(cudaMemcpy(elsewhere.raw(),
+                         m_d_data,
+                         m_numRows * m_numCols * m_numMats * sizeof(T),
+                         cudaMemcpyDeviceToDevice));
 }
 
 template<>
 inline Tenzor<double> &Tenzor<double>::operator*=(double scalar) {
     double alpha = scalar;
-    cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1);
+    gpuErrChk(
+            cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline Tenzor<float> &Tenzor<float>::operator*=(float scalar) {
     float alpha = scalar;
-    cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1);
+    gpuErrChk(
+            cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline Tenzor<double> &Tenzor<double>::operator+=(const Tenzor<double> &rhs) {
     const double alpha = 1.;
-    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    gpuErrChk(
+            cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                        1, m_d_data, 1));
     return *this;
 }
 
 template<>
 inline Tenzor<float> &Tenzor<float>::operator+=(const Tenzor<float> &rhs) {
     const float alpha = 1.;
-    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1, m_d_data, 1);
+    gpuErrChk(
+            cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                        1, m_d_data, 1));
     return *this;
 }
 
@@ -305,8 +373,9 @@ inline Tenzor<float> &Tenzor<float>::operator-=(const Tenzor<float> &rhs) {
 template<>
 inline Tenzor<double> &Tenzor<double>::operator-=(const Tenzor<double> &rhs) {
     const double alpha = -1.;
-    cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1,
-                m_d_data, 1);
+    gpuErrChk(
+            cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                        1, m_d_data, 1));
     return *this;
 }
 
@@ -314,7 +383,7 @@ template<typename T>
 T Tenzor<T>::operator()(size_t i, size_t j, size_t k) {
     T hostDst;
     size_t offset = i + m_numRows * (j + m_numCols * k);
-    cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost);
+    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
     return hostDst;
 }
 

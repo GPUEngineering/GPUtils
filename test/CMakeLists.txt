@@ -13,6 +13,7 @@ add_executable(device_test)
 target_sources(device_test  # add files
         PRIVATE
         testGputils.cu
+        testTensor.cu
 )
 target_link_libraries(device_test
         PRIVATE
