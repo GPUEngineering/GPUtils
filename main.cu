@@ -8,20 +8,17 @@
 
 
 int main() {
-
-    std::vector<real_t> aData = {1, 2, 3, 4, 5, 6,
-                                 7, 8, 9, 10, 11, 12,
-                                 13, 14, 15, 16, 17, 18};
-    std::vector<real_t> bData = {6, 5, 4, 3, 2, 1,
-                                 7, 6, 5, 4, 3, 2,
-                                 1, 2, 1, 5, -6, 8};
-    Tenzor<real_t> A(aData, 2, 3, 3);
-    Tenzor<real_t> B(bData, 3, 2, 3);
-    Tenzor<real_t> C(2, 2, 3, true);
-    C.addAB(A, B);
-
-    std::cout << A;
-    std::cout << B;
-    std::cout << C;
+    std::vector<real_t> bData{1.0, 2.0, 3.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,
+                         6.0, 7.0, 8.0,};
+    Tenzor<real_t> B(bData, 8, 3, 1);
+    Svd<real_t> svd(B);
+    svd.factorise();
+    std::cout << svd.singularValues();
     return 0;
 }

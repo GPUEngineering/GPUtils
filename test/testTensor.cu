@@ -421,5 +421,29 @@ TEST_F(TensorTest, tensorAddAB) {
     tensorAddAB<float>();
 }
 
+template<typename T>
+void tensorLeastSquares1(T epsilon) {
+    // TODO test with tall matrices too
+    std::vector<T> aData = {1, 2,
+                            3, 4,
+                            7, 8,
+                            9, 10,
+                            6, 8,
+                            -9, 20};
+    std::vector<T> bData = {1, 1, -1, 2, 30, -80};
+    Tenzor<T> A0(aData, 2, 2, 3);
+    Tenzor<T> A(A0);
+    Tenzor<T> B(bData, 2, 1, 3);
+    Tenzor<T> sol(B);
+    A0.leastSquares(sol);
+    Tenzor<T> C(2, 1, 3);
+    C.addAB(A, sol);
+    C -= B;
+    T nrmErr = C.normF();
+    EXPECT_LT(nrmErr, epsilon);
+}
 
-
+TEST_F(TensorTest, tensorLS1) {
+    tensorLeastSquares1<double>(1e-12);
+    tensorLeastSquares1<float>(1e-4);
+}
