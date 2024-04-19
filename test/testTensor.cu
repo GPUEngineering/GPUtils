@@ -26,6 +26,12 @@ protected:
 
 template<typename T>
 void tensorConstructionZero() {
+//  test memcheck throw
+    int *node;
+    int *d_node;
+    node = (int *) malloc(sizeof(int));
+    d_node = (int *) cudaMalloc(&node, sizeof(int));
+//  ----
     DTensor<T> zero(2, 3, 4, true);
     EXPECT_EQ(2, zero.numRows());
     EXPECT_EQ(3, zero.numCols());

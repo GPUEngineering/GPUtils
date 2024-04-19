@@ -17,7 +17,8 @@ tests() {
 
     # -- run compute sanitizer
     cd ./build/test
-    /usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./device_test
+    mem=$(/usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./device_test)
+    grep "0 errors" <<< "$mem"
     cd ../..
 
     # ------------------------------------
@@ -36,7 +37,8 @@ tests() {
 
     # -- run compute sanitizer
     cd ./build
-    /usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./example_main
+    mem=$(/usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./example_main)
+    grep "0 errors" <<< "$mem"
 }
 
 
