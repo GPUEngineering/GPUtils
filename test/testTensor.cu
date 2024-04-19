@@ -323,6 +323,27 @@ TEST_F(TensorTest, tensorTimesEqualsScalar) {
 }
 
 /* ---------------------------------------
+ * Scalar times tensor
+ * --------------------------------------- */
+
+template<typename T>
+void tensorTimesScalar() {
+    std::vector<T> data = TENSOR_DATA_234A;
+    std::vector<T> dataTimes3 = {3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
+                                 24};
+    DTensor<T> tenz(data, 2, 3, 4);
+    auto tripleTensor = 3.0 * tenz;
+    std::vector<T> actual;
+    tripleTensor.download(actual);
+    EXPECT_EQ(dataTimes3, actual);
+}
+
+TEST_F(TensorTest, tensorTimesScalar) {
+    tensorTimesScalar<float>();
+    tensorTimesScalar<double>();
+}
+
+/* ---------------------------------------
  * Tensor plus-equals tensor
  * --------------------------------------- */
 

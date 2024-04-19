@@ -329,6 +329,13 @@ public:
         return result;
     }
 
+    friend DTensor<T> operator*(T a, DTensor &B) {
+        size_t nrA = B.m_numRows, ncB = B.m_numCols, nmB = B.m_numMats;
+        DTensor<T> result(B);
+        result *= a;
+        return result;
+    }
+
     friend std::ostream &operator<<(std::ostream &out, const DTensor<T> &data) {
         return data.print(out);
     }
