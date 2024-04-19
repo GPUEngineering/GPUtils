@@ -13,9 +13,16 @@
 #define TENSOR_CUH
 
 /**
+ * Standardise number of threads and blocks
+ */
+#ifndef THREADS_PER_BLOCK
+#define THREADS_PER_BLOCK 512
+#define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
+#endif
+
+/**
  * Check for errors when calling GPU functions
  */
-
 #define gpuErrChk(status) { gpuAssert((status), std::source_location::current()); }
 
 template<typename T>
@@ -45,16 +52,18 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
 }
 
 
-#ifndef THREADS_PER_BLOCK
-#define THREADS_PER_BLOCK 512
-#define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
-#endif
-
-
 /* ================================================================================================
  *  SESSION
  * ================================================================================================ */
 
+/**
+ * Singleton for Cuda library handles.
+ * Cuda library functions require a handle.
+ * A project requires exactly one handle per Cuda library.
+ * This class is created as a singleton, and contains a unique handle for each library.
+ * The cuBlas handle can be accessed anywhere by `Session::getInstance().cuBlasHandle()`
+ * The cuSolver handle can be accessed anywhere by `Session::getInstance().cuSolverHandle()`
+ */
 class Session {
 public:
     static Session &getInstance() {
@@ -92,17 +101,22 @@ public:
  *  TENSOR
  * ================================================================================================ */
 
+/**
+ * This library uses tensors to store and manipulate data on a GPU device.
+ * A tensor has three axes: [rows (m) x columns (n) x matrices (k)].
+ * An (m,n,1)-tensor is a matrix, and a (m,1,1)-tensor is a vector.
+ * Tensors can be used to do a batched operation on many similar-sized matrices or vectors in parallel.
+ * @tparam T type of data stored in tensor
+ */
 template<typename T>
 class DTensor {
 
 private:
-    /** Pointer to device data */
-    T *m_d_data = nullptr;
-    /** Number of allocated elements */
-    size_t m_numRows = 0;
-    size_t m_numCols = 0;
-    size_t m_numMats = 0;
-    bool m_doDestroy = false;
+    T *m_d_data = nullptr;  ///< Pointer to device data
+    size_t m_numRows = 0;  ///< Number of rows
+    size_t m_numCols = 0;  ///< Number of columns
+    size_t m_numMats = 0;  ///< Number of matrices
+    bool m_doDestroy = false;  ///< Whether to destroy memory
 
     bool destroy() {
         if (!m_doDestroy) return false;
@@ -111,152 +125,175 @@ private:
         return true;
     }
 
+    /**
+     * Allocate `size` number of `T` data on the device.
+     * @param size number of data elements to allocate
+     * @param zero sets allocated data to `0`
+     * @return
+     */
     bool allocateOnDevice(size_t size, bool zero = false);
 
+    /**
+     * Appends this tensor to `std::ostream` object.
+     * @param out `std::ostream` object for appending data to be printed
+     * @return tensor in `std::ostream` data format
+     */
     std::ostream &print(std::ostream &out) const;
 
 public:
     /**
-    * Constructs a DeviceVector object
+    * Constructs a DTensor object.
     */
     DTensor() = default;
 
+    /**
+    * Destroys a DTensor object.
+    */
     ~DTensor() {
         destroy();
     }
 
     /**
-     * Allocates (m, n, k)-tensor
-     * @param n
+     * Constructs (m,n,k)-tensor and allocates memory.
+     * @param m number of rows
+     * @param n number of columns
+     * @param k number of matrices
+     * @param zero sets allocated data to `0`
      */
     DTensor(size_t m, size_t n = 1, size_t k = 1, bool zero = false);
 
+    /**
+     * Constructs (m,n,k)-tensor and uploads data to device.
+     * @param data `std::vector` of data to upload to the device
+     * @param m number of rows
+     * @param n number of columns
+     * @param k number of matrices
+     */
     DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1);
 
     /**
-     * Copy constructor
-     * @param other
+     * Copy constructor.
+     * @param other tensor to copy to newly constructed tensor
      */
     DTensor(const DTensor &other);
 
     /**
-     * Move constructor
-     * @param other
+     * Move constructor.
+     * @param other tensor to move to newly constructed tensor
      */
     DTensor(DTensor &&other);
 
     /**
-     * Slicing constructor
+     * Slice constructor.
      * @param other other tensor with the same template type
-     * @param axis axis to slice
-     * @param from
-     * @param to
+     * @param axis axis to slice (0=rows, 1=columns, 2=matrices)
+     * @param from index to slice axis from (zero-indexed)
+     * @param to index to slice axis to (inclusive)
      */
     DTensor(const DTensor &other, size_t axis, size_t from, size_t to);
 
     /**
-     * Raw pointer
-     * @return
+     * @return raw pointer to the first element of this tensor on the device
      */
     T *raw() const;
 
     /**
-     * Number of rows
-     * @return
+     * @return number of rows
      */
     size_t numRows() const;
 
     /**
-     * Number of columns
-     * @return
+     * @return number of columns
      */
     size_t numCols() const;
 
     /**
-     * Number of matrices
-     * @return
+     * @return number of matrices
      */
     size_t numMats() const;
 
     /**
-     * Number of elements
-     * @return
+     * @return number of elements
      */
     size_t numEl() const;
 
     /**
-     * Upload to device
-     * @param vec given data
+     * Upload from `std::vector` to device.
+     * @param vec data source to upload
      * @return true iff upload is successful
      */
     bool upload(const std::vector<T> &vec);
 
     /**
-     * Download from device to vector
+     * Download from device to `std::vector`.
      * @param vec destination vector
      */
     void download(std::vector<T> &vec) const;
 
     /**
-     * Device-to-device copy
+     * Device-to-device copy.
      * @param other target tensor
      */
     void deviceCopyTo(DTensor<T> &other) const;
 
     /**
-     * Frobenius norm (Euclidean norm, if it is a  vector);
-     * this is the square root of the sum of squares of all elements
-     * @return
-     */
-    T normF() const;
-
-    /**
-     * Sum of absolute of all values
-     * @return
-     */
-    T sumAbs() const;
-
-    /**
-     * Least squares solution A\b, where A (this object) and b
-     * must have compatible dimensions and A is a square or
-     * tall matrix
-     * @param b right hand side
-     */
-    void leastSquares(DTensor &b);
-
-    /**
-     * Performs the operation Ci <- bCi + a*Ai*Bi, where C is the current
-     * object, A and B are tensors of compatible dimensions
-     * @param A tensor A
-     * @param B tensor B
-     * @param alpha scalar
-     * @param beta scalar
-     */
-    void addAB(DTensor<T> &A, DTensor<T> &B, T alpha = 1, T beta = 0);
-
-    /**
-     * Creates and returns a vector of pointers to the matrices of the
-     * tensor (the vector is an (nMat, 1, 1)-tensor, where nMat is the
-     * number of matrices in the current tensor)
-     * @return
+     * Creates a vector of pointers to the matrices of this tensor.
+     * The vector is an (n,1,1)-tensor, where n is the number of matrices in this tensor.
+     * @return vector of pointers to the first element of each matrix
      */
     DTensor<T *> pointersToMatrices();
 
     /**
-     * Creates and returns a horizontal cut of the matrix at layer matIdx
-     * @param rowsFrom
-     * @param rowsTo
-     * @param matIdx
-     * @return
+     * Slices rows from specified matrix.
+     * @param rowsFrom index to slice rows from (zero-indexed)
+     * @param rowsTo index to slice rows to (inclusive)
+     * @param matIdx index of matrix to slice rows from (zero-indexed)
+     * @return slice of rows
      */
     DTensor<T> getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx);
 
     /**
-     * From the current (m, n, k) tensor, this method creates a new (n, m, k)-tensor
-     * which at layer k stores the transpose of the corresponding matrix.
-     * @return
+     * Transposes each (m,n)-matrix of this tensor.
+     * Each transposed matrix is stored at same k-index in new tensor.
+     * @return tensor of transposed matrices
      */
-    DTensor tr();
+    DTensor<T> tr();
+
+    /**
+     * Frobenius norm.
+     * The square root of the sum of squares of all elements.
+     * A.k.a. the Euclidean norm, if this is a vector.
+     * @return norm as same data type
+     */
+    T normF() const;
+
+    /**
+     * Sum of absolute of all elements.
+     * @return sum as same data type
+     */
+    T sumAbs() const;
+
+    /**
+     * Solves for the least squares solution of A\\b.
+     * A is this tensor and b is the provided tensor.
+     * A and b must have compatible dimensions (same number of rows and matrices).
+     * A must be a square or tall matrix (m>=n).
+     * @param b provided tensor
+     * @return least squares solution (overwrites b)
+     */
+    void leastSquares(DTensor &b);
+
+    /**
+     * Batched `C <- bC + a*A*B`.
+     * Performs the operation `Ci <- bCi + a*Ai*Bi` for each k-index `i`.
+     * C is this tensor.
+     * A and B are tensors of compatible dimensions.
+     * @param A tensor A
+     * @param B tensor B
+     * @param alpha scalar to scale AB
+     * @param beta scalar to scale C
+     */
+    void addAB(DTensor<T> &A, DTensor<T> &B, T alpha = 1, T beta = 0);
 
     /* ------------- OPERATORS ------------- */
 
@@ -296,7 +333,6 @@ public:
     }
 
 }; /* END OF DTENSOR */
-
 
 template<typename T>
 DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
@@ -705,13 +741,14 @@ std::ostream &DTensor<T>::print(std::ostream &out) const {
     return out;
 }
 
+
 /* ================================================================================================
  *  SINGULAR VALUE DECOMPOSITION (SVD)
  * ================================================================================================ */
 
 /**
- * Kernel that counts the number of elements of a vector that are higher than epsilon
- * @tparam TElement either float or double
+ * Kernel that counts the number of elements of a vector that are higher than epsilon.
+ * @tparam T either float or double
  * @param d_array device array
  * @param n length of device array
  * @param d_count on exit, count of elements (int on device)
@@ -727,43 +764,55 @@ __global__ void k_countNonzeroSingularValues(T *d_array, size_t n, unsigned int 
 }
 
 
+/**
+ * Singular value decomposition (SVD) needs a workspace to be setup for cuSolver before factorisation.
+ * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
+ * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace.
+ * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
+ */
 template<typename T> requires std::floating_point<T>
 class Svd {
 
 private:
 
-    int m_lwork = -1; /**< size of workspace needed for SVD */
-    DTensor<T> *m_tensor = nullptr;  /**< pointer to original matrix to be factorised */
-    std::unique_ptr<DTensor<T>> m_Vtr;  /**< matrix V' or right singular vectors */
-    std::unique_ptr<DTensor<T>> m_S;
-    std::unique_ptr<DTensor<T>> m_U;  /**< matrix U or left singular vectors*/
-    std::unique_ptr<DTensor<T>> m_workspace;  /**< workspace vector */
-    std::unique_ptr<DTensor<int>> m_info;  /**< status code of computation */
-    std::unique_ptr<DTensor<unsigned int>> m_rank;
-    bool m_computeU = false;  /**< whether to compute U */
-    bool m_destroyMatrix = true; /**< whether to sacrifice original matrix */
+    int m_lwork = -1;  ///< Size of workspace needed for SVD
+    DTensor<T> *m_tensor = nullptr;  ///< Pointer to original matrix to be factorised
+    std::unique_ptr<DTensor<T>> m_Vtr;  ///< Matrix V' or right singular vectors
+    std::unique_ptr<DTensor<T>> m_S;  ///< Diagonal matrix S or singular values
+    std::unique_ptr<DTensor<T>> m_U;  ///< Matrix U or left singular vectors
+    std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for SVD
+    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
+    std::unique_ptr<DTensor<unsigned int>> m_rank;  ///< Rank of original matrix
+    bool m_computeU = false;  ///< Whether to compute U
+    bool m_destroyMatrix = true; ///< Whether to sacrifice original matrix
 
     /**
-     * Checks whether matrix is tall; throws invalid_argument if not
-     * @param mat given matrix
+     * Ensures tensor to factorise contains exactly one matrix, and that matrix is tall.
+     * @param mat matrix to be factorised
      */
-    void checkMatrix(DTensor<T> &tenz) {
-        if (tenz.numMats() > 1) {
+    void checkMatrix(DTensor<T> &tensor) {
+        if (tensor.numMats() != 1) {
             throw std::invalid_argument("Only (m, n, 1) tensors are supported for now");
         }
-        if (tenz.numRows() < tenz.numCols()) {
+        if (tensor.numRows() < tensor.numCols()) {
             throw std::invalid_argument("your matrix is fat (no offence)");
         }
     };
 
+    /**
+     * Computes the workspace size required by cuSolver.
+     * @param m number of rows of matrix to be factorised
+     * @param n number of columns of matrix to be factorised
+     */
     void computeWorkspaceSize(size_t m, size_t n);
 
 public:
 
     /**
-     * Constructor
+     * Constructor.
      * @param mat matrix to be factorised
-     * @param computeU whether to compute U (default is false)
+     * @param computeU whether to compute U (default=false)
+     * @param destroyMatrix whether to overwrite original matrix (default=true)
      */
     Svd(DTensor<T> &mat,
         bool computeU = false,
@@ -776,7 +825,7 @@ public:
         size_t n = mat.numCols();
         size_t k = std::min(m, n);
         computeWorkspaceSize(m, n);
-        m_workspace = std::make_unique<DTensor<T>>(m_lwork, 1, 1);
+        m_workspace = std::make_unique<DTensor<T>>(m_lwork, 1, 1);  ///< Allocates required workspace memory
         m_Vtr = std::make_unique<DTensor<T>>(n, n, 1);
         m_S = std::make_unique<DTensor<T>>(k, 1, 1);
         m_info = std::make_unique<DTensor<int>>(1, 1, 1);
@@ -785,32 +834,48 @@ public:
     }
 
     /**
-     * Perform factorisation
-     * @return status code
-     *
-     * Warning: the given matrix is destroyed
+     * Perform factorisation.
+     * Warning: the original matrix is destroyed by default!
+     * @return status code of cuSolver computation
      */
     int factorise();
 
+    /**
+     * @return diagonal matrix S, or singular values
+     */
     DTensor<T> singularValues() const {
         return *m_S;
     }
 
+    /**
+     * @return matrix V', or right singular vectors
+     */
     DTensor<T> rightSingularVectors() const {
         return *m_Vtr;
     }
 
+    /**
+     * @return matrix U, or left singular vectors
+     */
     std::optional<DTensor<T>> leftSingularVectors() const {
         if (!m_computeU) return std::nullopt;
         return *m_U;
     }
 
+    /**
+     * Destroyer.
+     */
     ~Svd() {
         m_lwork = -1;
         if (!m_destroyMatrix && m_tensor) delete m_tensor;
     }
 
-    unsigned int rank(T epsilon = 1e-6) {
+    /**
+     * Computes the rank of the original matrix.
+     * @param epsilon any numerical value less than epsilon is considered zero
+     * @return rank of original matrix
+     */
+    size_t rank(T epsilon = 1e-6) {
         int k = m_S->numEl();
         k_countNonzeroSingularValues<T><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->raw(), k,
                                                                               m_rank->raw(),
@@ -874,42 +939,62 @@ inline int Svd<float>::factorise() {
 
 
 /* ================================================================================================
- *  CHOLESKY FACTORISATION
+ *  CHOLESKY FACTORISATION (CF)
  * ================================================================================================ */
 
+/**
+ * Cholesky factorisation (CF) needs a workspace to be setup for cuSolver before factorisation.
+ * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
+ * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace
+ * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
+ */
 template<typename T> requires std::floating_point<T>
 class CholeskyFactoriser {
 
 private:
-    int m_workspaceSize = 0;
-    std::unique_ptr<DTensor<int>> m_d_info;
-    std::unique_ptr<DTensor<T>> m_d_workspace;
-    DTensor<T> *m_d_matrix; // do not destroy
+    int m_workspaceSize = 0;  ///< Size of workspace needed for CF
+    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
+    std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for CF
+    DTensor<T> *m_matrix;  ///< Matrix to factorise. Do not destroy!
 
+    /**
+     * Computes the workspace size required by cuSolver.
+     */
     void computeWorkspaceSize();
 
 public:
 
     CholeskyFactoriser(DTensor<T> &A) {
-        if (A.numMats() > 1) throw std::invalid_argument("3D Tensors are not supported (for now); only matrices");
-        if (A.numRows() != A.numCols()) throw std::invalid_argument("Matrix A must be square");
-        m_d_matrix = &A;
+        if (A.numMats() > 1) throw std::invalid_argument("3D tensors are not supported (for now); only matrices");
+        if (A.numRows() != A.numCols()) throw std::invalid_argument("Matrix A must be square for CF");
+        m_matrix = &A;
         computeWorkspaceSize();
-        m_d_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
-        m_d_info = std::make_unique<DTensor<int>>(1);
+        m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
+        m_info = std::make_unique<DTensor<int>>(1);
     }
 
+    /**
+     * Factorise matrix.
+     * @return status code of computation
+     */
     int factorise();
 
     // TODO do we need to allow rhs to be a matrix?
-    int solve(DTensor<T> &rhs);
+    /**
+     * Solves for the solution of A\\b using the CF of A.
+     * A is the matrix that is factorised and b is the provided matrix.
+     * A and b must have compatible dimensions (same number of rows and matrices=1).
+     * A must be square (m=n).
+     * @param b provided matrix
+     * @return status code of computation
+     */
+    int solve(DTensor<T> &b);
 
 };
 
 template<>
 void CholeskyFactoriser<double>::computeWorkspaceSize() {
-    size_t n = m_d_matrix->numRows();
-
+    size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
                                           CUBLAS_FILL_MODE_LOWER, n,
                                           nullptr, n, &m_workspaceSize));
@@ -917,8 +1002,7 @@ void CholeskyFactoriser<double>::computeWorkspaceSize() {
 
 template<>
 void CholeskyFactoriser<float>::computeWorkspaceSize() {
-    size_t n = m_d_matrix->numRows();
-
+    size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
                                           CUBLAS_FILL_MODE_LOWER, n,
                                           nullptr, n, &m_workspaceSize));
@@ -926,51 +1010,49 @@ void CholeskyFactoriser<float>::computeWorkspaceSize() {
 
 template<>
 inline int CholeskyFactoriser<double>::factorise() {
-    size_t n = m_d_matrix->numRows();
+    size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
-                               m_d_matrix->raw(), n,
-                               m_d_workspace->raw(),
+                               m_matrix->raw(), n,
+                               m_workspace->raw(),
                                m_workspaceSize,
-                               m_d_info->raw()));
-    return (*m_d_info)(0);
+                               m_info->raw()));
+    return (*m_info)(0);
 }
 
 
 template<>
 inline int CholeskyFactoriser<float>::factorise() {
-    size_t n = m_d_matrix->numRows();
+    size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
-                               m_d_matrix->raw(), n,
-                               m_d_workspace->raw(),
+                               m_matrix->raw(), n,
+                               m_workspace->raw(),
                                m_workspaceSize,
-                               m_d_info->raw()));
-    return (*m_d_info)(0);
+                               m_info->raw()));
+    return (*m_info)(0);
 }
 
 template<>
 inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
-    size_t n = m_d_matrix->numRows();
-    size_t k = rhs.numEl();
+    size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
                                n, 1,
-                               m_d_matrix->raw(), n,
+                               m_matrix->raw(), n,
                                rhs.raw(), n,
-                               m_d_info->raw()));
-    return (*m_d_info)(0);
+                               m_info->raw()));
+    return (*m_info)(0);
 }
 
 template<>
 inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
-    size_t n = m_d_matrix->numRows();
-    size_t k = rhs.numEl();
+    size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
                                n, 1,
-                               m_d_matrix->raw(), n,
+                               m_matrix->raw(), n,
                                rhs.raw(), n,
-                               m_d_info->raw()));
-    return (*m_d_info)(0);
+                               m_info->raw()));
+    return (*m_info)(0);
 }
 
 #endif
