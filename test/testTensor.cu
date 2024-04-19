@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include "../include/tensor.cuh"
 
-#define PRECISION 1e-6
 #define PRECISION_LOW 1e-4
 #define PRECISION_HIGH 1e-10
 
@@ -492,6 +491,31 @@ TEST_F(TensorTest, tensorGetRows) {
     tensorGetRows<double>();
 }
 
+
+/* ---------------------------------------
+ * Tensor: transpose
+ * --------------------------------------- */
+
+template<typename T>
+void tensorTraspose() {
+    std::vector<T> aData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    DTensor<T> A(aData, 3, 2, 2);
+    DTensor<T> Atranspose = A.tr();
+    EXPECT_EQ(2, Atranspose.numRows());
+    EXPECT_EQ(3, Atranspose.numCols());
+    EXPECT_EQ(2, Atranspose.numMats());
+    std::vector<T> expected = {1, 4, 2, 5, 3, 6, 7, 10, 8, 11, 9, 12};
+    std::vector<T> actual;
+    Atranspose.download(actual);
+    EXPECT_EQ(expected, actual);
+
+}
+
+TEST_F(TensorTest, tensorTraspose) {
+    tensorTraspose<float>();
+    tensorTraspose<double>();
+}
+
 /* ================================================================================================
  *  LEAST SQUARES TESTS
  * ================================================================================================ */
@@ -575,7 +599,7 @@ TEST_F(SvdTest, singularValuesComputation) {
 
 
 /* ================================================================================================
- *  SVD TESTS
+ *  CHOLESKY TESTS
  * ================================================================================================ */
 class CholeskyTest : public testing::Test {
 protected:

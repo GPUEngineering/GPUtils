@@ -51,7 +51,6 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
 #endif
 
 
-
 /* ================================================================================================
  *  SESSION
  * ================================================================================================ */
@@ -89,7 +88,6 @@ public:
 };
 
 
-
 /* ================================================================================================
  *  TENSOR
  * ================================================================================================ */
@@ -115,6 +113,8 @@ private:
 
     bool allocateOnDevice(size_t size, bool zero = false);
 
+    std::ostream &print(std::ostream &out) const;
+
 public:
     /**
     * Constructs a DeviceVector object
@@ -129,103 +129,140 @@ public:
      * Allocates (m, n, k)-tensor
      * @param n
      */
-    DTensor(size_t m, size_t n = 1, size_t k = 1, bool zero = false) {
-        m_numRows = m;
-        m_numCols = n;
-        m_numMats = k;
-        size_t size = m * n * k;
-        allocateOnDevice(size, zero);
-    }
+    DTensor(size_t m, size_t n = 1, size_t k = 1, bool zero = false);
 
-    DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1) {
-        m_numRows = m;
-        m_numCols = n;
-        m_numMats = k;
-        size_t size = m * n * k;
-        allocateOnDevice(size);
-        upload(data);
-    }
+    DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1);
 
     /**
      * Copy constructor
+     * @param other
      */
-    DTensor(const DTensor &other) {
-        m_numMats = other.m_numMats;
-        m_numRows = other.m_numRows;
-        m_numCols = other.m_numCols;
+    DTensor(const DTensor &other);
 
-        allocateOnDevice(m_numRows * m_numCols * m_numMats);
-        gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
-                             cudaMemcpyDeviceToDevice));
-    }
-
-    DTensor(DTensor&& other) {
-        m_numCols = other.m_numCols;
-        m_numRows = other.m_numRows;
-        m_numMats = other.m_numMats;
-        m_d_data = other.m_d_data;
-        m_doDestroy = true;
-        other.m_doDestroy = false;
-        other.m_d_data = nullptr;
-    }
+    /**
+     * Move constructor
+     * @param other
+     */
+    DTensor(DTensor &&other);
 
     /**
      * Slicing constructor
-     * @param other
-     * @param axis
+     * @param other other tensor with the same template type
+     * @param axis axis to slice
      * @param from
      * @param to
      */
-    DTensor(const DTensor &other, size_t axis, size_t from, size_t to) {
-        if (from > to) throw std::invalid_argument("from > to");
-        size_t offset = 0, len = to - from + 1;
-        if (axis == 2) {
-            offset = other.m_numRows * other.m_numCols * from;
-            m_numRows = other.m_numRows;
-            m_numCols = other.m_numCols;
-            m_numMats = len;
-        } else if (axis == 1) {
-            offset = other.m_numCols * from;
-            m_numRows = other.m_numRows;
-            m_numCols = len;
-            m_numMats = 1;
-        } else if (axis == 0) {
-            offset = from;
-            m_numRows = to - from + 1;
-            m_numCols = 1;
-            m_numMats = 1;
-        }
-        m_d_data = other.m_d_data + offset;
-        m_doDestroy = false;
-    }
+    DTensor(const DTensor &other, size_t axis, size_t from, size_t to);
 
+    /**
+     * Raw pointer
+     * @return
+     */
     T *raw() const;
 
+    /**
+     * Number of rows
+     * @return
+     */
     size_t numRows() const;
 
+    /**
+     * Number of columns
+     * @return
+     */
     size_t numCols() const;
 
+    /**
+     * Number of matrices
+     * @return
+     */
     size_t numMats() const;
 
+    /**
+     * Number of elements
+     * @return
+     */
     size_t numEl() const;
 
+    /**
+     * Upload to device
+     * @param vec given data
+     * @return true iff upload is successful
+     */
     bool upload(const std::vector<T> &vec);
 
+    /**
+     * Download from device to vector
+     * @param vec destination vector
+     */
     void download(std::vector<T> &vec) const;
 
+    /**
+     * Device-to-device copy
+     * @param other target tensor
+     */
     void deviceCopyTo(DTensor<T> &other) const;
 
+    /**
+     * Frobenius norm (Euclidean norm, if it is a  vector);
+     * this is the square root of the sum of squares of all elements
+     * @return
+     */
     T normF() const;
 
+    /**
+     * Sum of absolute of all values
+     * @return
+     */
     T sumAbs() const;
 
+    /**
+     * Least squares solution A\b, where A (this object) and b
+     * must have compatible dimensions and A is a square or
+     * tall matrix
+     * @param b right hand side
+     */
     void leastSquares(DTensor &b);
+
+    /**
+     * Performs the operation Ci <- bCi + a*Ai*Bi, where C is the current
+     * object, A and B are tensors of compatible dimensions
+     * @param A tensor A
+     * @param B tensor B
+     * @param alpha scalar
+     * @param beta scalar
+     */
+    void addAB(DTensor<T> &A, DTensor<T> &B, T alpha = 1, T beta = 0);
+
+    /**
+     * Creates and returns a vector of pointers to the matrices of the
+     * tensor (the vector is an (nMat, 1, 1)-tensor, where nMat is the
+     * number of matrices in the current tensor)
+     * @return
+     */
+    DTensor<T *> pointersToMatrices();
+
+    /**
+     * Creates and returns a horizontal cut of the matrix at layer matIdx
+     * @param rowsFrom
+     * @param rowsTo
+     * @param matIdx
+     * @return
+     */
+    DTensor<T> getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx);
+
+    /**
+     * From the current (m, n, k) tensor, this method creates a new (n, m, k)-tensor
+     * which at layer k stores the transpose of the corresponding matrix.
+     * @return
+     */
+    DTensor tr();
 
     /* ------------- OPERATORS ------------- */
 
     DTensor &operator=(const DTensor &other);
 
-    T operator()(size_t i, size_t j=0, size_t k=0);
+    T operator()(size_t i, size_t j = 0, size_t k = 0);
 
     DTensor &operator*=(T scalar);
 
@@ -233,9 +270,7 @@ public:
 
     DTensor &operator-=(const DTensor &rhs);
 
-    DTensor<T *> pointersToMatrices();
-
-    DTensor<T> getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx);
+    /* ------------- FRIENDS ------------- */
 
     friend DTensor operator+(DTensor &first, const DTensor &second) {
         DTensor result(first);
@@ -249,8 +284,6 @@ public:
         return result;
     }
 
-    void addAB(DTensor<T> &A, DTensor<T> &B, T alpha = 1, T beta = 0);
-
     friend DTensor<T> operator*(DTensor &A, DTensor &B) {
         size_t nrA = A.m_numRows, ncB = B.m_numCols, nmB = B.m_numMats;
         DTensor<T> result(nrA, ncB, nmB);
@@ -259,26 +292,76 @@ public:
     }
 
     friend std::ostream &operator<<(std::ostream &out, const DTensor<T> &data) {
-        size_t nr = data.m_numRows, nc = data.m_numCols, nm = data.m_numMats;
-        out << "Tensor [" << data.m_numRows << " x "
-            << data.m_numCols << " x "
-            << data.m_numMats << "]:" << std::endl;
-        std::vector<T> temp;
-        data.download(temp);
-        for (size_t k = 0; k < nm; k++) {
-            out << ">> layer: " << k << std::endl;
-            for (size_t i = 0; i < nr; i++) {
-                for (size_t j = 0; j < nc; j++) {
-                    out << std::setw(10) << temp[nr * (nc * k + j) + i] << ", ";
-                }
-                out << std::endl;
-            }
-        }
-        return out;
+        return data.print(out);
     }
 
-}; /* END OF TENZOR */
+}; /* END OF DTENSOR */
 
+
+template<typename T>
+DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
+    m_numRows = m;
+    m_numCols = n;
+    m_numMats = k;
+    size_t size = m * n * k;
+    allocateOnDevice(size, zero);
+}
+
+template<typename T>
+DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k) {
+    m_numRows = m;
+    m_numCols = n;
+    m_numMats = k;
+    size_t size = m * n * k;
+    allocateOnDevice(size);
+    upload(data);
+}
+
+template<typename T>
+DTensor<T>::DTensor(const DTensor<T> &other) {
+    m_numMats = other.m_numMats;
+    m_numRows = other.m_numRows;
+    m_numCols = other.m_numCols;
+
+    allocateOnDevice(m_numRows * m_numCols * m_numMats);
+    gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
+                         cudaMemcpyDeviceToDevice));
+}
+
+template<typename T>
+DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to) {
+    if (from > to) throw std::invalid_argument("from > to");
+    size_t offset = 0, len = to - from + 1;
+    if (axis == 2) {
+        offset = other.m_numRows * other.m_numCols * from;
+        m_numRows = other.m_numRows;
+        m_numCols = other.m_numCols;
+        m_numMats = len;
+    } else if (axis == 1) {
+        offset = other.m_numCols * from;
+        m_numRows = other.m_numRows;
+        m_numCols = len;
+        m_numMats = 1;
+    } else if (axis == 0) {
+        offset = from;
+        m_numRows = to - from + 1;
+        m_numCols = 1;
+        m_numMats = 1;
+    }
+    m_d_data = other.m_d_data + offset;
+    m_doDestroy = false;
+}
+
+template<typename T>
+DTensor<T>::DTensor(DTensor<T> &&other) {
+    m_numCols = other.m_numCols;
+    m_numRows = other.m_numRows;
+    m_numMats = other.m_numMats;
+    m_d_data = other.m_d_data;
+    m_doDestroy = true;
+    other.m_doDestroy = false;
+    other.m_d_data = nullptr;
+}
 
 template<typename T>
 inline size_t DTensor<T>::numRows() const {
@@ -369,6 +452,38 @@ inline void DTensor<T>::download(std::vector<T> &vec) const {
 template<typename T>
 inline T *DTensor<T>::raw() const {
     return m_d_data;
+}
+
+template<>
+inline DTensor<float> DTensor<float>::tr() {
+    DTensor<float> transposes(m_numCols, m_numRows, m_numMats);
+    float alpha = 1.0f, beta = 0;
+    size_t numElMat = m_numCols * m_numRows;
+    for (size_t i = 0; i < m_numMats; i++) {
+        gpuErrChk(cublasSgeam(Session::getInstance().cuBlasHandle(),
+                              CUBLAS_OP_T, CUBLAS_OP_N,
+                              m_numCols, m_numRows,
+                              &alpha, raw() + numElMat * i, m_numRows,
+                              &beta, nullptr, m_numCols,
+                              transposes.raw() + numElMat * i, m_numCols));
+    }
+    return transposes;
+}
+
+template<>
+inline DTensor<double> DTensor<double>::tr() {
+    DTensor<double> transposes(m_numCols, m_numRows, m_numMats);
+    double alpha = 1.0f, beta = 0;
+    size_t numElMat = m_numCols * m_numRows;
+    for (size_t i = 0; i < m_numMats; i++) {
+        gpuErrChk(cublasDgeam(Session::getInstance().cuBlasHandle(),
+                              CUBLAS_OP_T, CUBLAS_OP_N,
+                              m_numCols, m_numRows,
+                              &alpha, raw() + numElMat * i, m_numRows,
+                              &beta, nullptr, m_numCols,
+                              transposes.raw() + numElMat * i, m_numCols));
+    }
+    return transposes;
 }
 
 template<typename T>
@@ -570,6 +685,26 @@ DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t 
     return rowsOnly;
 }
 
+template<typename T>
+std::ostream &DTensor<T>::print(std::ostream &out) const {
+    size_t nr = m_numRows, nc = m_numCols, nm = m_numMats;
+    out << "Tensor [" << m_numRows << " x "
+        << m_numCols << " x "
+        << m_numMats << "]:" << std::endl;
+    std::vector<T> temp;
+    download(temp);
+    for (size_t k = 0; k < nm; k++) {
+        out << ">> layer: " << k << std::endl;
+        for (size_t i = 0; i < nr; i++) {
+            for (size_t j = 0; j < nc; j++) {
+                out << std::setw(10) << temp[nr * (nc * k + j) + i] << ", ";
+            }
+            out << std::endl;
+        }
+    }
+    return out;
+}
+
 /* ================================================================================================
  *  SINGULAR VALUE DECOMPOSITION (SVD)
  * ================================================================================================ */
@@ -678,8 +813,8 @@ public:
     unsigned int rank(T epsilon = 1e-6) {
         int k = m_S->numEl();
         k_countNonzeroSingularValues<T><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->raw(), k,
-                m_rank->raw(),
-                epsilon);
+                                                                              m_rank->raw(),
+                                                                              epsilon);
         return (*m_rank)(0);
     }
 
@@ -695,7 +830,6 @@ template<>
 inline void Svd<double>::computeWorkspaceSize(size_t m, size_t n) {
     gpuErrChk(cusolverDnDgesvd_bufferSize(Session::getInstance().cuSolverHandle(), m, n, &m_lwork));
 }
-
 
 
 template<>
@@ -737,7 +871,6 @@ inline int Svd<float>::factorise() {
     int info = (*m_info)(0, 0, 0);
     return info;
 }
-
 
 
 /* ================================================================================================
@@ -839,4 +972,5 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
                                m_d_info->raw()));
     return (*m_d_info)(0);
 }
+
 #endif
