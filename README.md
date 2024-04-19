@@ -21,7 +21,7 @@ DTensor myTensor(n);
 ```
 
 > [!IMPORTANT] 
-> This creates an n-dimensional vector as a (n,1,1)-tensor on the device.
+> This creates an n-dimensional vector as an (n,1,1)-tensor on the device.
 
 A `DTensor` can be instantiated from host memory:
 
