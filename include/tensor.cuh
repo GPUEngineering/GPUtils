@@ -104,7 +104,7 @@ public:
 /**
  * This library uses tensors to store and manipulate data on a GPU device.
  * A tensor has three axes: [rows (m) x columns (n) x matrices (k)].
- * An (m,n,1)-tensor is a matrix, and a (m,1,1)-tensor is a vector.
+ * An (m,n,1)-tensor is a matrix, and an (m,1,1)-tensor is a vector.
  * Tensors can be used to do a batched operation on many similar-sized matrices or vectors in parallel.
  * @tparam T type of data stored in tensor
  */

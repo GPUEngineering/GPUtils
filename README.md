@@ -1,166 +1,148 @@
 # GPUtils
 
-## 1. DeviceVector
+## 1. DTensor
 
-The `DeviceVector` class is for manipulating vectors on the GPU. It manages their
-memory and facilitates various simple algebraic operations.
+The `DTensor` class is for manipulating data on a GPU. 
+It manages their memory and facilitates various algebraic operations.
 
-In what follows, we first need to create a `Context` object by doing
+A tensor has three axes: `[rows (m) x columns (n) x matrices (k)]`.
+An (m,n,1)-tensor stores a _matrix_, and an (m,1,1)-tensor stores a _vector_.
 
-```c++
-Context context;
-```
+We first need to decide on a data type between `float` or `double`.
+We will use `float` in the following examples.
 
-Then, we need to decide on a data type between `float` or `double`.
-We will use `float` for the following examples.
+### 1.1. Vectors
 
-### 1.1. Memory management
-
-The simplest way to create an empty `DeviceVector` object is by defining its capacity:
+The simplest way to create an empty `DTensor` object is by constructing a vector:
 
 ```c++
 size_t n = 100;
-DeviceVector myVector(&context, n);
+DTensor myTensor(n);
 ```
 
-A `DeviceVector` can be instantiated from host memory:
+> [!IMPORTANT] 
+> This creates an n-dimensional vector as a (n,1,1)-tensor on the device.
+
+A `DTensor` can be instantiated from host memory:
 
 ```c++
 std::vector<float> h_a{4., -5., 6., 9., 8., 5., 9., -10.2, 9., 11.};
-DeviceVector<float> myVector(&context, h_a);
+DTensor<float> myTensor(h_a, h_a.size());
+std::cout << myTensor << "\n";
 ```
 
-We will often need to create slices (or shallow copies) of a `DeviceVector` 
+> [!CAUTION]
+> Printing a `DTensor` to `std::cout` will slow down your program
+> (it requires the data to be downloaded from the device).
+> Printing was designed for quick debugging.
+
+We will often need to create slices (or shallow copies) of a `DTensor` 
 given a range of values. We can then do:
 
-
 ```c++
+size_t axis = 0;  // rows=0, cols=1, mats=2
 size_t from = 3;
 size_t to = 5;
-DeviceVector<float> mySlice(myVector, from, to);
+DTensor<float> mySlice(myTensor, axis, from, to);
+std::cout << mySlice << "\n";
 ```
 
-The method `allocateOnDevice` can be used to allocate memory on the GPU.
-Note that this will destroy and clear any previously allocated memory.
-In principle, it is not wise to call this repeatedly on the same object.
-The method returns true if the allocation is successful. Note that this 
-method is not used to resize the allocated memory. For example, have a look
-at this snippet:
-
-```c++
-DeviceVector<float> z(&context, 100);  // size of z = 100
-z.allocateOnDevice(80); // nothing happens
-std::cout << "size of x = " << z.capacity() << std::endl;  // size is stil 100
-```
-
-Sometimes we need to reuse an already allocated device vector by uploading 
+Sometimes we need to reuse an already allocated `DTensor` by uploading 
 new data from the host by using the method `upload`. Here is a short example:
 
 ```c++
-std::vector<float> h_a{4., -5., 6., 9., 8., 5., 9., -10.2, 9., 11.};  // host data
-DeviceVector<float> z(&context, 100);  // device vector of length 100
-z.upload(h_a);  // upload 10 values only
-std::cout << "#z = "<< z.capacity() << std::endl; // the size is still 100
+std::vector<float> h_a{1., 2., 3.};  // host data a
+DTensor<float> myVec(h_a, 3);  // create vector in tensor on device
+std::vector<float> h_b{4., -5., 6.};  // host data b
+myVec.upload(h_b);
+std::cout << myVec << "\n";
 ```
 
-We can upload some host data to a particular position of the device vector as follows:
+We can upload some host data to a particular position of a `DTensor` as follows:
 
 ```c++
 std::vector<float> hostData{1., 2., 3.};
-std::vector<float> hostZeros(7);
-DeviceVector<float> x(&context, hostZeros);  // x = [0, 0, 0, 0, 0, 0, 0]
-DeviceVector<float> mySlice(x, 3, 5); 
+// here, `true` tells the constructor to set all allocated elements to zero
+DTensor<float> x(7, 1, 1, true);  // x = [0, 0, 0, 0, 0, 0, 0]'
+DTensor<float> mySlice(x, 0, 3, 5); 
 mySlice.upload(hostData);
-std::cout << x << std::endl;  // x = [0, 0, 0, 1, 2, 3, 0]
+std::cout << x << "\n";  // x = [0, 0, 0, 1, 2, 3, 0]'
 ```
 
 If necessary, the data can be downloaded from the device to the host using 
 `download`.
 
-Very often we will also need to copy data from a device vector 
-to another device vector (without passing through the host).
+Very often we will also need to copy data from an existing `DTensor`
+to another `DTensor` (without passing through the host).
 To do this we can use `deviceCopyTo`. Here is an example:
 
 ```c++
-DeviceVector<float> x(&context, 10);
-DeviceVector<float> y(&context, 10);
-x.deviceCopyTo(y); // x ---> y
+DTensor<float> x(10);
+DTensor<float> y(10);
+x.deviceCopyTo(y);  // x ---> y (device memory to device memory)
 ```
 
-The copy constructor has also been implemented; to hard-copy a vector just
-do `DeviceVector<float> myCopy(existingVector)`.
+The copy constructor has also been implemented; to hard-copy a `DTensor` just
+do `DTensor<float> myCopy(existingTensor)`.
 
 Lastly, a not so efficient method that should only be used for 
 debugging, if at all, is the `()` operator (e.g., `x(i)`), which fetches
-one element of the vector to the host; for the love of god, do 
-not put this in a loop. 
-
+one element of the `DTensor` to the host.
 This cannot be used to set a value, so don't do anything like `x(0) = 4.5`!
+> [!CAUTION]
+> For the love of god, do not put this `()` operator in a loop.
 
-### 1.2. Printing vectors
-
-Printing vectors is as easy as 
-
-```c++
-std::cout << myVector;
-```
-
-The `<<` operator downloads the data from the device to the host and 
-prints them (which makes it useful for quick debugging). 
-
-
-### 1.3. Computation of scalar quantities
+### 1.2. Computation of scalar quantities
 
 The following scalar quantities can be computed (internally, 
 we use `cublas` functions):
 
-- The Euclidean norm of $x$, using `norm2`
-- The 1-norm, using `norm1` 
+- `.normF()`: the Frobenius norm of a tensor $x$, using `nrm2` (i.e., the 2-norm, or Euclidean norm, if $x$ is a vector)
+- `sumAbs()`: the sum of the absolute of all the elements, using `asum` (i.e., the 1-norm if $x$ is a vector)
 
-### 1.4. Some cool operators
+### 1.3. Some cool operators
 
-:warning: Note that these operations are currently supported for 
-`float`-based device vectors only (the extension other types is trivial).
-
-We can add device vectors on the device as follows:
+We can element-wise add `DTensor`s on the device as follows:
 
 ```c++
-Context context;
 std::vector<float> host_x{1., 2., 3., 4., 5., 6.,  7.};
 std::vector<float> host_y{1., 3., 5., 7., 9., 11., 13.};
-DeviceVector<float> x(&context, host_x);
-DeviceVector<float> y(&context, host_x);
-x += y;  // x = [2, 4, 6, 8, 10, 12, 14]
+DTensor<float> x(host_x, host_x.size());
+DTensor<float> y(host_y, host_y.size());
+x += y;  // x = [2, 5, 8, 11, 14, 17, 20]'
+std::cout << x << "\n";
 ```
 
-To subtract `y` from `x` we can use `x -= y`.
+To element-wise subtract `y` from `x` we can use `x -= y`.
 
-We can also scale a device vector by a scalar with `*=` (e.g, `x *= 5.0f`). 
-To negate the values of a device vector we can be `x *= -1.0`.
+We can also scale a `DTensor` by a scalar with `*=` (e.g, `x *= 5.0f`). 
+To negate the values of a `DTensor` we can do `x *= -1.0f`.
 
-We can also compute the inner product of two vectors as follows:
+We can also compute the inner product (as a (1,1,1)-tensor) of two vectors as follows:
 
 ```c++
-float innerProduct = x * y;
+std::vector<float> host_x{1., 2., 3., 4., 5., 6.,  7.};
+std::vector<float> host_y{1., 3., 5., 7., 9., 11., 13.};
+DTensor<float> xtr(host_x, 1, host_x.size());  // column vector
+DTensor<float> y(host_y, host_y.size());  // row vector
+DTensor<float> innerProduct = x * y;
 ```
 
-If necessary, we can also use the following operations
+If necessary, we can also use the following element-wise operations
 
 ```c++
+DTensor<float> x(host_x, host_x.size());  // row vector
 auto sum = x + y;
 auto diff = x - y;
-auto scaledX = 3.0f * x;
+auto scaledX = 3.0f * x;  // TODO not implemented (yet)
 ```
 
+### 1.4. Matrices
 
-## 2. DeviceMatrix
-
-### 2.1. Construction of device matrices
-
-To construct a device matrix we need to provide the data in 
-an array; we can use either a column-major or a row-major format,
-the former being the preferred and default one.
-Suppose we need to construct the matrix 
+To store a matrix in a `DTensor` we need to provide the data in an array; 
+we can use either column-major (default) or row-major format.
+```TODO implement row-major```
+Suppose we need to store the matrix 
 
 $$A = \begin{bmatrix}
 1 & 2 & 3 \\
@@ -170,80 +152,144 @@ $$A = \begin{bmatrix}
 13 & 14 & 15
 \end{bmatrix},$$
 
-where the data is stored, say, in row-major format.
+where this data is stored in row-major format.
 Then, we do
 ```c++
-Context context;
-size_t numRows = 5;
+size_t rows = 5;
+size_t cols = 3;
 std::vector<float> h_data{1.0f, 2.0f, 3.0f,
                           4.0f, 5.0f, 6.0f,
                           7.0f, 8.0f, 9.0f,
                           10.0f, 11.0f, 12.0f,
                           13.0f, 14.0f, 15.0f};
-DeviceMatrix<float> mat(&context,
-                        numRows,
-                        h_data,
-                        MatrixStorageMode::rowMajor);
+DTensor<float> myTensor(h_data, rows, cols, 1, rowMajor);
 ```
 
-Choose `MatrixStorageMode::rowMajor` or `MatrixStorageMode::rowMajor` as appropriate.
+Choose `rowMajor` or `rowMajor` as appropriate.
 
-We can also preallocate memory for a device matrix as follows
+We can also preallocate memory for a `DTensor` as follows:
 
 ```c++
-size_t nRows = 2;
-size_t nCols = 3;
-DeviceMatrix<float> a(&context, nRows, nCols);
+DTensor<float> a(rows, cols, 1);
 ```
 
 Then, we can upload the data as follows:
 
 ```c++
-std::vector<float> h_a{1.0f, 2.0f, 3.0f,
-                              4.0f, 5.0f, 6.0f}
-a.upload(h_a, nRows, MatrixStorageMode::rowMajor);
+a.upload(h_data, rowMajor);
 ```
 
-The copy constructor has also been implemented; to hard-copy a vector just
-do `DeviceVector<float> myCopy(existingMatrix)`.
+The copy constructor has also been implemented; 
+to hard-copy a vector just do 
+`DTensor<float> myCopy(existingTensor)`.
 
-The number of rows and columns of a device matrix can be 
-retrieved using the method `.numRows()` and `.numCols()` respectively.
+The number of rows and columns of a `DTensor` can be 
+retrieved using the methods `.numRows()` and `.numCols()` respectively.
 
-To print a matrix, just do 
-```c++
-std::cout << myMatrix;
-```
-
-
-### 2.2. Operations with device matrices
+### 1.5. More operations
 
 The operators `+=` are `-=` supported for device matrices.
 
 Matrix-matrix multiplication is as simple as:
 
 ```c++
-size_t n = 2, k = 3;
+size_t m = 2, k = 3, n=5;
 std::vector<float> aData{1.0f,  2.0f,  3.0f,
                          4.0f,  5.0f,  6.0f};
 std::vector<float> bData{1.0f,  2.0f,  3.0f,  4.0f,  5.0f,
                          6.0f,  7.0f,  8.0f,  9.0f, 10.0f,
                          11.0f, 12.0f, 13.0f, 14.0f, 15.0f};
-DeviceMatrix<float> A(&context, n, aData, MatrixStorageMode::rowMajor);
-DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
+DTensor<float> A(aData, m, k, 1, rowMajor);
+DTensor<float> B(bData, k, n, 1, rowMajor);
 auto X = A * B;
-std::cout << A << B << X;
+std::cout << A << B << X << "\n";
 ```
-
-We can also create the transpose of a matrix using `.tr()`. Transposition in-place is not possible.
 
 To fetch a single element of matrix we can simply use the `()` operator, 
 e.g., we can do `float value = X(2, 3)` to obtain the (2, 3)-entry 
 of matrix `X`.
 
+### 1.6. Tensors
+
+As you would expect, all operations mentioned so far are supported by actual tensors
+as batched operations (that is, (m,n)-matrix-wise).
+
+Also, we can create the transposes of a `DTensor` using `.tr()`.
+This transposes each (m,n)-matrix and stores it in a new `DTensor`
+at the same k-index.
+Transposition in-place is not possible.
+
+## 1.7. Least squares
+
+The solution of least squares has been implmented as a tensor method.
+Say we want to solve `A\b` using least squares.
+We first create $A$ and $b$
+
+```c++
+size_t m = 4;
+size_t n = 3;
+std::vector<float> aData{1.0f, 2.0f, 4.0f,
+                         2.0f, 13.0f, 23.0f,
+                         4.0f, 23.0f, 77.0f,
+                         6.0f, 7.0f, 8.0f};
+std::vector<float> bData{1.0f, 2.0f, 3.0f, 4.0f};
+DTensor<float> A(aData, m, n, 1, rowMajor);
+DTensor<float> B(bData, m);
+```
+
+Then, we can solve the system by
+
+```c++
+A.leastSquares(B);
+```
+
+The `DTensor` `B` will be overwritten with the solution.
+
+> [!IMPORTANT]
+> This particular example demonstrates how the solution may 
+> overwrite only part of the given `B`, as `B` is an
+> (4,1,1)-tensor and the solution is an (3,1,1)-tensor.
+
+## 2. Cholesky factorisation and system solution
+
+> [!WARNING]
+> This factorisation only works with positive-definite matrices.
+
+Here is an example:
+
+$$A = \begin{bmatrix}
+1 & 2 & 4 \\
+2 & 13 & 23 \\
+4 & 23 & 77
+\end{bmatrix}.$$
+
+This is how to perform a Cholesky factorisation:
+
+```c++
+size_t n = 3;
+std::vector<float> aData{1.0f, 2.0f, 4.0f,
+                         2.0f, 13.0f, 23.0f,
+                         4.0f, 23.0f, 77.0f};
+DTensor<float> A(aData, n, n, 1, rowMajor);
+CholeskyFactoriser<float> cfEngine(A);
+status = cfEngine.factorise();
+```
+
+Then, you can solve the system `A\b`
+
+```c++
+std::vector<float> bData{1.0f, 2.0f, 3.0f};
+DTensor<float> B(bData, n);
+cfEngine.solve(B);
+```
+
+The `DTensor` `B` will be overwritten with the solution. 
+
 ## 3. Singular Value Decomposition
 
-Firstly, note that this implementation works only with tall matrices. 
+> [!WARNING] 
+> This implementation only works with square or tall matrices. 
+
 Here is an example with the 4-by-3 matrix
 
 $$B = \begin{bmatrix}
@@ -258,41 +304,40 @@ Evidently, the rank of $B$ is 2, so there will be two nonzero singular values.
 This is how to perform an SVD decomposition:
 
 ```c++
-Context context;
-size_t k = 4;
+size_t m = 4;
+size_t n = 3;
 std::vector<float> bData{1.0f, 2.0f, 3.0f,
                          6.0f, 7.0f, 8.0f,
                          6.0f, 7.0f, 8.0f,
-                         6.0f, 7.0f, 8.0f,};
-DeviceMatrix<float> B(&context, k, bData, MatrixStorageMode::rowMajor);
-SvdFactoriser<float> svdEngine(&context, B);
+                         6.0f, 7.0f, 8.0f};
+DTensor<float> B(bData, m, n, 1, rowMajor);
+SvdFactoriser<float> svdEngine(B);
 status = svdEngine.factorise();
 ```
 
-By default, `SvdFactoriser` will not compute matrix *U*. If you need it,
+By default, `SvdFactoriser` will not compute matrix $U$. If you need it,
 create an instance of `SvdFactoriser` as follows
 
 ```c++
-SvdFactoriser<float> svdEngine(&context, B, true); // computes U
+SvdFactoriser<float> svdEngine(B, true); // computes U
 ```
 
 Note that the default behaviour of `.factorise()` is to destroy
-the given matrix `B`. If you want the factoriser to keep your 
-matrix, you need to set the fourth argument of the above constructor
-to `false`. 
+the given matrix $B$. If you want the factoriser to keep your 
+matrix, you need to set the third argument of the above constructor
+to `false`.
 
-
-After you have factorised the matrix, you can access *S*, *V* and, perhaps, *U*.
+After you have factorised the matrix, you can access $S$, $V'$ and, perhaps, $U$.
 You can do:
 
 ```c++
-std::cout << "S = " << svdEngine.singularValues();
-std::cout << "V' = " << svdEngine.rightSingularVectors();
+std::cout << "S = " << svdEngine.singularValues() << "\n";
+std::cout << "V' = " << svdEngine.rightSingularVectors() << "\n";
 ```
 
-Note that `U` can be obtained, if it is computed 
+Note that $U$ can be obtained, if it is computed 
 in the first place, by the method 
-`leftSingularVectors` which returns an object 
+`.leftSingularVectors()` which returns an object 
 of type [`std::optional<DeviceMatrix<TElement>>`](https://dev.to/delta456/modern-c-stdoptional-58ga).
 Here is an example:
 
@@ -301,13 +346,26 @@ auto U = svdEngine.leftSingularVectors();
 if (U) std::cout << "U = " << U.value();
 ```
 
-## 4. Projection onto a nullspace
+## 5. Projection onto a nullspace
 
+The nullspace of a matrix is computed by SVD.
+The user provides a `DTensor` made of (padded) matrices.
 
-## 5. Least squares
+```c++
+DTensor<float> paddedMatrices(m, n, k);
+Nullspace N(paddedMatrices);
+```
 
+Then, `Nullspace` computes, possibly pads, and stores the 
+nullspace matrices in another `DTensor`.
+The user can then access the (possibly padded) nullspace matrices,
+and the padded number of rows and columns.
 
-## 6. Cholesky factorisation and system solution
+```c++
+size_t idx = 2;
+N.nullspaceMatrix(idx);  // nullspace matrix at k=2 (zero-indexed)
+N.numRows();  // number of (padded) rows of nullspace matrices
+N.numCols();  // number of (padded) columns of nullspace matrices
+```
 
-
-## 7. Tensors
+## Good luck!
