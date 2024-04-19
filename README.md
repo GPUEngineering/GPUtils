@@ -247,8 +247,8 @@ The `DTensor` `B` will be overwritten with the solution.
 
 > [!IMPORTANT]
 > This particular example demonstrates how the solution may 
-> overwrite only part of the given `B`, as `B` is an
-> (4,1,1)-tensor and the solution is an (3,1,1)-tensor.
+> overwrite only part of the given `B`, as `B` is a
+> (4,1,1)-tensor and the solution is a (3,1,1)-tensor.
 
 ## 2. Cholesky factorisation and system solution
 
