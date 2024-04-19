@@ -830,7 +830,7 @@ public:
         m_Vtr = std::make_unique<DTensor<T>>(n, n, nMats);
         m_S = std::make_unique<DTensor<T>>(minMN, 1, nMats);
         m_info = std::make_unique<DTensor<int>>(1, 1, nMats);
-        m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, nMats);
+        m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, nMats, true);
         if (computeU) m_U = std::make_unique<DTensor<T>>(m, m, nMats);
     }
 
@@ -871,17 +871,24 @@ public:
         if (!m_destroyMatrix && m_tensor) delete m_tensor;
     }
 
+
     /**
-     * Computes the rank of the original matrix.
+     * Computes the rank of the original matrices and returns
+     * a (1, 1, nMats)-tensor.
      * @param epsilon any numerical value less than epsilon is considered zero
-     * @return rank of original matrix
+     * @return rank of original matrices
      */
-    size_t rank(T epsilon = 1e-6) {
-        int k = m_S->numEl();
-        k_countNonzeroSingularValues<T><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->raw(), k,
-                                                                              m_rank->raw(),
-                                                                              epsilon);
-        return (*m_rank)(0);
+    DTensor<unsigned int> rank(T epsilon = 1e-6) const {
+        size_t numElS = m_S->numCols() * m_S->numRows();
+        for (size_t i = 0; i < m_rank->numMats(); i++) {
+            DTensor<T> Si(*m_S, 2, i, i);
+            DTensor<unsigned int> rankI(*m_rank, 2, i, i);
+            k_countNonzeroSingularValues<T><<<DIM2BLOCKS(numElS), THREADS_PER_BLOCK>>>(Si.raw(), numElS,
+                                                                                       rankI.raw(), epsilon);
+        }
+
+        return *m_rank;
+
     }
 
 };
@@ -1094,18 +1101,40 @@ class Nullspace {
 
 private:
 
-    DTensor<T> *m_tensor = nullptr;
-    size_t m_rankA;
-    DTensor<T> *m_nullspace = nullptr;
+    std::unique_ptr<DTensor<T>> m_nullspace;
 
 public:
 
     Nullspace(DTensor<T> &A) {
-        m_tensor = &A;
-        Svd<T> svd(A);
+        size_t m = A.numRows(), n = A.numCols(), nMats = A.numMats();
+        if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
+        m_nullspace = std::make_unique<DTensor<T>>(n, n, nMats);
+        auto Atr = A.tr();
+        Svd<T> svd(Atr, true);
         svd.factorise();
-        m_rankA = svd.rank();
-        DTensor<T> Vtr = svd.rightSingularVectors();
+        DTensor<unsigned int> devRankA = svd.rank();
+        std::vector<unsigned int> hostRankA;
+        devRankA.download(hostRankA);
+
+        std::optional<DTensor<T>> Uopt = svd.leftSingularVectors();
+        auto U = Uopt.value();
+
+        for (size_t i = 0; i < nMats; i++) { // for each matrix
+            unsigned int rI = hostRankA[i];
+            unsigned int nullityI = n - hostRankA[i];
+            DTensor<T> Ui(U, 2, i, i);
+            DTensor<T> nullityMatrixI(Ui, 1, n - nullityI, n - 1);
+
+
+            // Copy to destination
+            DTensor<T> Ni(*m_nullspace, 2, i, i);
+            DTensor<T> NiFirstCols(Ni, 1, 0, nullityI - 1);
+            nullityMatrixI.deviceCopyTo(NiFirstCols);
+        }
+
+        std::cout << *m_nullspace;
+
+
     }
 
 };
