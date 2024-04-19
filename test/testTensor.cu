@@ -581,7 +581,7 @@ void singularValuesComputation(float epsilon) {
                          3, 8, 8, 8, 8, 8, 8, 8,};
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
-    EXPECT_EQ(0, svd.factorise());
+    EXPECT_EQ(true, svd.factorise());
     auto S = svd.singularValues();
     unsigned int r = svd.rank();
     EXPECT_EQ(2, r);
@@ -595,6 +595,57 @@ void singularValuesComputation(float epsilon) {
 TEST_F(SvdTest, singularValuesComputation) {
     singularValuesComputation<float>(PRECISION_LOW);
     singularValuesComputation<double>(PRECISION_HIGH);
+}
+
+
+/* ---------------------------------------
+ * SVD with multiple matrices
+ * --------------------------------------- */
+template<typename T>
+requires std::floating_point<T>
+void singularValuesMutlipleMatrices(float epsilon) {
+    std::vector<T> aData{1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
+    DTensor<T> A(aData, 3, 2, 3);
+
+    Svd<T> svd(A, true); // do compute U (A will be destroyed)
+    svd.factorise();
+    auto S = svd.singularValues();
+    auto V = svd.rightSingularVectors();
+    auto Uopt = svd.leftSingularVectors();
+    auto U = Uopt.value();
+
+    std::vector<T> expected_v = {-0.386317703118612, -0.922365780077058, -0.922365780077058, 0.386317703118612,
+                                 -0.447213595499958, -0.894427190999916, 0.894427190999916, -0.447213595499958,
+                                 0, -1, 1, 0};
+    std::vector<T> actual_v(12);
+    V.download(actual_v);
+    for (size_t i = 0; i < 4; i++) EXPECT_NEAR(expected_v[i], actual_v[i], epsilon);
+
+    std::vector<T> expected_s = {9.508032000695726, 0.772869635673484, 3.872983346207417, 0, 1, 0};
+    std::vector<T> actual_s(6);
+    S.download(actual_s);
+    for (size_t i = 0; i < 6; i++) EXPECT_NEAR(expected_s[i], actual_s[i], epsilon);
+
+    std::vector<T> expected_u = {
+            -0.428667133548626, -0.566306918848035, -0.703946704147444,
+            0.805963908589298, 0.112382414096594, -0.581199080396110,
+            0.408248290463863, -0.816496580927726, 0.408248290463863,
+            -0.577350269189626, -0.577350269189626, -0.577350269189626,
+            0.816496580927726, -0.408248290463863, -0.408248290463863,
+            0.000000000000000, -0.707106781186548, 0.707106781186547,
+            0, 0, -1,
+            1, 0, 0,
+            0, -1, 0,
+    };
+    std::vector<T> actual_u(27);
+    U.download(actual_u);
+    for (size_t i = 0; i < 27; i++) EXPECT_NEAR(expected_u[i], actual_u[i], epsilon);
+
+}
+
+TEST_F(SvdTest, singularValuesMutlipleMatrices) {
+    singularValuesMutlipleMatrices<float>(10 * PRECISION_LOW); // SVD with float performs quite poorly
+    singularValuesMutlipleMatrices<double>(PRECISION_HIGH);
 }
 
 
