@@ -98,7 +98,7 @@ The following scalar quantities can be computed (internally,
 we use `cublas` functions):
 
 - `.normF()`: the Frobenius norm of a tensor $x$, using `nrm2` (i.e., the 2-norm, or Euclidean norm, if $x$ is a vector)
-- `sumAbs()`: the sum of the absolute of all the elements, using `asum` (i.e., the 1-norm if $x$ is a vector)
+- `.sumAbs()`: the sum of the absolute of all the elements, using `asum` (i.e., the 1-norm if $x$ is a vector)
 
 ### 1.3. Some cool operators
 
