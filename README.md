@@ -134,7 +134,7 @@ If necessary, we can also use the following element-wise operations
 DTensor<float> x(host_x, host_x.size());  // row vector
 auto sum = x + y;
 auto diff = x - y;
-auto scaledX = 3.0f * x;  // TODO not implemented (yet)
+auto scaledX = 3.0f * x;
 ```
 
 ### 1.4. Matrices
