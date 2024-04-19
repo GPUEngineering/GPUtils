@@ -1097,7 +1097,6 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
  */
 template<typename T> requires std::floating_point<T>
 class Nullspace {
-    // WIP
 
 private:
 
@@ -1105,38 +1104,39 @@ private:
 
 public:
 
-    Nullspace(DTensor<T> &A) {
-        size_t m = A.numRows(), n = A.numCols(), nMats = A.numMats();
-        if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
-        m_nullspace = std::make_unique<DTensor<T>>(n, n, nMats);
-        auto Atr = A.tr();
-        Svd<T> svd(Atr, true);
-        svd.factorise();
-        DTensor<unsigned int> devRankA = svd.rank();
-        std::vector<unsigned int> hostRankA;
-        devRankA.download(hostRankA);
+    Nullspace(DTensor<T> &a);
 
-        std::optional<DTensor<T>> Uopt = svd.leftSingularVectors();
-        auto U = Uopt.value();
-
-        for (size_t i = 0; i < nMats; i++) { // for each matrix
-            unsigned int rI = hostRankA[i];
-            unsigned int nullityI = n - hostRankA[i];
-            DTensor<T> Ui(U, 2, i, i);
-            DTensor<T> nullityMatrixI(Ui, 1, n - nullityI, n - 1);
-
-
-            // Copy to destination
-            DTensor<T> Ni(*m_nullspace, 2, i, i);
-            DTensor<T> NiFirstCols(Ni, 1, 0, nullityI - 1);
-            nullityMatrixI.deviceCopyTo(NiFirstCols);
-        }
-
-        std::cout << *m_nullspace;
-
-
+    DTensor<T> nullspace() {
+        return *m_nullspace;
     }
 
 };
+
+
+template<typename T> requires std::floating_point<T>
+Nullspace<T>::Nullspace(DTensor<T> &a) {
+    size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
+    if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
+    m_nullspace = std::make_unique<DTensor<T>>(n, n, nMats, true);
+    auto aTranspose = a.tr();
+    Svd<T> svd(aTranspose, true);
+    svd.factorise();
+    DTensor<unsigned int> devRankA = svd.rank();
+    std::vector<unsigned int> hostRankA;
+    devRankA.download(hostRankA);
+
+    DTensor<T> leftSingVals = svd.leftSingularVectors().value();
+    for (size_t i = 0; i < nMats; i++) { // for each matrix
+        // Slice the matrix of left SVs to get the matrix that spans
+        // the nullspace of a[:, :, i]
+        unsigned int nullityI = n - hostRankA[i]; // nullity(A[:, :, i])
+        DTensor<T> Ui(leftSingVals, 2, i, i); // leftSingVals[:, :, i]
+        DTensor<T> nullityMatrixI(Ui, 1, n - nullityI, n - 1); // leftSingVals[:, <range>, i]
+        // Copy to destination
+        DTensor<T> currentNullspaceDst(*m_nullspace, 2, i, i);
+        DTensor<T> currNullspaceColumnSlice(currentNullspaceDst, 1, 0, nullityI - 1);
+        nullityMatrixI.deviceCopyTo(currNullspaceColumnSlice);
+    }
+}
 
 #endif

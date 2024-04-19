@@ -742,3 +742,38 @@ TEST_F(CholeskyTest, choleskyFactorisationSolution) {
     choleskyFactorisationSolution<float>(PRECISION_LOW);
     choleskyFactorisationSolution<double>(PRECISION_HIGH);
 }
+
+
+/* ================================================================================================
+ *  NULLSPACE TESTS
+ * ================================================================================================ */
+class NullspaceTest : public testing::Test {
+protected:
+    NullspaceTest() {}
+
+    virtual ~NullspaceTest() {}
+};
+
+
+/* ---------------------------------------
+ * Basic nullspace test
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void computeNullspaceTensor(T epsilon) {
+    std::vector<T> aData{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
+                         1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
+                         1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12,
+                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    DTensor<T> A(aData, 3, 4, 5);
+    Nullspace<T> ns(A);
+    DTensor<T> nA = ns.nullspace();
+    std::cout << A << "-----------\n";
+    std::cout << nA;
+}
+
+TEST_F(NullspaceTest, computeNullspaceTensor) {
+    computeNullspaceTensor<double>(PRECISION_HIGH);
+}
