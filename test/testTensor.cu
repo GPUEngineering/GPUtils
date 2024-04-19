@@ -583,8 +583,6 @@ void singularValuesComputation(float epsilon) {
     Svd<T> svd(B, true, false);
     EXPECT_EQ(true, svd.factorise());
     auto S = svd.singularValues();
-    unsigned int r = svd.rank();
-    EXPECT_EQ(2, r);
     EXPECT_NEAR(32.496241123753592, S(0), epsilon); // value from MATLAB
     EXPECT_NEAR(0.997152358903242, S(1), epsilon); // value from MATLAB
 
@@ -648,6 +646,32 @@ TEST_F(SvdTest, singularValuesMutlipleMatrices) {
     singularValuesMutlipleMatrices<double>(PRECISION_HIGH);
 }
 
+
+
+/* ---------------------------------------
+ * SVD for rank computation of multiple
+ * matrices
+ * --------------------------------------- */
+template<typename T>
+requires std::floating_point<T>
+void singularValuesRankMultipleMatrices(float epsilon) {
+    std::vector<T> aData = {1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 0,
+                            1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12,
+                            1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12};
+    DTensor<T> A(aData, 4, 3, 3);
+
+    Svd<T> svd(A);
+    svd.factorise();
+    auto rank = svd.rank(epsilon);
+    EXPECT_EQ(3, rank(0, 0, 0));
+    EXPECT_EQ(2, rank(0, 0, 1));
+    EXPECT_EQ(1, rank(0, 0, 2));
+}
+
+TEST_F(SvdTest, singularValuesRankMultipleMatrices) {
+    singularValuesRankMultipleMatrices<float>(PRECISION_LOW); // SVD with float performs quite poorly
+    singularValuesRankMultipleMatrices<double>(PRECISION_HIGH);
+}
 
 /* ================================================================================================
  *  CHOLESKY TESTS
