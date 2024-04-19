@@ -1,4 +1,6 @@
-# ---- cmake for CUDA with googleTest
+# ====================================================================
+# GPUtils
+# ====================================================================
 cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 project(GPUtils
     DESCRIPTION "Easy use of vectors and matrices on GPGPU devices."
@@ -31,8 +33,11 @@ target_compile_options(developer_flags
 )
 target_link_libraries(device_compiler_flags INTERFACE $<BUILD_INTERFACE:developer_flags>)
 # ----
-add_subdirectory(test)  # comment out to not build tests
-# ----
+
+
+# ====================================================================
+# comment out for release
+# ====================================================================
 add_executable(main)
 target_sources(main
     PRIVATE
@@ -50,4 +55,6 @@ target_include_directories(main
     "${PROJECT_BINARY_DIR}"
     "${PROJECT_SOURCE_DIR}/include"
 )
+# ----
+add_subdirectory(test)
 # ----
