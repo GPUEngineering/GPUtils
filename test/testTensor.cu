@@ -323,6 +323,27 @@ TEST_F(TensorTest, tensorTimesEqualsScalar) {
 }
 
 /* ---------------------------------------
+ * Scalar times tensor
+ * --------------------------------------- */
+
+template<typename T>
+void tensorTimesScalar() {
+    std::vector<T> data = TENSOR_DATA_234A;
+    std::vector<T> dataTimes3 = {3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
+                                 24};
+    DTensor<T> tenz(data, 2, 3, 4);
+    auto tripleTensor = 3.0 * tenz;
+    std::vector<T> actual;
+    tripleTensor.download(actual);
+    EXPECT_EQ(dataTimes3, actual);
+}
+
+TEST_F(TensorTest, tensorTimesScalar) {
+    tensorTimesScalar<float>();
+    tensorTimesScalar<double>();
+}
+
+/* ---------------------------------------
  * Tensor plus-equals tensor
  * --------------------------------------- */
 
@@ -741,4 +762,56 @@ void choleskyFactorisationSolution(T epsilon) {
 TEST_F(CholeskyTest, choleskyFactorisationSolution) {
     choleskyFactorisationSolution<float>(PRECISION_LOW);
     choleskyFactorisationSolution<double>(PRECISION_HIGH);
+}
+
+
+/* ================================================================================================
+ *  NULLSPACE TESTS
+ * ================================================================================================ */
+class NullspaceTest : public testing::Test {
+protected:
+    NullspaceTest() {}
+
+    virtual ~NullspaceTest() {}
+};
+
+
+/* ---------------------------------------
+ * Basic nullspace test
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void computeNullspaceTensor(T epsilon) {
+    std::vector<T> aData{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
+                         1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
+                         1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12,
+                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    DTensor<T> A(aData, 3, 4, 5);
+    Nullspace<T> ns(A);
+    DTensor<T> nA = ns.nullspace();
+    size_t nMats = nA.numMats();
+    EXPECT_EQ(nMats, 5);
+    for (size_t i = 0; i < nMats; i++) {
+        DTensor<T> nAi(nA, 2, i, i);
+        DTensor<T> Ai(A, 2, i, i);
+        DTensor<T> mustBeZero = Ai * nAi;
+        EXPECT_LT(mustBeZero.normF(), epsilon);
+
+        DTensor<T> nAiTr = nAi.tr();
+        DTensor<T> mustBeEye = nAiTr * nAi;
+        EXPECT_NEAR(1, mustBeEye(0, 0, 0), epsilon);
+        for (size_t ir=0; ir<mustBeEye.numRows(); ir++) {
+            for (size_t ic=0; ic<mustBeEye.numCols(); ic++) {
+                if (ir != ic) {
+                    EXPECT_NEAR(0, mustBeEye(ir, ic, 0), epsilon);
+                }
+            }
+        }
+    }
+}
+
+TEST_F(NullspaceTest, computeNullspaceTensor) {
+    computeNullspaceTensor<double>(PRECISION_HIGH);
 }
