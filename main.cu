@@ -8,12 +8,14 @@
 
 
 int main() {
-    std::vector<real_t> aData{1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
-    DTensor<real_t> A(aData, 3, 2, 3);
-    Svd<real_t> svd(A, true);
-    svd.factorise();
-    DTensor<real_t> S = svd.singularValues();
-    std::cout << S;
-//    std::cout << svd.leftSingularVectors().value();
+    std::vector<real_t> aData{10.0, -2.0, -3.0,
+                              7.0, 20.0, -1.0,
+                              1.89, 60.0, -1.6,
+                              -4.5, 20.0, -1.1};
+    DTensor<real_t> A(aData, 3, 2, 2);
+    DTensor<real_t> At = A.tr();
+    std::cout << A;
+    std::cout << At;
+
     return 0;
 }
