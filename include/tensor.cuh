@@ -66,6 +66,7 @@ inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
  */
 class Session {
 public:
+
     static Session &getInstance() {
         static Session instance;
         return instance;
@@ -1104,8 +1105,20 @@ private:
 
 public:
 
+    /**
+     * Constructor (computes nullspace)
+     * @param a device tensor
+     */
     Nullspace(DTensor<T> &a);
 
+    /**
+     * For a given tensor A = (A1, ..., Ak), this returns a
+     * tensor N = (N1, ..., Nk), where the columns of Ni span
+     * the kernel of Ai; the matrices Ni are padded with
+     * zero columns where necessary.
+     *
+     * @return
+     */
     DTensor<T> nullspace() {
         return *m_nullspace;
     }
