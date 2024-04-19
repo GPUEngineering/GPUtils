@@ -23,7 +23,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ----
 add_library(developer_flags INTERFACE)
 set(cxx_flags -Wall)
-set(cuda_flags -arch=sm_60 -std=c++20 -Xcompiler=-Wall -Xcudafe=--display_error_number)
+set(cuda_flags -arch=sm_60 -std=c++20 -Xcompiler=-Wall -Xcudafe=--display_error_number -g)
 target_compile_options(developer_flags
     INTERFACE
     # flags for CXX builds
