@@ -86,9 +86,9 @@ The copy constructor has also been implemented; to hard-copy a `DTensor` just
 do `DTensor<float> myCopy(existingTensor)`.
 
 Lastly, a not so efficient method that should only be used for 
-debugging, if at all, is the `()` operator (e.g., `x(i)`), which fetches
+debugging, if at all, is the `()` operator (e.g., `x(i, j, k)`), which fetches
 one element of the `DTensor` to the host.
-This cannot be used to set a value, so don't do anything like `x(0) = 4.5`!
+This cannot be used to set a value, so don't do anything like `x(0, 0, 0) = 4.5`!
 > [!CAUTION]
 > For the love of god, do not put this `()` operator in a loop.
 
@@ -204,10 +204,6 @@ DTensor<float> B(bData, k, n, 1, rowMajor);
 auto X = A * B;
 std::cout << A << B << X << "\n";
 ```
-
-To fetch a single element of matrix we can simply use the `()` operator, 
-e.g., we can do `float value = X(2, 3)` to obtain the (2, 3)-entry 
-of matrix `X`.
 
 ### 1.6. Tensors
 
