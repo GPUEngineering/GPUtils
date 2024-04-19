@@ -497,7 +497,7 @@ TEST_F(TensorTest, tensorGetRows) {
  * --------------------------------------- */
 
 template<typename T>
-void tensorTraspose() {
+void tensorTranspose() {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     DTensor<T> A(aData, 3, 2, 2);
     DTensor<T> Atranspose = A.tr();
@@ -511,9 +511,9 @@ void tensorTraspose() {
 
 }
 
-TEST_F(TensorTest, tensorTraspose) {
-    tensorTraspose<float>();
-    tensorTraspose<double>();
+TEST_F(TensorTest, tensorTranspose) {
+    tensorTranspose<float>();
+    tensorTranspose<double>();
 }
 
 /* ================================================================================================
