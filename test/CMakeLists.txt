@@ -10,9 +10,10 @@ FetchContent_MakeAvailable(googletest)
 # ----
 enable_testing()
 add_executable(device_test)
-target_sources(device_test
-    PRIVATE
-    testGputils.cu
+
+target_sources(device_test  # add files
+        PRIVATE
+        testTensor.cu
 )
 target_link_libraries(device_test
     PRIVATE
