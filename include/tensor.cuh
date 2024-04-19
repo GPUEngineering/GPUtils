@@ -207,7 +207,7 @@ public:
 
     size_t numMats() const;
 
-    size_t numel() const;
+    size_t numEl() const;
 
     bool upload(const std::vector<T> &vec);
 
@@ -296,7 +296,7 @@ inline size_t DTensor<T>::numMats() const {
 }
 
 template<typename T>
-inline size_t DTensor<T>::numel() const {
+inline size_t DTensor<T>::numEl() const {
     return m_numRows * m_numCols * m_numMats;
 }
 
@@ -373,7 +373,7 @@ inline T *DTensor<T>::raw() const {
 
 template<typename T>
 inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
-    if (elsewhere.numel() < numel()) {
+    if (elsewhere.numEl() < numEl()) {
         throw std::invalid_argument("tensor does not fit into destination");
     }
     gpuErrChk(cudaMemcpy(elsewhere.raw(),
@@ -676,7 +676,7 @@ public:
     }
 
     unsigned int rank(T epsilon = 1e-6) {
-        int k = m_S->numel();
+        int k = m_S->numEl();
         k_countNonzeroSingularValues<T><<<DIM2BLOCKS(k), THREADS_PER_BLOCK>>>(m_S->raw(), k,
                 m_rank->raw(),
                 epsilon);
@@ -817,7 +817,7 @@ inline int CholeskyFactoriser<float>::factorise() {
 template<>
 inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
     size_t n = m_d_matrix->numRows();
-    size_t k = rhs.numel();
+    size_t k = rhs.numEl();
     gpuErrChk(cusolverDnDpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
                                n, 1,
@@ -830,7 +830,7 @@ inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
 template<>
 inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
     size_t n = m_d_matrix->numRows();
-    size_t k = rhs.numel();
+    size_t k = rhs.numEl();
     gpuErrChk(cusolverDnSpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
                                n, 1,

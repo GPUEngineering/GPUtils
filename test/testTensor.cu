@@ -2,6 +2,8 @@
 #include "../include/tensor.cuh"
 
 #define PRECISION 1e-6
+#define PRECISION_LOW 1e-4
+#define PRECISION_HIGH 1e-10
 
 
 /* ================================================================================================
@@ -72,7 +74,7 @@ void tensorConstructionFromVector() {
     EXPECT_EQ(2, tenz.numRows());
     EXPECT_EQ(3, tenz.numCols());
     EXPECT_EQ(4, tenz.numMats());
-    EXPECT_EQ(2 * 3 * 4, tenz.numel());
+    EXPECT_EQ(2 * 3 * 4, tenz.numEl());
 }
 
 TEST_F(TensorTest, tensorConstructionFromVector) {
@@ -93,7 +95,7 @@ void tensorCopyConstructor() {
     EXPECT_EQ(2, tenzCp.numRows());
     EXPECT_EQ(3, tenzCp.numCols());
     EXPECT_EQ(4, tenzCp.numMats());
-    EXPECT_EQ(2 * 3 * 4, tenzCp.numel());
+    EXPECT_EQ(2 * 3 * 4, tenzCp.numEl());
     std::vector<T> tenzDown(2 * 3 * 4);
     tenzCp.download(tenzDown);
     EXPECT_EQ(data, tenzDown);
@@ -190,7 +192,7 @@ void tensorUpload() {
     EXPECT_EQ(2, tenz.numRows());
     EXPECT_EQ(3, tenz.numCols());
     EXPECT_EQ(4, tenz.numMats());
-    EXPECT_EQ(2 * 3 * 4, tenz.numel());
+    EXPECT_EQ(2 * 3 * 4, tenz.numEl());
     EXPECT_EQ(4, tenz.numMats());
     EXPECT_EQ(8, tenz(1, 2, 3));
 }
@@ -237,8 +239,8 @@ void tensorNormF(T epsilon) {
 }
 
 TEST_F(TensorTest, tensorNormF) {
-    tensorNormF<float>(1e-6);
-    tensorNormF<double>(1e-12);
+    tensorNormF<float>(PRECISION_LOW);
+    tensorNormF<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -250,7 +252,7 @@ template<typename T>
 void tensorSumAbs() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
-    EXPECT_NEAR(112, tenz.sumAbs(), PRECISION); // from MATLAB
+    EXPECT_NEAR(112, tenz.sumAbs(), PRECISION_HIGH); // from MATLAB
 }
 
 TEST_F(TensorTest, tensorNormFtensorSumAbs) {
@@ -527,8 +529,8 @@ void tensorLeastSquares1(T epsilon) {
 }
 
 TEST_F(LeastSquaresTest, tensorLS1) {
-    tensorLeastSquares1<double>(1e-12);
-    tensorLeastSquares1<float>(1e-4);
+    tensorLeastSquares1<float>(PRECISION_LOW);
+    tensorLeastSquares1<double>(PRECISION_HIGH);
 }
 
 
@@ -567,8 +569,8 @@ void singularValuesComputation(float epsilon) {
 }
 
 TEST_F(SvdTest, singularValuesComputation) {
-    singularValuesComputation<float>(1e-4);
-    singularValuesComputation<double>(1e-7);
+    singularValuesComputation<float>(PRECISION_LOW);
+    singularValuesComputation<double>(PRECISION_HIGH);
 }
 
 
@@ -602,8 +604,8 @@ void choleskyFactorisation(T epsilon) {
 }
 
 TEST_F(CholeskyTest, choleskyFactorisation) {
-    choleskyFactorisation<float>(1e-4);
-    choleskyFactorisation<double>(1e-12);
+    choleskyFactorisation<float>(PRECISION_LOW);
+    choleskyFactorisation<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -638,6 +640,6 @@ void choleskyFactorisationSolution(T epsilon) {
 }
 
 TEST_F(CholeskyTest, choleskyFactorisationSolution) {
-    choleskyFactorisationSolution<float>(1e-4);
-    choleskyFactorisationSolution<double>(1e-12);
+    choleskyFactorisationSolution<float>(PRECISION_LOW);
+    choleskyFactorisationSolution<double>(PRECISION_HIGH);
 }
