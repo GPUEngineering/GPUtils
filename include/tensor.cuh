@@ -397,6 +397,9 @@ DTensor<T>::DTensor(DTensor<T> &&other) {
     m_doDestroy = true;
     other.m_doDestroy = false;
     other.m_d_data = nullptr;
+    other.m_numCols = 0;
+    other.m_numRows = 0;
+    other.m_numMats = 0;
 }
 
 template<typename T>
@@ -791,9 +794,6 @@ private:
      * @param mat matrix to be factorised
      */
     void checkMatrix(DTensor<T> &tensor) {
-        if (tensor.numMats() != 1) {
-            throw std::invalid_argument("Only (m, n, 1) tensors are supported for now");
-        }
         if (tensor.numRows() < tensor.numCols()) {
             throw std::invalid_argument("your matrix is fat (no offence)");
         }
@@ -823,14 +823,15 @@ public:
         m_computeU = computeU;
         size_t m = mat.numRows();
         size_t n = mat.numCols();
-        size_t k = std::min(m, n);
+        size_t minMN = std::min(m, n);
+        size_t nMats = mat.numMats();
         computeWorkspaceSize(m, n);
         m_workspace = std::make_unique<DTensor<T>>(m_lwork, 1, 1);  ///< Allocates required workspace memory
-        m_Vtr = std::make_unique<DTensor<T>>(n, n, 1);
-        m_S = std::make_unique<DTensor<T>>(k, 1, 1);
-        m_info = std::make_unique<DTensor<int>>(1, 1, 1);
-        m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, 1);
-        if (computeU) m_U = std::make_unique<DTensor<T>>(m, m, 1);
+        m_Vtr = std::make_unique<DTensor<T>>(n, n, nMats);
+        m_S = std::make_unique<DTensor<T>>(minMN, 1, nMats);
+        m_info = std::make_unique<DTensor<int>>(1, 1, nMats);
+        m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, nMats);
+        if (computeU) m_U = std::make_unique<DTensor<T>>(m, m, nMats);
     }
 
     /**
@@ -838,7 +839,7 @@ public:
      * Warning: the original matrix is destroyed by default!
      * @return status code of cuSolver computation
      */
-    int factorise();
+    bool factorise();
 
     /**
      * @return diagonal matrix S, or singular values
@@ -898,42 +899,62 @@ inline void Svd<double>::computeWorkspaceSize(size_t m, size_t n) {
 
 
 template<>
-inline int Svd<double>::factorise() {
+inline bool Svd<double>::factorise() {
     size_t m = m_tensor->numRows();
     size_t n = m_tensor->numCols();
-    gpuErrChk(
-            cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
-                             (m_computeU) ? 'A' : 'N', 'A',
-                             m, n,
-                             m_tensor->raw(), m,
-                             m_S->raw(),
-                             (m_computeU) ? m_U->raw() : nullptr, m,
-                             m_Vtr->raw(), n,
-                             m_workspace->raw(),
-                             m_lwork,
-                             nullptr,  // rwork (used only if SVD fails)
-                             m_info->raw()));
-    int info = (*m_info)(0, 0, 0);
+    size_t nMats = m_tensor->numMats();
+    bool info = true;
+    std::unique_ptr<DTensor<double>> Ui;
+    for (size_t i = 0; i < nMats; i++) {
+        DTensor<double> Ai(*m_tensor, 2, i, i); // tensor A[:, :, i]
+        DTensor<double> Si(*m_S, 2, i, i); // S[:, :, i]
+        DTensor<double> Vtri(*m_Vtr, 2, i, i); // Vtr[:, :, i]
+        if (m_computeU)
+            Ui = std::make_unique<DTensor<double>>(*m_U, 2, i, i);
+        gpuErrChk(
+                cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
+                                 (m_computeU) ? 'A' : 'N', 'A',
+                                 m, n,
+                                 Ai.raw(), m,
+                                 Si.raw(),
+                                 (m_computeU) ? Ui->raw() : nullptr, m,
+                                 Vtri.raw(), n,
+                                 m_workspace->raw(),
+                                 m_lwork,
+                                 nullptr,  // rwork (used only if SVD fails)
+                                 m_info->raw()));
+        info = info && ((*m_info)(0, 0, 0) == 0);
+    }
     return info;
 }
 
 template<>
-inline int Svd<float>::factorise() {
+inline bool Svd<float>::factorise() {
     size_t m = m_tensor->numRows();
     size_t n = m_tensor->numCols();
-    gpuErrChk(
-            cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
-                             (m_computeU) ? 'A' : 'N', 'A',
-                             m, n,
-                             m_tensor->raw(), m,
-                             m_S->raw(),
-                             (m_computeU) ? m_U->raw() : nullptr, m,
-                             m_Vtr->raw(), n,
-                             m_workspace->raw(),
-                             m_lwork,
-                             nullptr,  // rwork (used only if SVD fails)
-                             m_info->raw()));
-    int info = (*m_info)(0, 0, 0);
+    size_t nMats = m_tensor->numMats();
+    bool info = true;
+    std::unique_ptr<DTensor<float>> Ui;
+    for (size_t i = 0; i < nMats; i++) {
+        DTensor<float> Ai(*m_tensor, 2, i, i); // tensor A[:, :, i]
+        DTensor<float> Si(*m_S, 2, i, i); // S[:, :, i]
+        DTensor<float> Vtri(*m_Vtr, 2, i, i); // Vtr[:, :, i]
+        if (m_computeU)
+            Ui = std::make_unique<DTensor<float>>(*m_U, 2, i, i);
+        gpuErrChk(
+                cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
+                                 (m_computeU) ? 'A' : 'N', 'A',
+                                 m, n,
+                                 Ai.raw(), m,
+                                 Si.raw(),
+                                 (m_computeU) ? Ui->raw() : nullptr, m,
+                                 Vtri.raw(), n,
+                                 m_workspace->raw(),
+                                 m_lwork,
+                                 nullptr,  // rwork (used only if SVD fails)
+                                 m_info->raw()));
+        info = info && ((*m_info)(0, 0, 0) == 0);
+    }
     return info;
 }
 
@@ -1054,5 +1075,39 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
                                m_info->raw()));
     return (*m_info)(0);
 }
+
+
+/* ================================================================================================
+ *  Nullspace (N)
+ * ================================================================================================ */
+
+/**
+ * The nullspace (N) of a matrix is computed by SVD.
+ * The user provides a tensor made of (padded) matrices.
+ * Nullspace computes, pads, and stores the nullspace matrices.
+ * Nullspace can return the padded nullspace matrices, and the padded number of rows and columns.
+ * @tparam T data type (must be float or double)
+ */
+template<typename T> requires std::floating_point<T>
+class Nullspace {
+    // WIP
+
+private:
+
+    DTensor<T> *m_tensor = nullptr;
+    size_t m_rankA;
+    DTensor<T> *m_nullspace = nullptr;
+
+public:
+
+    Nullspace(DTensor<T> &A) {
+        m_tensor = &A;
+        Svd<T> svd(A);
+        svd.factorise();
+        m_rankA = svd.rank();
+        DTensor<T> Vtr = svd.rightSingularVectors();
+    }
+
+};
 
 #endif

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cublas_v2.h>
 #include "include/tensor.cuh"
+#include <memory>
 
 #define real_t double
 
@@ -15,5 +16,6 @@ int main() {
     DTensor<real_t> At = A.tr();
     std::cout << A;
     std::cout << At;
+
     return 0;
 }
