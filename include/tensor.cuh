@@ -1121,6 +1121,7 @@ Nullspace<T>::Nullspace(DTensor<T> &a) {
     auto aTranspose = a.tr();
     Svd<T> svd(aTranspose, true);
     svd.factorise();
+
     DTensor<unsigned int> devRankA = svd.rank();
     std::vector<unsigned int> hostRankA;
     devRankA.download(hostRankA);

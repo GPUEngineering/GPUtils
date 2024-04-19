@@ -770,8 +770,25 @@ void computeNullspaceTensor(T epsilon) {
     DTensor<T> A(aData, 3, 4, 5);
     Nullspace<T> ns(A);
     DTensor<T> nA = ns.nullspace();
-    std::cout << A << "-----------\n";
-    std::cout << nA;
+    size_t nMats = nA.numMats();
+    EXPECT_EQ(nMats, 5);
+    for (size_t i = 0; i < nMats; i++) {
+        DTensor<T> nAi(nA, 2, i, i);
+        DTensor<T> Ai(A, 2, i, i);
+        DTensor<T> mustBeZero = Ai * nAi;
+        EXPECT_LT(mustBeZero.normF(), epsilon);
+
+        DTensor<T> nAiTr = nAi.tr();
+        DTensor<T> mustBeEye = nAiTr * nAi;
+        EXPECT_NEAR(1, mustBeEye(0, 0, 0), epsilon);
+        for (size_t ir=0; ir<mustBeEye.numRows(); ir++) {
+            for (size_t ic=0; ic<mustBeEye.numCols(); ic++) {
+                if (ir != ic) {
+                    EXPECT_NEAR(0, mustBeEye(ir, ic, 0), epsilon);
+                }
+            }
+        }
+    }
 }
 
 TEST_F(NullspaceTest, computeNullspaceTensor) {
