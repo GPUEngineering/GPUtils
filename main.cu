@@ -1,31 +1,20 @@
 #include <vector>
 #include <iostream>
 #include <cublas_v2.h>
-#include "include/device_vector.cuh"
+#include "include/tensor.cuh"
+#include <memory>
+
+#define real_t double
 
 
 int main() {
-    Context context;
+    std::vector<real_t> aData{1, 4, 2, 5, 3, 6,
+                              1, 4, 2, 5, 3, 7};
+    DTensor<real_t> A(aData, 2, 3, 2);
 
-    size_t k = 8;
-    std::vector<double> bData{1.0f, 2.0f, 3.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,
-                             6.0f, 7.0f, 8.0f,};
-    DeviceMatrix<double> B(&context, k, bData, MatrixStorageMode::rowMajor);
-    SvdFactoriser<double> svdEngine(&context, B, true, false);
-    std::cout << "status = " << svdEngine.factorise() << std::endl;
+//    std::cout << "A = " << A << " ------ \n";
 
-    /* ~~~ print results ~~~ */
-    std::cout << "B = " << B;
-    std::cout << "S = " << svdEngine.singularValues();
-    std::cout << "V' = " << svdEngine.rightSingularVectors();
-    auto U = svdEngine.leftSingularVectors();
-    if (U) std::cout << "U = " << U.value();
+    Nullspace null(A);
 
     return 0;
 }

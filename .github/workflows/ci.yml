@@ -1,0 +1,17 @@
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+name: Continuous integration
+
+jobs:
+  ci:
+    runs-on: self-hosted
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: run test script
+        run: bash ./ci/script.sh
+
