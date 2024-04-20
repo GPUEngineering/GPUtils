@@ -788,12 +788,12 @@ private:
 
     int m_lwork = -1;  ///< Size of workspace needed for SVD
     DTensor<T> *m_tensor = nullptr;  ///< Pointer to original matrix to be factorised
-    std::unique_ptr<DTensor<T>> m_Vtr;  ///< Matrix V' or right singular vectors
-    std::unique_ptr<DTensor<T>> m_S;  ///< Diagonal matrix S or singular values
-    std::unique_ptr<DTensor<T>> m_U;  ///< Matrix U or left singular vectors
+    std::shared_ptr<DTensor<T>> m_Vtr;  ///< Matrix V' or right singular vectors
+    std::shared_ptr<DTensor<T>> m_S;  ///< Diagonal matrix S or singular values
+    std::shared_ptr<DTensor<T>> m_U;  ///< Matrix U or left singular vectors
     std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for SVD
     std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
-    std::unique_ptr<DTensor<unsigned int>> m_rank;  ///< Rank of original matrix
+    std::shared_ptr<DTensor<unsigned int>> m_rank;  ///< Rank of original matrix
     bool m_computeU = false;  ///< Whether to compute U
     bool m_destroyMatrix = true; ///< Whether to sacrifice original matrix
 
@@ -801,7 +801,7 @@ private:
      * Ensures tensor to factorise contains exactly one matrix, and that matrix is tall.
      * @param mat matrix to be factorised
      */
-    void checkMatrix(DTensor<T> &tensor) {
+    void checkMatrix(DTensor<T> &tensor) const {
         if (tensor.numRows() < tensor.numCols()) {
             throw std::invalid_argument("your matrix is fat (no offence)");
         }
@@ -835,40 +835,40 @@ public:
         size_t nMats = mat.numMats();
         computeWorkspaceSize(m, n);
         m_workspace = std::make_unique<DTensor<T>>(m_lwork, 1, 1);  ///< Allocates required workspace memory
-        m_Vtr = std::make_unique<DTensor<T>>(n, n, nMats);
-        m_S = std::make_unique<DTensor<T>>(minMN, 1, nMats);
+        m_Vtr = std::make_shared<DTensor<T>>(n, n, nMats);
+        m_S = std::make_shared<DTensor<T>>(minMN, 1, nMats);
         m_info = std::make_unique<DTensor<int>>(1, 1, nMats);
         m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, nMats, true);
-        if (computeU) m_U = std::make_unique<DTensor<T>>(m, m, nMats);
+        if (computeU) m_U = std::make_shared<DTensor<T>>(m, m, nMats);
     }
 
     /**
      * Perform factorisation.
      * Warning: the original matrix is destroyed by default!
-     * @return status code of cuSolver computation
+     * @return true if factorisation is successful
      */
     bool factorise();
 
     /**
      * @return diagonal matrix S, or singular values
      */
-    DTensor<T> singularValues() const {
+    DTensor<T> &singularValues() const {
         return *m_S;
     }
 
     /**
      * @return matrix V', or right singular vectors
      */
-    DTensor<T> rightSingularVectors() const {
+    DTensor<T> const &rightSingularVectors() const {
         return *m_Vtr;
     }
 
     /**
      * @return matrix U, or left singular vectors
      */
-    std::optional<DTensor<T>> leftSingularVectors() const {
+    std::optional<std::shared_ptr<DTensor<T>>> leftSingularVectors() const {
         if (!m_computeU) return std::nullopt;
-        return *m_U;
+        return m_U;
     }
 
     /**
@@ -886,7 +886,7 @@ public:
      * @param epsilon any numerical value less than epsilon is considered zero
      * @return rank of original matrices
      */
-    DTensor<unsigned int> rank(T epsilon = 1e-6) const {
+    DTensor<unsigned int> const &rank(T epsilon = 1e-6) const {
         size_t numElS = m_S->numCols() * m_S->numRows();
         for (size_t i = 0; i < m_rank->numMats(); i++) {
             DTensor<T> Si(*m_S, 2, i, i);
@@ -894,9 +894,7 @@ public:
             k_countNonzeroSingularValues<T><<<DIM2BLOCKS(numElS), THREADS_PER_BLOCK>>>(Si.raw(), numElS,
                                                                                        rankI.raw(), epsilon);
         }
-
         return *m_rank;
-
     }
 
 };
@@ -1126,14 +1124,15 @@ public:
      *
      * @return
      */
-    DTensor<T> nullspace() {
+    const DTensor<T> &nullspace() const {
         return *m_nullspace;
     }
 
 };
 
 
-template<typename T> requires std::floating_point<T>
+template<typename T>
+requires std::floating_point<T>
 Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
     if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
@@ -1146,12 +1145,14 @@ Nullspace<T>::Nullspace(DTensor<T> &a) {
     std::vector<unsigned int> hostRankA;
     devRankA.download(hostRankA);
 
-    DTensor<T> leftSingVals = svd.leftSingularVectors().value();
+    std::optional<std::shared_ptr<DTensor<T>>> leftSingValsOptional = svd.leftSingularVectors();
+    assert(leftSingValsOptional); // make sure left SVs were computed
+    std::shared_ptr<DTensor<T>> leftSingVals = leftSingValsOptional.value();
     for (size_t i = 0; i < nMats; i++) { // for each matrix
         // Slice the matrix of left SVs to get the matrix that spans
         // the nullspace of a[:, :, i]
         unsigned int nullityI = n - hostRankA[i]; // nullity(A[:, :, i])
-        DTensor<T> Ui(leftSingVals, 2, i, i); // leftSingVals[:, :, i]
+        DTensor<T> Ui(*leftSingVals, 2, i, i); // leftSingVals[:, :, i]
         DTensor<T> nullityMatrixI(Ui, 1, n - nullityI, n - 1); // leftSingVals[:, <range>, i]
         // Copy to destination
         DTensor<T> currentNullspaceDst(*m_nullspace, 2, i, i);
