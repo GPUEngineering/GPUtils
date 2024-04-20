@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <source_location>
+#include <cassert>
 
 #ifndef TENSOR_CUH
 #define TENSOR_CUH
