@@ -1,7 +1,7 @@
 <!-- ---------------------
       v0.3.0
      --------------------- -->
-## [v0.1.0] - 20-04-2024
+## [v0.0.1] - 20-04-2024
 
 ### Added
 
@@ -10,3 +10,4 @@
 - Least-squares on tensors
 - Computation of nullspace matrices (on tensor objects)
 - Cholesky factorisation 
+- Set up unit tests, CI, and CHANGELOG
