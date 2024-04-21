@@ -165,7 +165,7 @@ std::vector<float> h_data{1.0f, 2.0f, 3.0f,
 DTensor<float> myTensor(h_data, rows, cols, 1, rowMajor);
 ```
 
-Choose `rowMajor` or `rowMajor` as appropriate.
+Choose `rowMajor` or `columnMajor` as appropriate.
 
 We can also preallocate memory for a `DTensor` as follows:
 
