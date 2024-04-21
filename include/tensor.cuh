@@ -296,6 +296,8 @@ public:
      */
     void addAB(DTensor<T> &A, DTensor<T> &B, T alpha = 1, T beta = 0);
 
+    void project(DTensor<T> &B);
+
     /* ------------- OPERATORS ------------- */
 
     DTensor &operator=(const DTensor &other);
@@ -544,6 +546,21 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
                          cudaMemcpyDeviceToDevice));
 }
 
+template<typename T>
+inline void DTensor<T>::project(DTensor<T> &B) {
+    // A * (A \ b)
+    // B <- A / B
+    // B <- A * B
+    std::cout << "A = " << *this << "\n";
+    std::cout << "B1 = " << B << "\n";
+    leastSquares(B);
+    std::cout << "B2 = " << B << "\n";
+    auto projection = *this * B;
+    std::cout << "proj = " << projection << "\n";
+    projection.deviceCopyTo(B);
+    std::cout << "B3 = " << B << "\n";
+}
+
 template<>
 inline DTensor<double> &DTensor<double>::operator*=(double scalar) {
     double alpha = scalar;
@@ -669,10 +686,14 @@ template<>
 inline void DTensor<double>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
-    if (B.numRows() != m_numRows || nColsB != 1 || B.numMats() != batchSize)
-        throw std::invalid_argument("Least squares rhs size does not equal lhs size");
+    if (B.numRows() != m_numRows)
+        throw std::invalid_argument("Least squares rhs rows does not equal lhs rows");
+    if (nColsB != 1)
+        throw std::invalid_argument("Least squares rhs are not vectors");
+    if (B.numMats() != batchSize)
+        throw std::invalid_argument("Least squares rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("Least squares supports tall matrices only");
+        throw std::invalid_argument("Least squares supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<double *> As = pointersToMatrices();
@@ -695,10 +716,14 @@ template<>
 inline void DTensor<float>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
-    if (B.numRows() != m_numRows || nColsB != 1 || B.numMats() != batchSize)
-        throw std::invalid_argument("Least squares rhs size does not equal lhs size");
+    if (B.numRows() != m_numRows)
+        throw std::invalid_argument("Least squares rhs rows does not equal lhs rows");
+    if (nColsB != 1)
+        throw std::invalid_argument("Least squares rhs are not vectors");
+    if (B.numMats() != batchSize)
+        throw std::invalid_argument("Least squares rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("Least squares supports tall matrices only");
+        throw std::invalid_argument("Least squares supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<float *> As = pointersToMatrices();
