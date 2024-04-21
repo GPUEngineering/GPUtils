@@ -21,18 +21,18 @@ int main() {
     DTensor<real_t> mats(m, n, 2);
     DTensor<real_t> mats1(mats, 2, 0, 0);
     DTensor<real_t> mats2(mats, 2, 1, 1);
-    mats1.upload(mat1);
-    mats2.upload(mat2);
-//    std::cout << mats << "\n";
+    mats1.upload(mat1, rowMajor);
+    mats2.upload(mat2, rowMajor);
+    std::cout << mats << "\n";
 
     std::vector<real_t> vec1{1, 3.4, -2.1, 0};
     std::vector<real_t> vec2{2.2, -3.3, 11.0, 0};
     DTensor<real_t> vecs(m+1, 1, 2);
     DTensor<real_t> vecs1(vecs, 2, 0, 0);
     DTensor<real_t> vecs2(vecs, 2, 1, 1);
-    vecs1.upload(vec1);
-    vecs2.upload(vec2);
-//    std::cout << vecs << "\n";
+    vecs1.upload(vec1, rowMajor);
+    vecs2.upload(vec2, rowMajor);
+    std::cout << vecs << "\n";
 
     Nullspace N(mats);
     N.nullspace().project(vecs);
