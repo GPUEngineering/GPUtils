@@ -107,7 +107,8 @@ public:
  */
 enum StorageMode {
     columnMajor,  ///< column major storage (default)
-    rowMajor  ///< row major storage
+    rowMajor,  ///< row major storage
+    defaultMajor=columnMajor
 };
 
 /**
@@ -196,7 +197,7 @@ public:
      * @param k number of matrices
      */
     DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1,
-            StorageMode mode = StorageMode::columnMajor);
+            StorageMode mode = StorageMode::defaultMajor);
 
     /**
      * Copy constructor.
@@ -249,7 +250,7 @@ public:
      * @param vec data source to upload
      * @return true iff upload is successful
      */
-    bool upload(const std::vector<T> &vec, StorageMode mode);
+    bool upload(const std::vector<T> &vec, StorageMode mode = StorageMode::defaultMajor);
 
     /**
      * Download from device to `std::vector`.
