@@ -582,16 +582,13 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
 template<typename T>
 inline void DTensor<T>::project(DTensor<T> &B) {
     // A * (A \ b)
-    // B <- A / B
+    // B <- A \ B
     // B <- A * B
-    std::cout << "A = " << *this << "\n";
-    std::cout << "B1 = " << B << "\n";
     leastSquares(B);
-    std::cout << "B2 = " << B << "\n";
-    auto projection = *this * B;
-    std::cout << "proj = " << projection << "\n";
-    projection.deviceCopyTo(B);
-    std::cout << "B3 = " << B << "\n";
+    std::cout << "ls B = " << B << "\n";
+//    auto projection = *this * B;
+//    std::cout << "proj = " << projection << "\n";
+//    projection.deviceCopyTo(B);
 }
 
 template<>
