@@ -104,6 +104,15 @@ public:
  * ================================================================================================ */
 
 /**
+ * Storage mode for the data of a matrix
+ */
+enum StorageMode {
+    columnMajor,  ///< column major storage (default)
+    rowMajor,  ///< row major storage
+    defaultMajor=columnMajor
+};
+
+/**
  * This library uses tensors to store and manipulate data on a GPU device.
  * A tensor has three axes: [rows (m) x columns (n) x matrices (k)].
  * An (m,n,1)-tensor is a matrix, and an (m,1,1)-tensor is a vector.
@@ -134,6 +143,23 @@ private:
      * @return
      */
     bool allocateOnDevice(size_t size, bool zero = false);
+
+    /**
+     * Create column-major `std::vector` from a row-major one.
+     * @param rm row-major stored data
+     * @param cm column-major storage
+     */
+    void rm2cm(const std::vector<T> &rm, std::vector<T> &cm) {
+        size_t n = m_numRows * m_numCols;
+        for (size_t k = 0; k < m_numMats; k++) {
+            size_t idx = k * n;
+            for (size_t r = 0; r < m_numRows; r++) {
+                for (size_t c = 0; c < m_numCols; c++) {
+                    cm[idx + (r + c * m_numRows)] = rm[idx + (c + r * m_numCols)];
+                }
+            }
+        }
+    }
 
     /**
      * Appends this tensor to `std::ostream` object.
@@ -171,7 +197,8 @@ public:
      * @param n number of columns
      * @param k number of matrices
      */
-    DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1);
+    DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1,
+            StorageMode mode = StorageMode::defaultMajor);
 
     /**
      * Copy constructor.
@@ -224,7 +251,7 @@ public:
      * @param vec data source to upload
      * @return true iff upload is successful
      */
-    bool upload(const std::vector<T> &vec);
+    bool upload(const std::vector<T> &vec, StorageMode mode = StorageMode::defaultMajor);
 
     /**
      * Download from device to `std::vector`.
@@ -353,13 +380,13 @@ DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
 }
 
 template<typename T>
-DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k) {
+DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k, StorageMode mode) {
     m_numRows = m;
     m_numCols = n;
     m_numMats = k;
     size_t size = m * n * k;
     allocateOnDevice(size);
-    upload(data);
+    upload(data, mode);
 }
 
 template<typename T>
@@ -477,13 +504,20 @@ inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
 }
 
 template<typename T>
-inline bool DTensor<T>::upload(const std::vector<T> &vec) {
+inline bool DTensor<T>::upload(const std::vector<T> &vec, StorageMode mode) {
     size_t size = vec.size();
+    size_t thisSize = m_numRows * m_numCols * m_numMats;
     // make sure vec is of right size
-    if (size != m_numRows * m_numCols * m_numMats) throw std::invalid_argument("vec has wrong size");
-    if (size <= m_numRows * m_numCols * m_numMats) {
+    if (size != thisSize) throw std::invalid_argument("vec has wrong size");
+    std::vector<T> vecCm(thisSize);
+    if (mode == StorageMode::rowMajor) {
+        rm2cm(vec, vecCm);
+    } else {
+        vecCm = vec;
+    }
+    if (size <= thisSize) {
         size_t buffer_size = size * sizeof(T);
-        gpuErrChk(cudaMemcpy(m_d_data, vec.data(), buffer_size, cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMemcpy(m_d_data, vecCm.data(), buffer_size, cudaMemcpyHostToDevice));
     }
     return true;
 }
