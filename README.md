@@ -215,7 +215,7 @@ This transposes each (m,n)-matrix and stores it in a new `DTensor`
 at the same k-index.
 Transposition in-place is not possible.
 
-## 1.7. Least squares
+### 1.7. Least squares
 
 The solution of least squares has been implmented as a tensor method.
 Say we want to solve `A\b` using least squares.
@@ -342,7 +342,7 @@ auto U = svdEngine.leftSingularVectors();
 if (U) std::cout << "U = " << U.value();
 ```
 
-## 5. Projection onto a nullspace
+## 4. Projection onto a nullspace
 
 The nullspace of a matrix is computed by SVD.
 The user provides a `DTensor` made of (padded) matrices.
