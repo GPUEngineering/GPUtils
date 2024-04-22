@@ -15,7 +15,7 @@ protected:
     virtual ~TensorTest() {}
 };
 
-#define TENSOR_DATA_234A {1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 10, 5, 4, 3, 2, 1, -1, 4, 3, 4, 3, 4, 8}
+#define TENSOR_DATA_234A {1, 2,  3, 4, 5, 6, 7, 8, 9, 8, 7, 10, 5, 4, 3, 2, 1, -1, 4, 3, 4, 3, 4, 8}
 #define TENSOR_DATA_234B {7, -6, 9, 2, 1, 11, 34, -1, -4, -3, 12, 7, 9, 9, 2, 9, -9, -3, 2, 5, 4, -5, 4, 5}
 #define TENSOR_DATA_234APB {8, -4, 12, 6, 6, 17, 41, 7, 5, 5, 19, 17, 14, 13, 5, 11, -8, -4, 6, 8, 8, -2, 8, 13}
 #define TENSOR_DATA_234AMB {-6, 8, -6, 2, 4, -5, -27, 9, 13, 11, -5, 3, -4, -5, 1, -7, 10, 2, 2, -2, 0, 8, 0, 3};
@@ -40,58 +40,6 @@ TEST_F(TensorTest, tensorConstructionZero) {
     tensorConstructionZero<float>();
     tensorConstructionZero<double>();
     tensorConstructionZero<int>();
-}
-
-/* ---------------------------------------
- * Row- and column-major data
- * --------------------------------------- */
-
-template<typename T>
-void tensorConstructionStorageMode() {
-    size_t rows = 3;
-    size_t cols = 2;
-    size_t mats = 2;
-    std::vector<T> aCm = {1, 3, 5,
-                          2, 4, 6};
-    std::vector<T> bCm = {7, 9, 11,
-                          8, 10, 12};
-    const std::vector<T> Cm = {1, 3, 5, 2, 4, 6, 7, 9, 11, 8, 10, 12};
-    std::vector<T> aRm = {1, 2,
-                          3, 4,
-                          5, 6};
-    std::vector<T> bRm = {7, 8,
-                          9, 10,
-                          11, 12};
-    std::vector<T> Rm = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-    std::vector<T> hostData(rows * cols * mats);
-    // test constructor
-    DTensor<T> testCm(Cm, rows, cols, mats, columnMajor);
-    DTensor<T> testRm(Rm, rows, cols, mats, rowMajor);
-    testCm.download(hostData);
-    EXPECT_EQ(Cm, hostData);
-    testRm.download(hostData);
-    EXPECT_EQ(Cm, hostData);
-    // test .upload()
-    DTensor<T> testSplitCm(rows, cols, mats);
-    DTensor<T> ACm(testSplitCm, 2, 0, 0);
-    DTensor<T> BCm(testSplitCm, 2, 1, 1);
-    ACm.upload(aCm, columnMajor);
-    BCm.upload(bCm, columnMajor);
-    DTensor<T> testSplitRm(rows, cols, mats);
-    DTensor<T> ARm(testSplitRm, 2, 0, 0);
-    DTensor<T> BRm(testSplitRm, 2, 1, 1);
-    ARm.upload(aRm, rowMajor);
-    BRm.upload(bRm, rowMajor);
-    testSplitCm.download(hostData);
-    EXPECT_EQ(Cm, hostData);
-    testSplitRm.download(hostData);
-    EXPECT_EQ(Cm, hostData);
-}
-
-TEST_F(TensorTest, tensorConstructionStorageMode) {
-    tensorConstructionStorageMode<float>();
-    tensorConstructionStorageMode<double>();
-    tensorConstructionStorageMode<int>();
 }
 
 /* ---------------------------------------

@@ -8,19 +8,13 @@
 
 
 int main() {
-    size_t m = 4;
-    size_t n = 3;
-    size_t k = 2;
-    std::vector<real_t> data{1, 2, 3,
-                             4, 5, 6,
-                             7, 8, 9,
-                             10, 11, 12,
-                             13, 14, 15,
-                             16, 17, 18,
-                             19, 20, 21,
-                             22, 23, 24};
-    DTensor<real_t> A(data, m, n, k, rowMajor);
-    std::cout << A << "\n";
+    std::vector<real_t> aData{1, 4, 2, 5, 3, 6,
+                              1, 4, 2, 5, 3, 7};
+    DTensor<real_t> A(aData, 2, 3, 2);
+
+//    std::cout << "A = " << A << " ------ \n";
+
+    Nullspace null(A);
 
     return 0;
 }
