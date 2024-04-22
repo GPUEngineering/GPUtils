@@ -488,12 +488,12 @@ TEST_F(TensorTest, tensorAddAB) {
 
 template<typename T>
 void tensorGetRows() {
-    std::vector<T> aData{10.5, 25.0, 60.0,
-                         -21.0, 720.0, -1.0,
-                         11.0, -1.0, 30.0,
-                         5., 6., 7.,
-                         8., 9., 10.,
-                         11., 12., 13};
+    std::vector<T> aData = {10.5, 25.0, 60.0,
+                            -21.0, 720.0, -1.0,
+                            11.0, -1.0, 30.0,
+                            5., 6., 7.,
+                            8., 9., 10.,
+                            11., 12., 13};
     DTensor<T> A(aData, 3, 3, 2);
     DTensor<T> Ar0 = A.getRows(1, 1, 0);
     std::vector<T> expected0 = {25., 720., -1.};
@@ -597,9 +597,9 @@ protected:
 template<typename T>
 requires std::floating_point<T>
 void singularValuesComputation(float epsilon) {
-    std::vector<T> bData{1, 6, 6, 6, 6, 6, 6, 6,
-                         2, 7, 7, 7, 7, 7, 7, 7,
-                         3, 8, 8, 8, 8, 8, 8, 8,};
+    std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
+                            2, 7, 7, 7, 7, 7, 7, 7,
+                            3, 8, 8, 8, 8, 8, 8, 8,};
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
     EXPECT_EQ(true, svd.factorise());
@@ -618,18 +618,51 @@ TEST_F(SvdTest, singularValuesComputation) {
 
 
 /* ---------------------------------------
+ * Singular values - memory mgmt
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void singularValuesMemory(float epsilon) {
+    std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
+                            2, 7, 7, 7, 7, 7, 7, 7,
+                            3, 8, 8, 8, 8, 8, 8, 8,};
+    DTensor<T> B(bData, 8, 3);
+    Svd<T> svd(B, true, false);
+    EXPECT_EQ(true, svd.factorise());
+    DTensor<T> const &v1 = svd.rightSingularVectors();
+    DTensor<T> const &v2 = svd.rightSingularVectors();
+    EXPECT_EQ(&v1, &v2);
+    EXPECT_EQ(v1.raw(), v2.raw());
+    DTensor<T> const &s1 = svd.singularValues();
+    DTensor<T> const &s2 = svd.singularValues();
+    EXPECT_EQ(&s1, &s2);
+    EXPECT_EQ(s1.raw(), s2.raw());
+    auto u1 = svd.leftSingularVectors().value();
+    auto u2 = svd.leftSingularVectors().value();
+    EXPECT_EQ(u1, u2);
+    EXPECT_EQ(u1->raw(), u2->raw());
+}
+
+TEST_F(SvdTest, singularValuesMemory) {
+    singularValuesMemory<float>(PRECISION_LOW);
+    singularValuesMemory<double>(PRECISION_HIGH);
+}
+
+
+/* ---------------------------------------
  * SVD with multiple matrices
  * --------------------------------------- */
 template<typename T>
 requires std::floating_point<T>
 void singularValuesMutlipleMatrices(float epsilon) {
-    std::vector<T> aData{1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
+    std::vector<T> aData = {1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
     DTensor<T> A(aData, 3, 2, 3);
 
     Svd<T> svd(A, true); // do compute U (A will be destroyed)
     svd.factorise();
-    auto S = svd.singularValues();
-    auto V = svd.rightSingularVectors();
+    DTensor<T> const &S = svd.singularValues();
+    DTensor<T> const &V = svd.rightSingularVectors();
     auto Uopt = svd.leftSingularVectors();
     auto U = Uopt.value();
 
@@ -657,7 +690,7 @@ void singularValuesMutlipleMatrices(float epsilon) {
             0, -1, 0,
     };
     std::vector<T> actual_u(27);
-    U.download(actual_u);
+    U->download(actual_u);
     for (size_t i = 0; i < 27; i++) EXPECT_NEAR(expected_u[i], actual_u[i], epsilon);
 
 }
@@ -666,7 +699,6 @@ TEST_F(SvdTest, singularValuesMutlipleMatrices) {
     singularValuesMutlipleMatrices<float>(10 * PRECISION_LOW); // SVD with float performs quite poorly
     singularValuesMutlipleMatrices<double>(PRECISION_HIGH);
 }
-
 
 
 /* ---------------------------------------
@@ -712,9 +744,9 @@ protected:
 template<typename T>
 requires std::floating_point<T>
 void choleskyFactorisation(T epsilon) {
-    std::vector<T> aData{10.0, 2.0, 3.0,
-                         2.0, 20.0, -1.0,
-                         3.0, -1.0, 30.0};
+    std::vector<T> aData = {10.0, 2.0, 3.0,
+                            2.0, 20.0, -1.0,
+                            3.0, -1.0, 30.0};
     DTensor<T> A(aData, 3, 3, 1);
     CholeskyFactoriser<T> chol(A);
     chol.factorise();
@@ -735,9 +767,9 @@ TEST_F(CholeskyTest, choleskyFactorisation) {
 template<typename T>
 requires std::floating_point<T>
 void choleskyFactorisationSolution(T epsilon) {
-    std::vector<T> aData{10.0, 2.0, 3.0,
-                         2.0, 20.0, -1.0,
-                         3.0, -1.0, 30.0};
+    std::vector<T> aData = {10.0, 2.0, 3.0,
+                            2.0, 20.0, -1.0,
+                            3.0, -1.0, 30.0};
     DTensor<T> A(aData, 3, 3, 1);
     DTensor<T> L(A); // L = A
     CholeskyFactoriser<T> chol(L);
@@ -783,11 +815,11 @@ protected:
 template<typename T>
 requires std::floating_point<T>
 void computeNullspaceTensor(T epsilon) {
-    std::vector<T> aData{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
-                         1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
-                         1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12,
-                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<T> aData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
+                            1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
+                            1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12,
+                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     DTensor<T> A(aData, 3, 4, 5);
     Nullspace<T> ns(A);
     DTensor<T> nA = ns.nullspace();
@@ -802,8 +834,8 @@ void computeNullspaceTensor(T epsilon) {
         DTensor<T> nAiTr = nAi.tr();
         DTensor<T> mustBeEye = nAiTr * nAi;
         EXPECT_NEAR(1, mustBeEye(0, 0, 0), epsilon);
-        for (size_t ir=0; ir<mustBeEye.numRows(); ir++) {
-            for (size_t ic=0; ic<mustBeEye.numCols(); ic++) {
+        for (size_t ir = 0; ir < mustBeEye.numRows(); ir++) {
+            for (size_t ic = 0; ic < mustBeEye.numCols(); ic++) {
                 if (ir != ic) {
                     EXPECT_NEAR(0, mustBeEye(ir, ic, 0), epsilon);
                 }
