@@ -1188,7 +1188,9 @@ Nullspace<T>::Nullspace(DTensor<T> &a) {
     for (size_t i = 0; i < nMats; i++) { // for each matrix
         // Slice the matrix of left SVs to get the matrix that spans
         // the nullspace of a[:, :, i]
-        unsigned int nullityI = n - hostRankA[i]; // nullity(A[:, :, i])
+        unsigned int rankAi = hostRankA[i];
+        unsigned int nullityI = n - rankAi; // nullity(A[:, :, i])
+        if (nullityI==0) continue;
         DTensor<T> Ui(*leftSingVals, 2, i, i); // leftSingVals[:, :, i]
         DTensor<T> nullityMatrixI(Ui, 1, n - nullityI, n - 1); // leftSingVals[:, <range>, i]
         // Copy to destination
