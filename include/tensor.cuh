@@ -222,13 +222,6 @@ public:
     DTensor(const DTensor &other, size_t axis, size_t from, size_t to);
 
     /**
-     * Frobenius dot product
-     * @param other other tensor of compatible dimensions
-     * @return value of Frobenius dot product
-     */
-    T dotF(const DTensor &other);
-
-    /**
      * @return raw pointer to the first element of this tensor on the device
      */
     T *raw() const;
@@ -294,6 +287,13 @@ public:
      * @return tensor of transposed matrices
      */
     DTensor<T> tr() const;
+
+    /**
+     * Frobenius dot product.
+     * @param other other tensor of compatible dimensions
+     * @return value of Frobenius dot product
+     */
+    T dotF(const DTensor &other);
 
     /**
      * Frobenius norm.
@@ -466,6 +466,32 @@ inline size_t DTensor<T>::numEl() const {
 }
 
 template<>
+inline double DTensor<double>::dotF(const DTensor<double> &other) {
+    if (m_numRows != other.m_numRows || m_numCols != other.m_numCols || m_numMats != other.m_numMats)
+        throw std::invalid_argument("[dotF] incompatible dimensions");
+    size_t n = numEl();
+    double result;
+    gpuErrChk(cublasDdot(Session::getInstance().cuBlasHandle(), n,
+                         raw(), 1,
+                         other.raw(), 1,
+                         &result));
+    return result;
+}
+
+template<>
+inline float DTensor<float>::dotF(const DTensor<float> &other) {
+    if (m_numRows != other.m_numRows || m_numCols != other.m_numCols || m_numMats != other.m_numMats)
+        throw std::invalid_argument("[dotF] incompatible dimensions");
+    size_t n = numEl();
+    float result;
+    gpuErrChk(cublasSdot(Session::getInstance().cuBlasHandle(), n,
+                         raw(), 1,
+                         other.raw(), 1,
+                         &result));
+    return result;
+}
+
+template<>
 inline double DTensor<double>::normF() const {
     double the_norm;
     gpuErrChk(cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
@@ -536,32 +562,6 @@ inline void DTensor<T>::download(std::vector<T> &vec) const {
                          m_d_data,
                          m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToHost));
-}
-
-template<>
-double DTensor<double>::dotF(const DTensor<double> &other) {
-    if (m_numRows != other.m_numRows || m_numCols != other.m_numCols || m_numMats != other.m_numMats)
-        throw std::invalid_argument("[dotF] incompatible dimensions");
-    size_t n = numEl();
-    double result;
-    gpuErrChk(cublasDdot(Session::getInstance().cuBlasHandle(), n,
-                         raw(), 1,
-                         other.raw(), 1,
-                         &result));
-    return result;
-}
-
-template<>
-float DTensor<float>::dotF(const DTensor<float> &other) {
-    if (m_numRows != other.m_numRows || m_numCols != other.m_numCols || m_numMats != other.m_numMats)
-        throw std::invalid_argument("[dotF] incompatible dimensions");
-    size_t n = numEl();
-    float result;
-    gpuErrChk(cublasSdot(Session::getInstance().cuBlasHandle(), n,
-                         raw(), 1,
-                         other.raw(), 1,
-                         &result));
-    return result;
 }
 
 template<typename T>

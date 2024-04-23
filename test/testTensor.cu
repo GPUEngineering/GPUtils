@@ -279,6 +279,31 @@ TEST_F(TensorTest, tensorDeviceCopyTo) {
 }
 
 /* ---------------------------------------
+ * Tensor: Frobenius dot product
+ * --------------------------------------- */
+
+template<typename T>
+void tensorDotF(T epsilon) {
+    // as vectors
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    std::vector<T> dataB = TENSOR_DATA_234B;
+    DTensor<T> vecA(dataA, dataA.size());
+    DTensor<T> vecB(dataB, dataB.size());
+    T dotVector = vecA.dotF(vecB);
+    EXPECT_EQ(604, dotVector);  // from MATLAB
+    // as matrices
+    DTensor<T> tenA(dataA, 2, 3, 4);
+    DTensor<T> tenB(dataB, 2, 3, 4);
+    T dotTensor = tenA.dotF(tenB);
+    EXPECT_EQ(604, dotTensor);  // from MATLAB
+}
+
+TEST_F(TensorTest, tensorDotF) {
+    tensorDotF<float>(PRECISION_LOW);
+    tensorDotF<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
  * Tensor: Frobenius norm
  * --------------------------------------- */
 
@@ -951,8 +976,8 @@ void projectOnNullspaceTensor(T epsilon) {
     EXPECT_TRUE(error.normF() < epsilon);
 
     // Orthogonality test (other - p) † (p - x)
-    std::vector<T> h_ohter{1, -2, 5, 4, 0, 0, 0};
-    DTensor<T> other(h_ohter, n);
+    std::vector<T> h_other{1, -2, 5, 4, 0, 0, 0};
+    DTensor<T> other(h_other, n);
     DTensor<T> y = N * other;
     DTensor<T> delta1 = y - proj;
     DTensor<T> delta2 = proj - x;
