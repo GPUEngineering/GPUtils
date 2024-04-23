@@ -896,5 +896,37 @@ void computeNullspaceTensor(T epsilon) {
 }
 
 TEST_F(NullspaceTest, computeNullspaceTensor) {
+    computeNullspaceTensor<float>(PRECISION_LOW);
     computeNullspaceTensor<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Project onto nullspace test
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void projectOnNullspaceTensor(T epsilon) {
+    // offline
+    size_t m = 3;
+    size_t n = 7;
+    std::vector<T> mat{1, -2, 3, 4, -1, -1, -1,
+                       1, 2, -3, 4, -1, -1, -1,
+                       -1, 3, 5, -7, -1, -1, -1};
+    DTensor<T> mats(m, n, 1);
+    mats.upload(mat, rowMajor);
+    Nullspace<T> ns = Nullspace(mats);
+    ns.nullspace();
+    // online
+    std::vector<T> vec{1, 2, 3, 4, 5, 6, 7};
+    DTensor<T> vecs(vec, n);
+    ns.project(vecs);
+    DTensor<T> error(m, 1, 1);
+    error.addAB(mats, vecs);
+    EXPECT_TRUE(error.normF() < epsilon);
+}
+
+TEST_F(NullspaceTest, projectOnNullspaceTensor) {
+    projectOnNullspaceTensor<float>(PRECISION_LOW);
+    projectOnNullspaceTensor<double>(PRECISION_HIGH);
 }

@@ -162,7 +162,7 @@ private:
     }
 
     /**
-     * Appends this tensor to `std::ostream` object.
+     * Appends this tensor to `std::ostream` object, in the format it represents.
      * @param out `std::ostream` object for appending data to be printed
      * @return tensor in `std::ostream` data format
      */
@@ -323,8 +323,6 @@ public:
      * @param beta scalar to scale C
      */
     void addAB(const DTensor<T> &A, const DTensor<T> &B, T alpha = 1, T beta = 0);
-
-    void project(DTensor<T> &B);
 
     /* ------------- OPERATORS ------------- */
 
@@ -579,18 +577,6 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
                          m_d_data,
                          m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToDevice));
-}
-
-template<typename T>
-inline void DTensor<T>::project(DTensor<T> &B) {
-    // A * (A \ b)
-    // B <- A \ B
-    // B <- A * B
-    leastSquares(B);
-    std::cout << "ls B = " << B << "\n";
-//    auto projection = *this * B;
-//    std::cout << "proj = " << projection << "\n";
-//    projection.deviceCopyTo(B);
 }
 
 template<>
@@ -1157,7 +1143,6 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
  * The nullspace (N) of a matrix is computed by SVD.
  * The user provides a tensor made of (padded) matrices.
  * Nullspace computes, pads, and stores the nullspace matrices.
- * Nullspace can return the padded nullspace matrices, and the padded number of rows and columns.
  * @tparam T data type (must be float or double)
  */
 template<typename T> requires std::floating_point<T>
@@ -1165,7 +1150,8 @@ class Nullspace {
 
 private:
 
-    std::unique_ptr<DTensor<T>> m_nullspace;
+    std::unique_ptr<DTensor<T>> m_nullspace;  ///< Stores all nullspace matrices (N)
+    std::unique_ptr<DTensor<T>> m_projOp;  ///< Stores all projection operators (N*N')
 
 public:
 
@@ -1177,16 +1163,23 @@ public:
 
     /**
      * For a given tensor A = (A1, ..., Ak), this returns a
-     * tensor N = (N1, ..., Nk), where the columns of Ni span
+     * tensor NN' = (N1*N1', ..., Nk*Nk'), where the columns of Ni span
      * the kernel of Ai; the matrices Ni are padded with
      * zero columns where necessary.
-     *
-     * @return
+     * @return NN' = (N1*N1', ..., Nk*Nk')
      */
     DTensor<T> const &nullspace() const {
         return *m_nullspace;
     }
 
+    /**
+     * Uses the stored tensor NN' = (N1*N1', ..., Nk*Nk'),
+     * of orthogonal matrices, to project the given tensor
+     * b = (b1, ..., bk) onto the nullspace of the original tensor.
+     * That is, projection zi = Ni * Ni' * bi.
+     * The projection zi is stored in bi.
+     */
+    void project(DTensor<T> &b);
 };
 
 
@@ -1196,6 +1189,7 @@ Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
     if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
     m_nullspace = std::make_unique<DTensor<T>>(n, n, nMats, true);
+    m_projOp = std::make_unique<DTensor<T>>(n, n, nMats, true);
     auto aTranspose = a.tr();
     Svd<T> svd(aTranspose, true);
     svd.factorise();
@@ -1214,10 +1208,20 @@ Nullspace<T>::Nullspace(DTensor<T> &a) {
         DTensor<T> Ui(*leftSingVals, 2, i, i); // leftSingVals[:, :, i]
         DTensor<T> nullityMatrixI(Ui, 1, n - nullityI, n - 1); // leftSingVals[:, <range>, i]
         // Copy to destination
-        DTensor<T> currentNullspaceDst(*m_nullspace, 2, i, i);
-        DTensor<T> currNullspaceColumnSlice(currentNullspaceDst, 1, 0, nullityI - 1);
-        nullityMatrixI.deviceCopyTo(currNullspaceColumnSlice);
+        DTensor<T> currNsDst(*m_nullspace, 2, i, i);
+        DTensor<T> currNsColSlice(currNsDst, 1, 0, nullityI - 1);
+        nullityMatrixI.deviceCopyTo(currNsColSlice);
+        DTensor<T> currProjOpDst(*m_projOp, 2, i, i);
+        DTensor<T> Ntr = currNsDst.tr();
+        currProjOpDst.addAB(currNsDst, Ntr);
     }
 }
+
+template<typename T>
+requires std::floating_point<T>
+void Nullspace<T>::project(DTensor<T> &b) {
+    b.addAB(*m_projOp, b, 1, 0);
+}
+
 
 #endif
