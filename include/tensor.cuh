@@ -14,11 +14,21 @@
 #define TENSOR_CUH
 
 /**
- * Standardise number of threads and blocks
+ * Define defaults
  */
-#ifndef THREADS_PER_BLOCK
+
+#define TENSOR_DEFAULT_TYPE double
 #define THREADS_PER_BLOCK 512
 #define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
+#if (__cplusplus >= 201703L)  ///< if c++17 or above
+#define TENSOR_TEMPLATE_WITH_TYPE template<typename T = TENSOR_DEFAULT_TYPE>
+#else
+#define TENSOR_TEMPLATE_WITH_TYPE template<typename T>
+#endif
+#if (__cplusplus >= 202002L)  ///< if c++20 or above
+#define TENSOR_REQUIRES_TYPE requires std::floating_point<T>
+#else
+#define TENSOR_REQUIRES_TYPE
 #endif
 
 /**
@@ -26,7 +36,7 @@
  */
 #define gpuErrChk(status) { gpuAssert((status), std::source_location::current()); }
 
-template<typename T>
+TENSOR_TEMPLATE_WITH_TYPE
 inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
     if constexpr (std::is_same_v<T, cudaError_t>) {
         if (code != cudaSuccess) {
@@ -109,7 +119,7 @@ public:
 enum StorageMode {
     columnMajor,  ///< column major storage (default)
     rowMajor,  ///< row major storage
-    defaultMajor=columnMajor
+    defaultMajor = columnMajor
 };
 
 /**
@@ -119,7 +129,7 @@ enum StorageMode {
  * Tensors can be used to do a batched operation on many similar-sized matrices or vectors in parallel.
  * @tparam T type of data stored in tensor
  */
-template<typename T>
+TENSOR_TEMPLATE_WITH_TYPE
 class DTensor {
 
 private:
@@ -162,7 +172,7 @@ private:
     }
 
     /**
-     * Appends this tensor to `std::ostream` object.
+     * Appends this tensor to `std::ostream` object, in the format it represents.
      * @param out `std::ostream` object for appending data to be printed
      * @return tensor in `std::ostream` data format
      */
@@ -287,6 +297,13 @@ public:
      * @return tensor of transposed matrices
      */
     DTensor<T> tr() const;
+
+    /**
+     * Frobenius dot product.
+     * @param other other tensor of compatible dimensions
+     * @return value of Frobenius dot product
+     */
+    T dotF(const DTensor &other);
 
     /**
      * Frobenius norm.
@@ -456,6 +473,32 @@ inline size_t DTensor<T>::numMats() const {
 template<typename T>
 inline size_t DTensor<T>::numEl() const {
     return m_numRows * m_numCols * m_numMats;
+}
+
+template<>
+inline double DTensor<double>::dotF(const DTensor<double> &other) {
+    if (m_numRows != other.m_numRows || m_numCols != other.m_numCols || m_numMats != other.m_numMats)
+        throw std::invalid_argument("[dotF] incompatible dimensions");
+    size_t n = numEl();
+    double result;
+    gpuErrChk(cublasDdot(Session::getInstance().cuBlasHandle(), n,
+                         raw(), 1,
+                         other.raw(), 1,
+                         &result));
+    return result;
+}
+
+template<>
+inline float DTensor<float>::dotF(const DTensor<float> &other) {
+    if (m_numRows != other.m_numRows || m_numCols != other.m_numCols || m_numMats != other.m_numMats)
+        throw std::invalid_argument("[dotF] incompatible dimensions");
+    size_t n = numEl();
+    float result;
+    gpuErrChk(cublasSdot(Session::getInstance().cuBlasHandle(), n,
+                         raw(), 1,
+                         other.raw(), 1,
+                         &result));
+    return result;
 }
 
 template<>
@@ -704,10 +747,14 @@ template<>
 inline void DTensor<double>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
-    if (B.numRows() != m_numRows || nColsB != 1 || B.numMats() != batchSize)
-        throw std::invalid_argument("Least squares rhs size does not equal lhs size");
+    if (B.numRows() != m_numRows)
+        throw std::invalid_argument("Least squares rhs rows does not equal lhs rows");
+    if (nColsB != 1)
+        throw std::invalid_argument("Least squares rhs are not vectors");
+    if (B.numMats() != batchSize)
+        throw std::invalid_argument("Least squares rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("Least squares supports tall matrices only");
+        throw std::invalid_argument("Least squares supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<double *> As = pointersToMatrices();
@@ -730,10 +777,14 @@ template<>
 inline void DTensor<float>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
-    if (B.numRows() != m_numRows || nColsB != 1 || B.numMats() != batchSize)
-        throw std::invalid_argument("Least squares rhs size does not equal lhs size");
+    if (B.numRows() != m_numRows)
+        throw std::invalid_argument("Least squares rhs rows does not equal lhs rows");
+    if (nColsB != 1)
+        throw std::invalid_argument("Least squares rhs are not vectors");
+    if (B.numMats() != batchSize)
+        throw std::invalid_argument("Least squares rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("Least squares supports tall matrices only");
+        throw std::invalid_argument("Least squares supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<float *> As = pointersToMatrices();
@@ -753,12 +804,27 @@ inline void DTensor<float>::leastSquares(DTensor &B) {
 }
 
 template<>
-DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
+inline DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
     size_t rowsRangeLength = rowsTo - rowsFrom + 1;
     size_t n = numCols(), m = numRows();
     DTensor<double> rowsOnly(rowsRangeLength, numCols(), 1);
     for (size_t i = 0; i < rowsRangeLength; i++) {
         gpuErrChk(cublasDcopy(Session::getInstance().cuBlasHandle(),
+                              n, // # values to copy
+                              raw() + rowsFrom + i + matIdx * n * m, m,
+                              rowsOnly.raw() + i,
+                              rowsRangeLength));
+    }
+    return rowsOnly;
+}
+
+template<>
+inline DTensor<float> DTensor<float>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
+    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
+    size_t n = numCols(), m = numRows();
+    DTensor<float> rowsOnly(rowsRangeLength, numCols(), 1);
+    for (size_t i = 0; i < rowsRangeLength; i++) {
+        gpuErrChk(cublasScopy(Session::getInstance().cuBlasHandle(),
                               n, // # values to copy
                               raw() + rowsFrom + i + matIdx * n * m, m,
                               rowsOnly.raw() + i,
@@ -800,8 +866,7 @@ std::ostream &DTensor<T>::print(std::ostream &out) const {
  * @param d_count on exit, count of elements (int on device)
  * @param epsilon threshold
  */
-template<typename T>
-requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigned int *d_count, T epsilon) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < n && d_array[idx] > epsilon) {
@@ -809,17 +874,13 @@ __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigne
     }
 }
 
-/* ================================================================================================
- *  SINGULAR VALUE DECOMPOSITION (SVD)
- * ================================================================================================ */
-
 /**
  * Singular value decomposition (SVD) needs a workspace to be setup for cuSolver before factorisation.
  * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
  * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace.
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
-template<typename T> requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 class Svd {
 
 private:
@@ -1020,7 +1081,7 @@ inline bool Svd<float>::factorise() {
  * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
-template<typename T> requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 class CholeskyFactoriser {
 
 private:
@@ -1064,7 +1125,7 @@ public:
 };
 
 template<>
-void CholeskyFactoriser<double>::computeWorkspaceSize() {
+inline void CholeskyFactoriser<double>::computeWorkspaceSize() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
                                           CUBLAS_FILL_MODE_LOWER, n,
@@ -1072,7 +1133,7 @@ void CholeskyFactoriser<double>::computeWorkspaceSize() {
 }
 
 template<>
-void CholeskyFactoriser<float>::computeWorkspaceSize() {
+inline void CholeskyFactoriser<float>::computeWorkspaceSize() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
                                           CUBLAS_FILL_MODE_LOWER, n,
@@ -1135,15 +1196,15 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
  * The nullspace (N) of a matrix is computed by SVD.
  * The user provides a tensor made of (padded) matrices.
  * Nullspace computes, pads, and stores the nullspace matrices.
- * Nullspace can return the padded nullspace matrices, and the padded number of rows and columns.
  * @tparam T data type (must be float or double)
  */
-template<typename T> requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 class Nullspace {
 
 private:
 
-    std::unique_ptr<DTensor<T>> m_nullspace;
+    std::unique_ptr<DTensor<T>> m_nullspace;  ///< Stores all nullspace matrices (N)
+    std::unique_ptr<DTensor<T>> m_projOp;  ///< Stores all projection operators (N*N')
 
 public:
 
@@ -1155,25 +1216,32 @@ public:
 
     /**
      * For a given tensor A = (A1, ..., Ak), this returns a
-     * tensor N = (N1, ..., Nk), where the columns of Ni span
+     * tensor NN' = (N1*N1', ..., Nk*Nk'), where the columns of Ni span
      * the kernel of Ai; the matrices Ni are padded with
      * zero columns where necessary.
-     *
-     * @return
+     * @return NN' = (N1*N1', ..., Nk*Nk')
      */
     DTensor<T> const &nullspace() const {
         return *m_nullspace;
     }
 
+    /**
+     * Uses the stored tensor NN' = (N1*N1', ..., Nk*Nk'),
+     * of orthogonal matrices, to project the given tensor
+     * b = (b1, ..., bk) onto the nullspace of the original tensor.
+     * That is, projection zi = Ni * Ni' * bi.
+     * The projection zi is stored in bi.
+     */
+    void project(DTensor<T> &b);
 };
 
 
-template<typename T>
-requires std::floating_point<T>
-Nullspace<T>::Nullspace(DTensor<T> &a) {
+template<typename T> TENSOR_REQUIRES_TYPE
+inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
     if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
     m_nullspace = std::make_unique<DTensor<T>>(n, n, nMats, true);
+    m_projOp = std::make_unique<DTensor<T>>(n, n, nMats, true);
     auto aTranspose = a.tr();
     Svd<T> svd(aTranspose, true);
     svd.factorise();
@@ -1190,14 +1258,23 @@ Nullspace<T>::Nullspace(DTensor<T> &a) {
         // the nullspace of a[:, :, i]
         unsigned int rankAi = hostRankA[i];
         unsigned int nullityI = n - rankAi; // nullity(A[:, :, i])
-        if (nullityI==0) continue;
+        if (nullityI == 0) continue;
         DTensor<T> Ui(*leftSingVals, 2, i, i); // leftSingVals[:, :, i]
         DTensor<T> nullityMatrixI(Ui, 1, n - nullityI, n - 1); // leftSingVals[:, <range>, i]
         // Copy to destination
-        DTensor<T> currentNullspaceDst(*m_nullspace, 2, i, i);
-        DTensor<T> currNullspaceColumnSlice(currentNullspaceDst, 1, 0, nullityI - 1);
-        nullityMatrixI.deviceCopyTo(currNullspaceColumnSlice);
+        DTensor<T> currNsDst(*m_nullspace, 2, i, i);
+        DTensor<T> currNsColSlice(currNsDst, 1, 0, nullityI - 1);
+        nullityMatrixI.deviceCopyTo(currNsColSlice);
+        DTensor<T> currProjOpDst(*m_projOp, 2, i, i);
+        DTensor<T> Ntr = currNsDst.tr();
+        currProjOpDst.addAB(currNsDst, Ntr);
     }
 }
+
+template<typename T> TENSOR_REQUIRES_TYPE
+inline void Nullspace<T>::project(DTensor<T> &b) {
+    b.addAB(*m_projOp, b, 1, 0);
+}
+
 
 #endif

@@ -279,6 +279,31 @@ TEST_F(TensorTest, tensorDeviceCopyTo) {
 }
 
 /* ---------------------------------------
+ * Tensor: Frobenius dot product
+ * --------------------------------------- */
+
+template<typename T>
+void tensorDotF(T epsilon) {
+    // as vectors
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    std::vector<T> dataB = TENSOR_DATA_234B;
+    DTensor<T> vecA(dataA, dataA.size());
+    DTensor<T> vecB(dataB, dataB.size());
+    T dotVector = vecA.dotF(vecB);
+    EXPECT_EQ(604, dotVector);  // from MATLAB
+    // as matrices
+    DTensor<T> tenA(dataA, 2, 3, 4);
+    DTensor<T> tenB(dataB, 2, 3, 4);
+    T dotTensor = tenA.dotF(tenB);
+    EXPECT_EQ(604, dotTensor);  // from MATLAB
+}
+
+TEST_F(TensorTest, tensorDotF) {
+    tensorDotF<float>(PRECISION_LOW);
+    tensorDotF<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
  * Tensor: Frobenius norm
  * --------------------------------------- */
 
@@ -561,6 +586,7 @@ void tensorGetRows() {
 }
 
 TEST_F(TensorTest, tensorGetRows) {
+    tensorGetRows<float>();
     tensorGetRows<double>();
 }
 
@@ -710,26 +736,22 @@ requires std::floating_point<T>
 void singularValuesMutlipleMatrices(float epsilon) {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
     DTensor<T> A(aData, 3, 2, 3);
-
     Svd<T> svd(A, true); // do compute U (A will be destroyed)
     svd.factorise();
     DTensor<T> const &S = svd.singularValues();
     DTensor<T> const &V = svd.rightSingularVectors();
     auto Uopt = svd.leftSingularVectors();
     auto U = Uopt.value();
-
     std::vector<T> expected_v = {-0.386317703118612, -0.922365780077058, -0.922365780077058, 0.386317703118612,
                                  -0.447213595499958, -0.894427190999916, 0.894427190999916, -0.447213595499958,
                                  0, -1, 1, 0};
     std::vector<T> actual_v(12);
     V.download(actual_v);
     for (size_t i = 0; i < 4; i++) EXPECT_NEAR(expected_v[i], actual_v[i], epsilon);
-
     std::vector<T> expected_s = {9.508032000695726, 0.772869635673484, 3.872983346207417, 0, 1, 0};
     std::vector<T> actual_s(6);
     S.download(actual_s);
     for (size_t i = 0; i < 6; i++) EXPECT_NEAR(expected_s[i], actual_s[i], epsilon);
-
     std::vector<T> expected_u = {
             -0.428667133548626, -0.566306918848035, -0.703946704147444,
             0.805963908589298, 0.112382414096594, -0.581199080396110,
@@ -897,6 +919,7 @@ void computeNullspaceTensor(T epsilon) {
 }
 
 TEST_F(NullspaceTest, computeNullspaceTensor) {
+    computeNullspaceTensor<float>(PRECISION_LOW);
     computeNullspaceTensor<double>(PRECISION_HIGH);
 }
 
@@ -920,5 +943,49 @@ void computeNullspaceTrivial(T epsilon) {
 }
 
 TEST_F(NullspaceTest, computeNullspaceTrivial) {
+    computeNullspaceTrivial<float>(PRECISION_LOW);
     computeNullspaceTrivial<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Project onto nullspace
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void projectOnNullspaceTensor(T epsilon) {
+    // offline
+    size_t m = 3;
+    size_t n = 7;
+    std::vector<T> mat{1, -2, 3, 4, -1, -1, -1,
+                       1, 2, -3, 4, -1, -1, -1,
+                       -1, 3, 5, -7, -1, -1, -1};
+    DTensor<T> A(m, n, 1);
+    A.upload(mat, rowMajor);
+    Nullspace<T> ns = Nullspace(A);
+    DTensor<T> N = ns.nullspace();
+
+    // online
+    std::vector<T> vec{1, 2, 3, 4, 5, 6, 7};
+    DTensor<T> x(vec, n);
+    DTensor<T> proj(x);
+    ns.project(proj);
+
+    // Testing that proj is indeed in ker A
+    DTensor<T> error(m, 1, 1, true);
+    error.addAB(A, proj);
+    EXPECT_TRUE(error.normF() < epsilon);
+
+    // Orthogonality test (other - p) † (p - x)
+    std::vector<T> h_other{1, -2, 5, 4, 0, 0, 0};
+    DTensor<T> other(h_other, n);
+    DTensor<T> y = N * other;
+    DTensor<T> delta1 = y - proj;
+    DTensor<T> delta2 = proj - x;
+    EXPECT_LT(delta1.dotF(delta2), epsilon);
+ }
+
+TEST_F(NullspaceTest, projectOnNullspaceTensor) {
+    projectOnNullspaceTensor<float>(PRECISION_LOW);
+    projectOnNullspaceTensor<double>(PRECISION_HIGH);
 }

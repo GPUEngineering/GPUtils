@@ -1,7 +1,17 @@
 <!-- ---------------------
-      v0.0.1
+      v0.1.0
      --------------------- -->
-## v0.0.1 - 20-04-2024
+## v0.1.0 - 23-04-2024
+
+### Added
+
+- Implementation and test of `Nullspace(DTensor A)` method `.project(DTensor b)`
+- `project` will project in place each `bi` onto the nullspace of `Ai`
+
+<!-- ---------------------
+      v0.0.0
+     --------------------- -->
+## v0.0.0 - 20-04-2024
 
 ### Added
 

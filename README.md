@@ -346,22 +346,24 @@ if (U) std::cout << "U = " << U.value();
 
 The nullspace of a matrix is computed by SVD.
 The user provides a `DTensor` made of (padded) matrices.
+Then, `Nullspace` computes, possibly pads, and returns the
+nullspace matrices `N = (N1, ..., Nk)` in another `DTensor`.
 
 ```c++
 DTensor<float> paddedMatrices(m, n, k);
-Nullspace N(paddedMatrices);
+Nullspace N(paddedMatrices);  // computes N and NN'
+DTensor<float> ns = N.nullspace();  // returns N
 ```
 
-Then, `Nullspace` computes, possibly pads, and stores the 
-nullspace matrices in another `DTensor`.
-The user can then access the (possibly padded) nullspace matrices,
-and the padded number of rows and columns.
+Each padded nullspace matrix `Ni` is orthogonal, 
+and `Nullspace` further computes and stores the
+nullspace projection operators `NN' = (N1N1', ..., NkNk')`.
+This allows the user to project-in-place onto the nullspace.
 
 ```c++
-size_t idx = 2;
-N.nullspaceMatrix(idx);  // nullspace matrix at k=2 (zero-indexed)
-N.numRows();  // number of (padded) rows of nullspace matrices
-N.numCols();  // number of (padded) columns of nullspace matrices
+DTensor<float> vectors(m, 1, k);
+N.project(vectors);
+std::cout << vectors << "\n";
 ```
 
-## Good luck!
+## Happy number crunching!
