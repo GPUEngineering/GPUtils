@@ -670,8 +670,6 @@ TEST_F(SvdTest, singularValuesComputation) {
 
 
 /* ---------------------------------------
-<<<<<<< HEAD
-=======
  * Singular values - memory mgmt
  * --------------------------------------- */
 
@@ -705,7 +703,6 @@ TEST_F(SvdTest, singularValuesMemory) {
 
 
 /* ---------------------------------------
->>>>>>> main
  * SVD with multiple matrices
  * --------------------------------------- */
 template<typename T>
