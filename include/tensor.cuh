@@ -14,11 +14,21 @@
 #define TENSOR_CUH
 
 /**
- * Standardise number of threads and blocks
+ * Define defaults
  */
-#ifndef THREADS_PER_BLOCK
+
+#define TENSOR_DEFAULT_TYPE double
 #define THREADS_PER_BLOCK 512
 #define DIM2BLOCKS(n) ((n) / THREADS_PER_BLOCK + ((n) % THREADS_PER_BLOCK != 0))
+#if (__cplusplus >= 201703L)  ///< if c++17 or above
+#define TENSOR_TEMPLATE_WITH_TYPE template<typename T = TENSOR_DEFAULT_TYPE>
+#else
+#define TENSOR_TEMPLATE_WITH_TYPE template<typename T>
+#endif
+#if (__cplusplus >= 202002L)  ///< if c++20 or above
+#define TENSOR_REQUIRES_TYPE requires std::floating_point<T>
+#else
+#define TENSOR_REQUIRES_TYPE
 #endif
 
 /**
@@ -26,7 +36,7 @@
  */
 #define gpuErrChk(status) { gpuAssert((status), std::source_location::current()); }
 
-template<typename T>
+TENSOR_TEMPLATE_WITH_TYPE
 inline void gpuAssert(T code, std::source_location loc, bool abort = true) {
     if constexpr (std::is_same_v<T, cudaError_t>) {
         if (code != cudaSuccess) {
@@ -119,7 +129,7 @@ enum StorageMode {
  * Tensors can be used to do a batched operation on many similar-sized matrices or vectors in parallel.
  * @tparam T type of data stored in tensor
  */
-template<typename T>
+TENSOR_TEMPLATE_WITH_TYPE
 class DTensor {
 
 private:
@@ -856,8 +866,7 @@ std::ostream &DTensor<T>::print(std::ostream &out) const {
  * @param d_count on exit, count of elements (int on device)
  * @param epsilon threshold
  */
-template<typename T>
-requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigned int *d_count, T epsilon) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < n && d_array[idx] > epsilon) {
@@ -865,17 +874,13 @@ __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigne
     }
 }
 
-/* ================================================================================================
- *  SINGULAR VALUE DECOMPOSITION (SVD)
- * ================================================================================================ */
-
 /**
  * Singular value decomposition (SVD) needs a workspace to be setup for cuSolver before factorisation.
  * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
  * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace.
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
-template<typename T> requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 class Svd {
 
 private:
@@ -1076,7 +1081,7 @@ inline bool Svd<float>::factorise() {
  * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
-template<typename T> requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 class CholeskyFactoriser {
 
 private:
@@ -1193,7 +1198,7 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
  * Nullspace computes, pads, and stores the nullspace matrices.
  * @tparam T data type (must be float or double)
  */
-template<typename T> requires std::floating_point<T>
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
 class Nullspace {
 
 private:
@@ -1231,8 +1236,7 @@ public:
 };
 
 
-template<typename T>
-requires std::floating_point<T>
+template<typename T> TENSOR_REQUIRES_TYPE
 inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
     if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
@@ -1267,8 +1271,7 @@ inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     }
 }
 
-template<typename T>
-requires std::floating_point<T>
+template<typename T> TENSOR_REQUIRES_TYPE
 inline void Nullspace<T>::project(DTensor<T> &b) {
     b.addAB(*m_projOp, b, 1, 0);
 }
