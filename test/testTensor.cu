@@ -940,7 +940,6 @@ void projectOnNullspaceTensor(T epsilon) {
     DTensor<T> mats(m, n, 1);
     mats.upload(mat, rowMajor);
     Nullspace<T> ns = Nullspace(mats);
-    ns.nullspace();
     // online
     std::vector<T> vec{1, 2, 3, 4, 5, 6, 7};
     DTensor<T> vecs(vec, n);

@@ -17,7 +17,6 @@ int main() {
     mats.upload(mat, rowMajor);
 
     Nullspace<real_t> ns = Nullspace(mats);
-    ns.nullspace();
 
     std::vector<real_t> vec{1, 2, 3, 4, 5, 6, 7};
     DTensor<real_t> vecs(vec, n);
