@@ -35,7 +35,7 @@ set(GPUTILS_BUILD_TESTING OFF)
 include(FetchContent)
 FetchContent_Declare(
     gputils
-    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v0.0.1.zip  # specify release version
+    URL https://github.com/GPUEngineering/GPUtils/archive/refs/tags/v0.1.0.zip  # specify release version
 )
 FetchContent_MakeAvailable(gputils)
 FetchContent_GetProperties(
