@@ -937,17 +937,30 @@ void projectOnNullspaceTensor(T epsilon) {
     std::vector<T> mat{1, -2, 3, 4, -1, -1, -1,
                        1, 2, -3, 4, -1, -1, -1,
                        -1, 3, 5, -7, -1, -1, -1};
-    DTensor<T> mats(m, n, 1);
-    mats.upload(mat, rowMajor);
-    Nullspace<T> ns = Nullspace(mats);
+    DTensor<T> A(m, n, 1);
+    A.upload(mat, rowMajor);
+    Nullspace<T> ns = Nullspace(A);
+    DTensor<T> N = ns.nullspace();
+
     // online
     std::vector<T> vec{1, 2, 3, 4, 5, 6, 7};
-    DTensor<T> vecs(vec, n);
-    ns.project(vecs);
-    DTensor<T> error(m, 1, 1);
-    error.addAB(mats, vecs);
+    DTensor<T> x(vec, n);
+    DTensor<T> proj(x);
+    ns.project(proj);
+
+    // Testing that proj is indeed in ker A
+    DTensor<T> error(m, 1, 1, true);
+    error.addAB(A, proj);
     EXPECT_TRUE(error.normF() < epsilon);
-}
+
+    // Orthogonality test (other - p) † (p - x)
+    std::vector<T> h_ohter{1, -2, 5, 4, 0, 0, 0};
+    DTensor<T> other(h_ohter, n);
+    DTensor<T> y = N * other;
+    DTensor<T> delta1 = y - proj;
+    DTensor<T> delta2 = proj - x;
+    EXPECT_LT(delta1.dotF(delta2), epsilon);
+ }
 
 TEST_F(NullspaceTest, projectOnNullspaceTensor) {
     projectOnNullspaceTensor<float>(PRECISION_LOW);
