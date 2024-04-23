@@ -586,6 +586,7 @@ void tensorGetRows() {
 }
 
 TEST_F(TensorTest, tensorGetRows) {
+    tensorGetRows<float>();
     tensorGetRows<double>();
 }
 

@@ -794,12 +794,27 @@ inline void DTensor<float>::leastSquares(DTensor &B) {
 }
 
 template<>
-DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
+inline DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
     size_t rowsRangeLength = rowsTo - rowsFrom + 1;
     size_t n = numCols(), m = numRows();
     DTensor<double> rowsOnly(rowsRangeLength, numCols(), 1);
     for (size_t i = 0; i < rowsRangeLength; i++) {
         gpuErrChk(cublasDcopy(Session::getInstance().cuBlasHandle(),
+                              n, // # values to copy
+                              raw() + rowsFrom + i + matIdx * n * m, m,
+                              rowsOnly.raw() + i,
+                              rowsRangeLength));
+    }
+    return rowsOnly;
+}
+
+template<>
+inline DTensor<float> DTensor<float>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
+    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
+    size_t n = numCols(), m = numRows();
+    DTensor<float> rowsOnly(rowsRangeLength, numCols(), 1);
+    for (size_t i = 0; i < rowsRangeLength; i++) {
+        gpuErrChk(cublasScopy(Session::getInstance().cuBlasHandle(),
                               n, // # values to copy
                               raw() + rowsFrom + i + matIdx * n * m, m,
                               rowsOnly.raw() + i,
@@ -1105,7 +1120,7 @@ public:
 };
 
 template<>
-void CholeskyFactoriser<double>::computeWorkspaceSize() {
+inline void CholeskyFactoriser<double>::computeWorkspaceSize() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
                                           CUBLAS_FILL_MODE_LOWER, n,
@@ -1113,7 +1128,7 @@ void CholeskyFactoriser<double>::computeWorkspaceSize() {
 }
 
 template<>
-void CholeskyFactoriser<float>::computeWorkspaceSize() {
+inline void CholeskyFactoriser<float>::computeWorkspaceSize() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
                                           CUBLAS_FILL_MODE_LOWER, n,
@@ -1218,7 +1233,7 @@ public:
 
 template<typename T>
 requires std::floating_point<T>
-Nullspace<T>::Nullspace(DTensor<T> &a) {
+inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
     if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
     m_nullspace = std::make_unique<DTensor<T>>(n, n, nMats, true);
@@ -1254,7 +1269,7 @@ Nullspace<T>::Nullspace(DTensor<T> &a) {
 
 template<typename T>
 requires std::floating_point<T>
-void Nullspace<T>::project(DTensor<T> &b) {
+inline void Nullspace<T>::project(DTensor<T> &b) {
     b.addAB(*m_projOp, b, 1, 0);
 }
 
