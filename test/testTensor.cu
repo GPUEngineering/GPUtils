@@ -901,7 +901,31 @@ TEST_F(NullspaceTest, computeNullspaceTensor) {
 }
 
 /* ---------------------------------------
- * Project onto nullspace test
+ * Nullspace is trivial
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void computeNullspaceTrivial(T epsilon) {
+    std::vector<T> data{4, 5, 7,
+                        4, 1, 8,
+                        4, 5, 0,
+                        1, 1, 1,
+                        5, 6, 7,
+                        9, 0, 3};
+    DTensor<T> A(data, 3, 3, 2, rowMajor);
+    Nullspace<T> nullA(A);
+    DTensor<T> N = nullA.nullspace();
+    EXPECT_EQ(N.normF(), 0);
+}
+
+TEST_F(NullspaceTest, computeNullspaceTrivial) {
+    computeNullspaceTrivial<float>(PRECISION_LOW);
+    computeNullspaceTrivial<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Project onto nullspace
  * --------------------------------------- */
 
 template<typename T>
