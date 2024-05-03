@@ -1276,4 +1276,60 @@ inline void Nullspace<T>::project(DTensor<T> &b) {
 }
 
 
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+class CholeskyMultiFactoriser {
+
+private:
+    DTensor<T> &m_matrix;  ///< Matrix to factorise (reference)
+    size_t m_numRows = 0;
+    size_t m_numMats = 0;
+    std::unique_ptr<DTensor<int>> m_deviceInfo;
+    bool m_factorisationDone = false;
+
+public:
+    CholeskyMultiFactoriser() = delete;
+
+    CholeskyMultiFactoriser(DTensor<T> &A) : m_matrix(A) {
+        m_numRows = A.numRows();
+        m_numMats = A.numMats();
+        m_deviceInfo = std::make_unique<DTensor<int>>(m_numMats, 1, 1, true);
+    }
+
+    /**
+     * Factorise all matrices in tensor (batched).
+     */
+    void factorise();
+
+    int solve(DTensor<T> &b);
+
+};
+
+template<>
+void CholeskyMultiFactoriser<double>::factorise() {
+    if (m_factorisationDone) return;
+    DTensor<double *> ptrA = m_matrix.pointersToMatrices();
+    cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(),
+                            CUBLAS_FILL_MODE_LOWER,
+                            m_numRows,
+                            ptrA.raw(),
+                            m_numRows,
+                            m_deviceInfo->raw(),
+                            m_numMats);
+    m_factorisationDone = true;
+}
+
+template<>
+void CholeskyMultiFactoriser<float>::factorise() {
+    if (m_factorisationDone) return;
+    DTensor<float *> ptrA = m_matrix.pointersToMatrices();
+    cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(),
+                            CUBLAS_FILL_MODE_LOWER,
+                            m_numRows,
+                            ptrA.raw(),
+                            m_numRows,
+                            m_deviceInfo->raw(),
+                            m_numMats);
+    m_factorisationDone = true;
+}
+
 #endif
