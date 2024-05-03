@@ -341,6 +341,8 @@ public:
      */
     void addAB(const DTensor<T> &A, const DTensor<T> &B, T alpha = 1, T beta = 0);
 
+    void maxWith(T val = 0);
+
     /* ------------- OPERATORS ------------- */
 
     DTensor &operator=(const DTensor &other);
@@ -620,6 +622,20 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
                          m_d_data,
                          m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToDevice));
+}
+
+TENSOR_TEMPLATE_WITH_TYPE TENSOR_REQUIRES_TYPE
+__global__ void k_maxWith(T *d_array, size_t n, T v = 0.) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < n) {
+        d_array[idx] *= (d_array[idx] > v);
+    }
+}
+
+template<typename T>
+inline void DTensor<T>::maxWith(T val) {
+    size_t n = numEl();
+    k_maxWith<<<DIM2BLOCKS(n), THREADS_PER_BLOCK>>>(raw(), n, val);
 }
 
 template<>
@@ -1236,7 +1252,8 @@ public:
 };
 
 
-template<typename T> TENSOR_REQUIRES_TYPE
+template<typename T>
+TENSOR_REQUIRES_TYPE
 inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
     if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
@@ -1271,7 +1288,8 @@ inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     }
 }
 
-template<typename T> TENSOR_REQUIRES_TYPE
+template<typename T>
+TENSOR_REQUIRES_TYPE
 inline void Nullspace<T>::project(DTensor<T> &b) {
     b.addAB(*m_projOp, b, 1, 0);
 }

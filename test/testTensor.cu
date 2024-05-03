@@ -337,6 +337,28 @@ TEST_F(TensorTest, tensorNormFtensorSumAbs) {
 }
 
 /* ---------------------------------------
+ * Max with constant
+ * --------------------------------------- */
+
+template<typename T>
+void tensorMaxWith(T epsilon) {
+    std::vector<T> tensorData = {1., 2., -5., -6., 0., 5., 10., -10.};
+    DTensor<T> t(tensorData, 2, 2, 2);
+    t.maxWith(0.);
+    std::vector<T> clipped(8);
+    t.download(clipped);
+    std::vector<T> expected = {1., 2., 0., 0., 0., 5., 10., 0.};
+    for (size_t i = 0; i < 8; i++)
+        EXPECT_NEAR(expected[i], clipped[i], epsilon);
+
+}
+
+TEST_F(TensorTest, tensorMaxWith) {
+    tensorMaxWith<float>(PRECISION_HIGH);
+    tensorMaxWith<double>(PRECISION_LOW);
+}
+
+/* ---------------------------------------
  * Tensor operator() to access element
  * e.g., t(2, 3, 4)
  * --------------------------------------- */
@@ -983,7 +1005,7 @@ void projectOnNullspaceTensor(T epsilon) {
     DTensor<T> delta1 = y - proj;
     DTensor<T> delta2 = proj - x;
     EXPECT_LT(delta1.dotF(delta2), epsilon);
- }
+}
 
 TEST_F(NullspaceTest, projectOnNullspaceTensor) {
     projectOnNullspaceTensor<float>(PRECISION_LOW);
