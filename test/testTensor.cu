@@ -950,18 +950,24 @@ TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
 template<typename T>
 requires std::floating_point<T>
 void choleskyBatchSolve(T epsilon) {
-    /* originalMatrix = {10.0, 2.0, 3.0,
-                         2.0, 20.0, -1.0,
-                         3.0, -1.0, 30.0}; */
+    std::vector<T> aData = {10.0, 2.0, 3.0,
+                            2.0, 20.0, -1.0,
+                            3.0, -1.0, 30.0};
+    DTensor<T> A(3, 3, 2);
+    DTensor<T> A0(A, 2, 0, 0);
+    DTensor<T> A1(A, 2, 1, 1);
+    A0.upload(aData);
+    A1.upload(aData);
     std::vector<T> lowData = {3.162277660168380, 0, 0,
                               0.632455532033676, 4.427188724235731, 0,
                               0.948683298050514, -0.361403161162101, 5.382321781081287};  // from matlab
     DTensor<T> low(3, 3, 2);
     DTensor<T> low0(low, 2, 0, 0);
     DTensor<T> low1(low, 2, 1, 1);
-    low0.upload(lowData);
-    low1.upload(lowData);
-    CholeskyBatchFactoriser<T> chol(low, true);
+    low0.upload(lowData, rowMajor);
+    low1.upload(lowData, rowMajor);
+    DTensor<T> L(low);
+    CholeskyBatchFactoriser<T> chol(L, true);
     std::vector<T> bData = {-1., -3., 5.};
     DTensor<T> rhs(3, 1, 2);
     DTensor<T> rhs0(rhs, 2, 0, 0);
@@ -975,7 +981,7 @@ void choleskyBatchSolve(T epsilon) {
     sol.download(actual);
     for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);  // 0
     for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i + 3], epsilon);  // 1
-    DTensor<T> error = low * sol;
+    DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
 }

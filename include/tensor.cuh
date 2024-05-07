@@ -1280,19 +1280,30 @@ inline void Nullspace<T>::project(DTensor<T> &b) {
  *  CHOLESKY BATCH FACTORISATION (CBF)
  * ================================================================================================ */
 
+/**
+ * Cholesky Factorisation (CF) for batches of matrices (tensors).
+ * This object can factorise and then solve,
+ * or you can provide pre-computed Cholesky lower-triangular matrices and then solve.
+ * @tparam T data type of tensor (must be float or double)
+ */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 class CholeskyBatchFactoriser {
 
 private:
-    DTensor<T> *m_matrix;  ///< Matrix to factorise (reference)
-    size_t m_numRows = 0;
-    size_t m_numMats = 0;
-    std::unique_ptr<DTensor<int>> m_deviceInfo;
-    bool m_factorisationDone = false;
+    DTensor<T> *m_matrix;  ///< Matrix to factorise or lower-triangular decomposed matrix
+    size_t m_numRows = 0;  ///< Number of rows in `m_matrix`
+    size_t m_numMats = 0;  ///< Number of matrices in `m_matrix`
+    std::unique_ptr<DTensor<int>> m_deviceInfo;  ///< Info from cusolver functions
+    bool m_factorisationDone = false;  ///< Whether `m_matrix` holds original or lower-triangular matrix
 
 public:
     CholeskyBatchFactoriser() = delete;
 
+    /**
+     * Constructor
+     * @param A either matrices to be factorised or lower-triangular Cholesky decomposition matrices
+     * @param factorised whether A is the original matrices or the factorised ones (default=original matrices)
+     */
     CholeskyBatchFactoriser(DTensor<T> &A, bool factorised=false) : m_factorisationDone(factorised) {
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be square");
         m_matrix = &A;
@@ -1306,6 +1317,10 @@ public:
      */
     void factorise();
 
+    /**
+     * Solve the system A\b using Cholesky lower-triangular matrix of A (batched).
+     * @param b vector in system Ax=b to be solved where x is the solution
+     */
     void solve(DTensor<T> &b);
 
 };
