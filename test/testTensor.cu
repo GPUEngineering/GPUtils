@@ -733,7 +733,7 @@ TEST_F(SvdTest, singularValuesMemory) {
  * --------------------------------------- */
 template<typename T>
 requires std::floating_point<T>
-void singularValuesMutlipleMatrices(float epsilon) {
+void singularValuesMultipleMatrices(float epsilon) {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
     DTensor<T> A(aData, 3, 2, 3);
     Svd<T> svd(A, true); // do compute U (A will be destroyed)
@@ -753,15 +753,15 @@ void singularValuesMutlipleMatrices(float epsilon) {
     S.download(actual_s);
     for (size_t i = 0; i < 6; i++) EXPECT_NEAR(expected_s[i], actual_s[i], epsilon);
     std::vector<T> expected_u = {
-            -0.428667133548626, -0.566306918848035, -0.703946704147444,
-            0.805963908589298, 0.112382414096594, -0.581199080396110,
-            0.408248290463863, -0.816496580927726, 0.408248290463863,
-            -0.577350269189626, -0.577350269189626, -0.577350269189626,
-            0.816496580927726, -0.408248290463863, -0.408248290463863,
-            0.000000000000000, -0.707106781186548, 0.707106781186547,
-            0, 0, -1,
-            1, 0, 0,
-            0, -1, 0,
+        -0.428667133548626, -0.566306918848035, -0.703946704147444,
+        0.805963908589298, 0.112382414096594, -0.581199080396110,
+        0.408248290463863, -0.816496580927726, 0.408248290463863,
+        -0.577350269189626, -0.577350269189626, -0.577350269189626,
+        0.816496580927726, -0.408248290463863, -0.408248290463863,
+        0.000000000000000, -0.707106781186548, 0.707106781186547,
+        0, 0, -1,
+        1, 0, 0,
+        0, -1, 0,
     };
     std::vector<T> actual_u(27);
     U->download(actual_u);
@@ -769,9 +769,9 @@ void singularValuesMutlipleMatrices(float epsilon) {
 
 }
 
-TEST_F(SvdTest, singularValuesMutlipleMatrices) {
-    singularValuesMutlipleMatrices<float>(10 * PRECISION_LOW); // SVD with float performs quite poorly
-    singularValuesMutlipleMatrices<double>(PRECISION_HIGH);
+TEST_F(SvdTest, singularValuesMultipleMatrices) {
+    singularValuesMultipleMatrices<float>(10 * PRECISION_LOW); // SVD with float performs quite poorly
+    singularValuesMultipleMatrices<double>(PRECISION_HIGH);
 }
 
 
@@ -868,6 +868,121 @@ void choleskyFactorisationSolution(T epsilon) {
 TEST_F(CholeskyTest, choleskyFactorisationSolution) {
     choleskyFactorisationSolution<float>(PRECISION_LOW);
     choleskyFactorisationSolution<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Batched Cholesky factorisation
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void choleskyBatchFactorisation(T epsilon) {
+    std::vector<T> aData = {10.0, 2.0, 3.0,
+                            2.0, 20.0, -1.0,
+                            3.0, -1.0, 30.0};
+    DTensor<T> A(3, 3, 2);
+    DTensor<T> A0(A, 2, 0, 0);
+    DTensor<T> A1(A, 2, 1, 1);
+    A0.upload(aData);
+    A1.upload(aData);
+    CholeskyBatchFactoriser<T> chol(A);
+    chol.factorise();
+    // 0
+    EXPECT_NEAR(3.162277660168380, A(0, 0, 0), epsilon);
+    EXPECT_NEAR(-0.361403161162101, A(2, 1, 0), epsilon);
+    EXPECT_NEAR(5.382321781081287, A(2, 2, 0), epsilon);
+    // 1
+    EXPECT_NEAR(3.162277660168380, A(0, 0, 1), epsilon);
+    EXPECT_NEAR(-0.361403161162101, A(2, 1, 1), epsilon);
+    EXPECT_NEAR(5.382321781081287, A(2, 2, 1), epsilon);
+}
+
+TEST_F(CholeskyTest, choleskyBatchFactorisation) {
+    choleskyBatchFactorisation<float>(PRECISION_LOW);
+    choleskyBatchFactorisation<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Batched Cholesky solve
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void choleskyBatchFactorSolve(T epsilon) {
+    std::vector<T> aData = {10.0, 2.0, 3.0,
+                            2.0, 20.0, -1.0,
+                            3.0, -1.0, 30.0};
+    DTensor<T> A(3, 3, 2);
+    DTensor<T> A0(A, 2, 0, 0);
+    DTensor<T> A1(A, 2, 1, 1);
+    A0.upload(aData);
+    A1.upload(aData);
+    DTensor<T> L(A); // L = A
+    CholeskyBatchFactoriser<T> chol(L);
+    chol.factorise();
+    std::vector<T> bData = {-1., -3., 5.};
+    DTensor<T> rhs(3, 1, 2);
+    DTensor<T> rhs0(rhs, 2, 0, 0);
+    DTensor<T> rhs1(rhs, 2, 1, 1);
+    rhs0.upload(bData);
+    rhs1.upload(bData);
+    DTensor<T> sol(rhs);
+    chol.solve(sol);
+    std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
+    std::vector<T> actual(6);
+    sol.download(actual);
+    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);  // 0
+    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i + 3], epsilon);  // 1
+    DTensor<T> error = A * sol;
+    error -= rhs;
+    EXPECT_TRUE(error.normF() < epsilon);
+}
+
+TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
+    choleskyBatchFactorSolve<float>(PRECISION_LOW);
+    choleskyBatchFactorSolve<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Batched Cholesky solve (factor provided)
+ * --------------------------------------- */
+
+template<typename T>
+requires std::floating_point<T>
+void choleskyBatchSolve(T epsilon) {
+    /* originalMatrix = {10.0, 2.0, 3.0,
+                         2.0, 20.0, -1.0,
+                         3.0, -1.0, 30.0}; */
+    std::vector<T> lowData = {3.162277660168380, 0, 0,
+                              0.632455532033676, 4.427188724235731, 0,
+                              0.948683298050514, -0.361403161162101, 5.382321781081287};  // from matlab
+    DTensor<T> low(3, 3, 2);
+    DTensor<T> low0(low, 2, 0, 0);
+    DTensor<T> low1(low, 2, 1, 1);
+    low0.upload(lowData);
+    low1.upload(lowData);
+    CholeskyBatchFactoriser<T> chol(low, true);
+    std::vector<T> bData = {-1., -3., 5.};
+    DTensor<T> rhs(3, 1, 2);
+    DTensor<T> rhs0(rhs, 2, 0, 0);
+    DTensor<T> rhs1(rhs, 2, 1, 1);
+    rhs0.upload(bData);
+    rhs1.upload(bData);
+    DTensor<T> sol(rhs);
+    chol.solve(sol);
+    std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
+    std::vector<T> actual(6);
+    sol.download(actual);
+    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);  // 0
+    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i + 3], epsilon);  // 1
+    DTensor<T> error = low * sol;
+    error -= rhs;
+    EXPECT_TRUE(error.normF() < epsilon);
+}
+
+TEST_F(CholeskyTest, choleskyBatchSolve) {
+    choleskyBatchSolve<float>(PRECISION_LOW);
+    choleskyBatchSolve<double>(PRECISION_HIGH);
 }
 
 
@@ -983,7 +1098,7 @@ void projectOnNullspaceTensor(T epsilon) {
     DTensor<T> delta1 = y - proj;
     DTensor<T> delta2 = proj - x;
     EXPECT_LT(delta1.dotF(delta2), epsilon);
- }
+}
 
 TEST_F(NullspaceTest, projectOnNullspaceTensor) {
     projectOnNullspaceTensor<float>(PRECISION_LOW);

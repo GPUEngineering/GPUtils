@@ -548,7 +548,7 @@ inline bool DTensor<T>::upload(const std::vector<T> &vec, StorageMode mode) {
     size_t size = vec.size();
     size_t thisSize = m_numRows * m_numCols * m_numMats;
     // make sure vec is of right size
-    if (size != thisSize) throw std::invalid_argument("vec has wrong size");
+    if (size != thisSize) throw std::invalid_argument("[upload] vec has wrong size");
     std::vector<T> vecCm(thisSize);
     if (mode == StorageMode::rowMajor) {
         rm2cm(vec, vecCm);
@@ -611,7 +611,7 @@ inline DTensor<double> DTensor<double>::tr() const {
 template<typename T>
 inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
     if (elsewhere.numEl() < numEl()) {
-        throw std::invalid_argument("tensor does not fit into destination");
+        throw std::invalid_argument("[deviceCopyTo] tensor does not fit into destination");
     }
     gpuErrChk(cudaMemcpy(elsewhere.raw(),
                          m_d_data,
@@ -623,7 +623,7 @@ template<>
 inline DTensor<double> &DTensor<double>::operator*=(double scalar) {
     double alpha = scalar;
     gpuErrChk(
-            cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+        cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
     return *this;
 }
 
@@ -641,7 +641,7 @@ template<>
 inline DTensor<float> &DTensor<float>::operator*=(float scalar) {
     float alpha = scalar;
     gpuErrChk(
-            cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+        cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
     return *this;
 }
 
@@ -649,8 +649,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator+=(const DTensor<double> &rhs) {
     const double alpha = 1.;
     gpuErrChk(
-            cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
-                        1, m_d_data, 1));
+        cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                    1, m_d_data, 1));
     return *this;
 }
 
@@ -658,8 +658,8 @@ template<>
 inline DTensor<float> &DTensor<float>::operator+=(const DTensor<float> &rhs) {
     const float alpha = 1.;
     gpuErrChk(
-            cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
-                        1, m_d_data, 1));
+        cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                    1, m_d_data, 1));
     return *this;
 }
 
@@ -675,8 +675,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator-=(const DTensor<double> &rhs) {
     const double alpha = -1.;
     gpuErrChk(
-            cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
-                        1, m_d_data, 1));
+        cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                    1, m_d_data, 1));
     return *this;
 }
 
@@ -745,13 +745,13 @@ inline void DTensor<double>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
-        throw std::invalid_argument("Least squares rhs rows does not equal lhs rows");
+        throw std::invalid_argument("[Least squares] rhs rows does not equal lhs rows");
     if (nColsB != 1)
-        throw std::invalid_argument("Least squares rhs are not vectors");
+        throw std::invalid_argument("[Least squares] rhs are not vectors");
     if (B.numMats() != batchSize)
-        throw std::invalid_argument("Least squares rhs numMats does not equal lhs numMats");
+        throw std::invalid_argument("[Least squares] rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("Least squares supports square or tall matrices only");
+        throw std::invalid_argument("[Least squares] supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<double *> As = pointersToMatrices();
@@ -775,13 +775,13 @@ inline void DTensor<float>::leastSquares(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
-        throw std::invalid_argument("Least squares rhs rows does not equal lhs rows");
+        throw std::invalid_argument("[Least squares] rhs rows does not equal lhs rows");
     if (nColsB != 1)
-        throw std::invalid_argument("Least squares rhs are not vectors");
+        throw std::invalid_argument("[Least squares] rhs are not vectors");
     if (B.numMats() != batchSize)
-        throw std::invalid_argument("Least squares rhs numMats does not equal lhs numMats");
+        throw std::invalid_argument("[Least squares] rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("Least squares supports square or tall matrices only");
+        throw std::invalid_argument("[Least squares] supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<float *> As = pointersToMatrices();
@@ -899,7 +899,7 @@ private:
      */
     void checkMatrix(DTensor<T> &tensor) const {
         if (tensor.numRows() < tensor.numCols()) {
-            throw std::invalid_argument("your matrix is fat (no offence)");
+            throw std::invalid_argument("[svd] your matrix is fat (no offence)");
         }
     };
 
@@ -1021,17 +1021,17 @@ inline bool Svd<double>::factorise() {
         if (m_computeU)
             Ui = std::make_unique<DTensor<double>>(*m_U, 2, i, i);
         gpuErrChk(
-                cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
-                                 (m_computeU) ? 'A' : 'N', 'A',
-                                 m, n,
-                                 Ai.raw(), m,
-                                 Si.raw(),
-                                 (m_computeU) ? Ui->raw() : nullptr, m,
-                                 Vtri.raw(), n,
-                                 m_workspace->raw(),
-                                 m_lwork,
-                                 nullptr,  // rwork (used only if SVD fails)
-                                 m_info->raw()));
+            cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
+                             (m_computeU) ? 'A' : 'N', 'A',
+                             m, n,
+                             Ai.raw(), m,
+                             Si.raw(),
+                             (m_computeU) ? Ui->raw() : nullptr, m,
+                             Vtri.raw(), n,
+                             m_workspace->raw(),
+                             m_lwork,
+                             nullptr,  // rwork (used only if SVD fails)
+                             m_info->raw()));
         info = info && ((*m_info)(0, 0, 0) == 0);
     }
     return info;
@@ -1051,17 +1051,17 @@ inline bool Svd<float>::factorise() {
         if (m_computeU)
             Ui = std::make_unique<DTensor<float>>(*m_U, 2, i, i);
         gpuErrChk(
-                cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
-                                 (m_computeU) ? 'A' : 'N', 'A',
-                                 m, n,
-                                 Ai.raw(), m,
-                                 Si.raw(),
-                                 (m_computeU) ? Ui->raw() : nullptr, m,
-                                 Vtri.raw(), n,
-                                 m_workspace->raw(),
-                                 m_lwork,
-                                 nullptr,  // rwork (used only if SVD fails)
-                                 m_info->raw()));
+            cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
+                             (m_computeU) ? 'A' : 'N', 'A',
+                             m, n,
+                             Ai.raw(), m,
+                             Si.raw(),
+                             (m_computeU) ? Ui->raw() : nullptr, m,
+                             Vtri.raw(), n,
+                             m_workspace->raw(),
+                             m_lwork,
+                             nullptr,  // rwork (used only if SVD fails)
+                             m_info->raw()));
         info = info && ((*m_info)(0, 0, 0) == 0);
     }
     return info;
@@ -1095,8 +1095,8 @@ private:
 public:
 
     CholeskyFactoriser(DTensor<T> &A) {
-        if (A.numMats() > 1) throw std::invalid_argument("3D tensors are not supported (for now); only matrices");
-        if (A.numRows() != A.numCols()) throw std::invalid_argument("Matrix A must be square for CF");
+        if (A.numMats() > 1) throw std::invalid_argument("[Cholesky] 3D tensors require `CholeskyBatchFactoriser");
+        if (A.numRows() != A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be square");
         m_matrix = &A;
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
@@ -1237,7 +1237,7 @@ template<typename T>
 TEMPLATE_CONSTRAINT_REQUIRES_FPX
 inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
-    if (m > n) throw std::invalid_argument("I was expecting a square or fat matrix");
+    if (m > n) throw std::invalid_argument("[nullspace] I was expecting a square or fat matrix");
     m_nullspace = std::make_unique<DTensor<T>>(n, n, nMats, true);
     m_projOp = std::make_unique<DTensor<T>>(n, n, nMats, true);
     auto aTranspose = a.tr();
@@ -1276,20 +1276,26 @@ inline void Nullspace<T>::project(DTensor<T> &b) {
 }
 
 
+/* ================================================================================================
+ *  CHOLESKY BATCH FACTORISATION (CBF)
+ * ================================================================================================ */
+
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class CholeskyMultiFactoriser {
+class CholeskyBatchFactoriser {
 
 private:
-    DTensor<T> &m_matrix;  ///< Matrix to factorise (reference)
+    DTensor<T> *m_matrix;  ///< Matrix to factorise (reference)
     size_t m_numRows = 0;
     size_t m_numMats = 0;
     std::unique_ptr<DTensor<int>> m_deviceInfo;
     bool m_factorisationDone = false;
 
 public:
-    CholeskyMultiFactoriser() = delete;
+    CholeskyBatchFactoriser() = delete;
 
-    CholeskyMultiFactoriser(DTensor<T> &A) : m_matrix(A) {
+    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised=false) : m_factorisationDone(factorised) {
+        if (A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be square");
+        m_matrix = &A;
         m_numRows = A.numRows();
         m_numMats = A.numMats();
         m_deviceInfo = std::make_unique<DTensor<int>>(m_numMats, 1, 1, true);
@@ -1300,36 +1306,72 @@ public:
      */
     void factorise();
 
-    int solve(DTensor<T> &b);
+    void solve(DTensor<T> &b);
 
 };
 
 template<>
-void CholeskyMultiFactoriser<double>::factorise() {
+void CholeskyBatchFactoriser<double>::factorise() {
     if (m_factorisationDone) return;
-    DTensor<double *> ptrA = m_matrix.pointersToMatrices();
-    cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(),
-                            CUBLAS_FILL_MODE_LOWER,
-                            m_numRows,
-                            ptrA.raw(),
-                            m_numRows,
-                            m_deviceInfo->raw(),
-                            m_numMats);
+    DTensor<double *> ptrA = m_matrix->pointersToMatrices();
+    gpuErrChk(cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(),
+                                      CUBLAS_FILL_MODE_LOWER,
+                                      m_numRows,
+                                      ptrA.raw(),
+                                      m_numRows,
+                                      m_deviceInfo->raw(),
+                                      m_numMats));
     m_factorisationDone = true;
 }
 
 template<>
-void CholeskyMultiFactoriser<float>::factorise() {
+void CholeskyBatchFactoriser<float>::factorise() {
     if (m_factorisationDone) return;
-    DTensor<float *> ptrA = m_matrix.pointersToMatrices();
-    cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(),
-                            CUBLAS_FILL_MODE_LOWER,
-                            m_numRows,
-                            ptrA.raw(),
-                            m_numRows,
-                            m_deviceInfo->raw(),
-                            m_numMats);
+    DTensor<float *> ptrA = m_matrix->pointersToMatrices();
+    gpuErrChk(cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(),
+                                      CUBLAS_FILL_MODE_LOWER,
+                                      m_numRows,
+                                      ptrA.raw(),
+                                      m_numRows,
+                                      m_deviceInfo->raw(),
+                                      m_numMats));
     m_factorisationDone = true;
+}
+
+template<>
+void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
+    if (!m_factorisationDone) throw std::logic_error("[CholeskyBatchSolve] no factor to solve with");
+    if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
+    DTensor<double *> ptrA = m_matrix->pointersToMatrices();
+    DTensor<double *> ptrB = b.pointersToMatrices();
+    gpuErrChk(cusolverDnDpotrsBatched(Session::getInstance().cuSolverHandle(),
+                                      CUBLAS_FILL_MODE_LOWER,
+                                      m_numRows,
+                                      1,  ///< only supports rhs = 1
+                                      ptrA.raw(),
+                                      m_numRows,
+                                      ptrB.raw(),
+                                      m_numRows,
+                                      m_deviceInfo->raw(),
+                                      m_numMats));
+}
+
+template<>
+void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
+    if (!m_factorisationDone) throw std::logic_error("[CholeskyBatchSolve] no factor to solve with");
+    if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
+    DTensor<float *> ptrA = m_matrix->pointersToMatrices();
+    DTensor<float *> ptrB = b.pointersToMatrices();
+    gpuErrChk(cusolverDnSpotrsBatched(Session::getInstance().cuSolverHandle(),
+                                      CUBLAS_FILL_MODE_LOWER,
+                                      m_numRows,
+                                      1,  ///< only supports rhs = 1
+                                      ptrA.raw(),
+                                      m_numRows,
+                                      ptrB.raw(),
+                                      m_numRows,
+                                      m_deviceInfo->raw(),
+                                      m_numMats));
 }
 
 #endif
