@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euxo pipefail
 
+
 tests() {
     # Where are we? (A40 or Orin?)
     hwInfoOrin=`lshw | grep Orin` ||
