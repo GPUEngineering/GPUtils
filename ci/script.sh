@@ -2,9 +2,9 @@
 set -euxo pipefail
 
 tests() {
-    # Where are we?
-    hwInfoOrin=`lshw | grep Orin`
-    if [ ! -z "$hwInfoOrin" ]; then
+    # Where are we? (A40 or Orin?)
+    hwInfoOrin=`lshw | grep Orin` ||
+    if [ ! -z "$(hwInfoOrin)" ]; then
       echo "Running on Orin";
       sm_arch=87
       cpp_version=17
