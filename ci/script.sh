@@ -30,6 +30,10 @@ tests() {
     # -- run tests
     ctest --test-dir ./build/test --output-on-failure
 
+    if [ ! -z "$(hwInfoOrin)" ]; then
+      return;
+    fi
+
     # -- run compute sanitizer
     cd ./build/test
     mem=$(/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check=full ./device_test)
