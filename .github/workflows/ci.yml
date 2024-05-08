@@ -7,7 +7,7 @@ name: Continuous integration
 
 jobs:
   ci:
-    runs-on: self-hosted
+    runs-on: [self-hosted, orin]
     steps:
       - name: checkout code
         uses: actions/checkout@v4
