@@ -4,6 +4,8 @@ set -euxo pipefail
 
 tests() {
     # Where are we? (A40 or Orin?)
+    cpp_version=17 # default
+    sm_arch=86 # default
     hwInfoOrin=`lshw | grep Orin` ||
     if [ ! -z "$(hwInfoOrin)" ]; then
       echo "Running on Orin";
