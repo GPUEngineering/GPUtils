@@ -3,7 +3,7 @@ set -euxo pipefail
 
 tests() {
     # Where are we?
-    hwInfoOrin = `lshw | grep Orin`
+    hwInfoOrin=`lshw | grep Orin`
     if [ ! -z "$hwInfoOrin" ]; then
       echo "Running on Orin";
       sm_arch=87
