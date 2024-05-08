@@ -7,7 +7,10 @@ name: Continuous integration
 
 jobs:
   ci:
-    runs-on: self-hosted
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [orin, a40]
     steps:
       - name: checkout code
         uses: actions/checkout@v4
