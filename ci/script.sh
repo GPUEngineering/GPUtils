@@ -7,7 +7,7 @@ tests() {
     cpp_version=17 # default
     sm_arch=86 # default
     hwInfoOrin=`lshw | grep Orin` ||
-    if [ ! -z "$(hwInfoOrin)" ]; then
+    if [ ! -z "${hwInfoOrin}" ]; then
       echo "Running on Orin";
       sm_arch=87
       cpp_version=17
@@ -30,7 +30,7 @@ tests() {
     # -- run tests
     ctest --test-dir ./build/test --output-on-failure
 
-    if [ -z "$(hwInfoOrin)" ]; then
+    if [ -z "${hwInfoOrin}" ]; then
 
       # -- run compute sanitizer
       cd ./build/test
