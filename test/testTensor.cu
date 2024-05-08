@@ -24,7 +24,7 @@ protected:
  * Zero Tensor (Constructor)
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorConstructionZero() {
     DTensor<T> zero(2, 3, 4, true);
     EXPECT_EQ(2, zero.numRows());
@@ -46,7 +46,7 @@ TEST_F(TensorTest, tensorConstructionZero) {
  * Row- and column-major data
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorConstructionStorageMode() {
     size_t rows = 3;
     size_t cols = 2;
@@ -98,7 +98,7 @@ TEST_F(TensorTest, tensorConstructionStorageMode) {
  * Move constructor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorMoveConstructor() {
     DTensor<T> zero(2, 3, 4, true);
     DTensor<T> x(std::move(zero));
@@ -118,7 +118,7 @@ TEST_F(TensorTest, tensorMoveConstructor) {
  * Constructor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorConstructionFromVector() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -138,7 +138,7 @@ TEST_F(TensorTest, tensorConstructionFromVector) {
  * Tensor: Copy constructor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorCopyConstructor() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -164,7 +164,7 @@ TEST_F(TensorTest, tensorCopyConstructor) {
  * axis = 2 (matrices)
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorSlicingConstructorAxis2() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tens(data, 2, 3, 4);
@@ -186,7 +186,7 @@ TEST_F(TensorTest, tensorSlicingConstructorAxis2) {
  * axis = 1 (columns)
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorSlicingConstructorAxis1() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -211,7 +211,7 @@ TEST_F(TensorTest, tensorSlicingConstructorAxis1) {
  * axis = 0 (columns)
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorSlicingConstructorAxis0() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -235,7 +235,7 @@ TEST_F(TensorTest, tensorSlicingConstructorAxis0) {
  * Tensor: Upload data
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorUpload() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(2, 3, 4);
@@ -258,7 +258,7 @@ TEST_F(TensorTest, tensorUpload) {
  * Tensor: deviceCopyTo
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorDeviceCopyTo() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -282,7 +282,7 @@ TEST_F(TensorTest, tensorDeviceCopyTo) {
  * Tensor: Frobenius dot product
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorDotF(T epsilon) {
     // as vectors
     std::vector<T> dataA = TENSOR_DATA_234A;
@@ -307,7 +307,7 @@ TEST_F(TensorTest, tensorDotF) {
  * Tensor: Frobenius norm
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorNormF(T epsilon) {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -324,7 +324,7 @@ TEST_F(TensorTest, tensorNormF) {
  * all elements
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorSumAbs() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -341,7 +341,7 @@ TEST_F(TensorTest, tensorNormFtensorSumAbs) {
  * e.g., t(2, 3, 4)
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorBracketOperator() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -360,7 +360,7 @@ TEST_F(TensorTest, tensorBracketOperator) {
  * Tensor assignment operator
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorAssignmentOperator() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
@@ -382,7 +382,7 @@ TEST_F(TensorTest, tensorAssignmentOperator) {
  * Tensor times-equals scalar
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorTimesEqualsScalar() {
     std::vector<T> data = TENSOR_DATA_234A;
     std::vector<T> dataTimes3 = {3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
@@ -403,7 +403,7 @@ TEST_F(TensorTest, tensorTimesEqualsScalar) {
  * Scalar times tensor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorTimesScalar() {
     std::vector<T> data = TENSOR_DATA_234A;
     std::vector<T> dataTimes3 = {3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
@@ -424,7 +424,7 @@ TEST_F(TensorTest, tensorTimesScalar) {
  * Tensor plus-equals tensor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorPlusEqualsTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
@@ -446,7 +446,7 @@ TEST_F(TensorTest, tensorPlusEqualsTensor) {
  * Tensor minus-equals tensor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorMinusEqualsTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
@@ -468,7 +468,7 @@ TEST_F(TensorTest, tensorMinusEqualsTensor) {
  * Tensor + Tensor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorPlusTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
@@ -490,7 +490,7 @@ TEST_F(TensorTest, tensorPlusTensor) {
  * Tensor - Tensor
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorMinusTensor() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     std::vector<T> dataB = TENSOR_DATA_234B;
@@ -512,7 +512,7 @@ TEST_F(TensorTest, tensorMinusTensor) {
  * Tensor: pointers to matrices (on device)
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorPointersToMatrices() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     DTensor<T> A(dataA, 2, 3, 4);
@@ -536,7 +536,7 @@ TEST_F(TensorTest, tensorPointersToMatrices) {
  * Tensor: C = AB
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorAddAB() {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6,
                             7, 8, 9, 10, 11, 12,
@@ -563,7 +563,7 @@ TEST_F(TensorTest, tensorAddAB) {
  * Tensor: getRows
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorGetRows() {
     std::vector<T> aData = {10.5, 25.0, 60.0,
                             -21.0, 720.0, -1.0,
@@ -595,7 +595,7 @@ TEST_F(TensorTest, tensorGetRows) {
  * Tensor: transpose
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorTranspose() {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     DTensor<T> A(aData, 3, 2, 2);
@@ -629,7 +629,7 @@ protected:
  * Tensor: Least squares
  * --------------------------------------- */
 
-template<typename T>
+TEMPLATE_WITH_TYPE_T
 void tensorLeastSquares1(T epsilon) {
     // TODO test with tall matrices too
     std::vector<T> aData = {1, 2,
@@ -672,8 +672,8 @@ protected:
  * and matrix rank
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesComputation(float epsilon) {
     std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
                             2, 7, 7, 7, 7, 7, 7, 7,
@@ -699,8 +699,8 @@ TEST_F(SvdTest, singularValuesComputation) {
  * Singular values - memory mgmt
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesMemory(float epsilon) {
     std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
                             2, 7, 7, 7, 7, 7, 7, 7,
@@ -731,8 +731,8 @@ TEST_F(SvdTest, singularValuesMemory) {
 /* ---------------------------------------
  * SVD with multiple matrices
  * --------------------------------------- */
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesMultipleMatrices(float epsilon) {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
     DTensor<T> A(aData, 3, 2, 3);
@@ -779,8 +779,8 @@ TEST_F(SvdTest, singularValuesMultipleMatrices) {
  * SVD for rank computation of multiple
  * matrices
  * --------------------------------------- */
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesRankMultipleMatrices(float epsilon) {
     std::vector<T> aData = {1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 0,
                             1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12,
@@ -815,8 +815,8 @@ protected:
  * Cholesky factorisation
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyFactorisation(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -838,8 +838,8 @@ TEST_F(CholeskyTest, choleskyFactorisation) {
  * Cholesky factorisation: solve system
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyFactorisationSolution(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -874,8 +874,8 @@ TEST_F(CholeskyTest, choleskyFactorisationSolution) {
  * Batched Cholesky factorisation
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchFactorisation(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -906,8 +906,8 @@ TEST_F(CholeskyTest, choleskyBatchFactorisation) {
  * Batched Cholesky solve
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchFactorSolve(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -947,8 +947,8 @@ TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
  * Batched Cholesky solve (factor provided)
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchSolve(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -1007,8 +1007,8 @@ protected:
  * Basic nullspace test
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void computeNullspaceTensor(T epsilon) {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
                             1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
@@ -1048,8 +1048,8 @@ TEST_F(NullspaceTest, computeNullspaceTensor) {
  * Nullspace is trivial
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void computeNullspaceTrivial(T epsilon) {
     std::vector<T> data{4, 5, 7,
                         4, 1, 8,
@@ -1072,8 +1072,8 @@ TEST_F(NullspaceTest, computeNullspaceTrivial) {
  * Project onto nullspace
  * --------------------------------------- */
 
-template<typename T>
-requires std::floating_point<T>
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void projectOnNullspaceTensor(T epsilon) {
     // offline
     size_t m = 3;
