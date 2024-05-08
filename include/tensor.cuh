@@ -1326,7 +1326,7 @@ public:
 };
 
 template<>
-void CholeskyBatchFactoriser<double>::factorise() {
+inline void CholeskyBatchFactoriser<double>::factorise() {
     if (m_factorisationDone) return;
     DTensor<double *> ptrA = m_matrix->pointersToMatrices();
     gpuErrChk(cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(),
@@ -1340,7 +1340,7 @@ void CholeskyBatchFactoriser<double>::factorise() {
 }
 
 template<>
-void CholeskyBatchFactoriser<float>::factorise() {
+inline void CholeskyBatchFactoriser<float>::factorise() {
     if (m_factorisationDone) return;
     DTensor<float *> ptrA = m_matrix->pointersToMatrices();
     gpuErrChk(cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(),
@@ -1354,8 +1354,11 @@ void CholeskyBatchFactoriser<float>::factorise() {
 }
 
 template<>
-void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
+inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
     if (!m_factorisationDone) throw std::logic_error("[CholeskyBatchSolve] no factor to solve with");
+    if (m_numRows != b.numRows() || m_numMats != b.numMats()) {
+        throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
+
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
     DTensor<double *> ptrA = m_matrix->pointersToMatrices();
     DTensor<double *> ptrB = b.pointersToMatrices();
@@ -1372,8 +1375,11 @@ void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
 }
 
 template<>
-void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
+inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
     if (!m_factorisationDone) throw std::logic_error("[CholeskyBatchSolve] no factor to solve with");
+    if (m_numRows != b.numRows() || m_numMats != b.numMats()) {
+        throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
+    }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
     DTensor<float *> ptrA = m_matrix->pointersToMatrices();
     DTensor<float *> ptrB = b.pointersToMatrices();
