@@ -1358,7 +1358,7 @@ inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
     if (!m_factorisationDone) throw std::logic_error("[CholeskyBatchSolve] no factor to solve with");
     if (m_numRows != b.numRows() || m_numMats != b.numMats()) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
-
+    }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
     DTensor<double *> ptrA = m_matrix->pointersToMatrices();
     DTensor<double *> ptrB = b.pointersToMatrices();
