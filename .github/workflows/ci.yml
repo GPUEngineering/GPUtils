@@ -10,7 +10,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        runner: [alphaville, pop-os]
+        runner: [orin, a40]
     steps:
       - name: checkout code
         uses: actions/checkout@v4
