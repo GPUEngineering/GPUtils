@@ -2,12 +2,24 @@
 set -euxo pipefail
 
 tests() {
+    # Where are we?
+    hwInfoOrin = `lshw | grep Orin`
+    if [ ! -z "$hwInfoOrin" ]; then
+      echo "Running on Orin";
+      sm_arch=87
+      cpp_version=17
+    else
+      echo "Not running on Orin";
+      sm_arch=86
+      cpp_version=20
+    fi
+
     # ------------------------------------
     # Run tensor gtests
     # ------------------------------------
 
     # -- create build files
-    cmake -S . -B ./build -Wno-dev
+    cmake -DCPPVERSION=${cpp_version} -DSM_ARCH=${sm_arch} -S . -B ./build -Wno-dev
 
     # -- build files in build folder
     cmake --build ./build
@@ -17,7 +29,7 @@ tests() {
 
     # -- run compute sanitizer
     cd ./build/test
-    mem=$(/usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./device_test)
+    mem=$(/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check=full ./device_test)
     grep "0 errors" <<< "$mem"
     cd ../..
 
@@ -27,7 +39,7 @@ tests() {
 
     # -- create build files
     cd example
-    cmake -S . -B ./build -Wno-dev
+    cmake  -DCPPVERSION=${cpp_version} -DSM_ARCH=${sm_arch} -S . -B ./build -Wno-dev
 
     # -- build files in build folder
     cmake --build ./build
@@ -37,7 +49,7 @@ tests() {
 
     # -- run compute sanitizer
     cd ./build
-    mem=$(/usr/local/cuda-12.3/bin/compute-sanitizer --tool memcheck --leak-check=full ./example_main)
+    mem=$(/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check=full ./example_main)
     grep "0 errors" <<< "$mem"
 }
 
