@@ -1,0 +1,7 @@
+# Only @alphaville and @ruairimoran can edit .github and ci
+/.github/       @alphaville @ruairimoran
+/ci/       @alphaville @ruairimoran
+
+# Only the code owners can edit any sh and yml files
+*.sh       @alphaville @ruairimoran
+*.yml       @alphaville @ruairimoran
