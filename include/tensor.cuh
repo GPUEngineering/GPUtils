@@ -33,11 +33,11 @@
  * and number of threads per block
  *
  * @param n problem size
- * @param threads_pre_block threads per block (defaults to THREADS_PER_BLOCK)
+ * @param threads_per_block threads per block (defaults to THREADS_PER_BLOCK)
  * @return number of blocks
  */
-constexpr size_t numBlocks(size_t n, size_t threads_pre_block=THREADS_PER_BLOCK) {
-    return (n / threads_pre_block + (n % threads_pre_block != 0));
+constexpr size_t numBlocks(size_t n, size_t threads_per_block=THREADS_PER_BLOCK) {
+    return (n / threads_per_block + (n % threads_per_block != 0));
 }
 
 
