@@ -1,3 +1,6 @@
+#include <random>
+#include <algorithm>
+#include <iterator>
 #include <vector>
 #include <iostream>
 #include <iomanip>
@@ -28,6 +31,41 @@
 #else
 #define TEMPLATE_CONSTRAINT_REQUIRES_FPX
 #endif
+
+std::random_device RND_DEVICE;
+
+
+/**
+ * Generate vector of random elements
+ * @tparam T
+ * @param n
+ * @param low
+ * @param hi
+ * @return
+ */
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
+std::vector<T> generateRealRandomVector(size_t n, T low, T hi) {
+    std::mt19937_64 mersenne_engine(RND_DEVICE());
+    std::uniform_real_distribution<T> dist(low, hi);
+    auto gen = [&dist, &mersenne_engine]() {
+        return dist(mersenne_engine);
+    };
+    std::vector<T> vec(n);
+    generate(begin(vec), end(vec), gen);
+    return vec;
+}
+
+std::vector<int> generateIntRandomVector(size_t n, int low, int hi) {
+    std::mt19937_64 mersenne_engine(RND_DEVICE());
+    std::uniform_int_distribution dist(low, hi);
+    auto gen = [&dist, &mersenne_engine]() {
+        return dist(mersenne_engine);
+    };
+    std::vector<int> vec(n);
+    generate(begin(vec), end(vec), gen);
+    return vec;
+}
 
 /**
  * Check for errors when calling GPU functions
@@ -176,6 +214,17 @@ private:
     std::ostream &print(std::ostream &out) const;
 
 public:
+
+    /**
+     * Create a tensor with random elements
+     * @param numRows
+     * @param numCols
+     * @param numMats
+     * @param low
+     * @param hi
+     */
+    static DTensor<T> createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi);
+
     /**
     * Constructs a DTensor object.
     */
@@ -383,6 +432,19 @@ public:
     }
 
 }; /* END OF DTENSOR */
+
+template<typename T>
+DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi) {
+    if constexpr (std::is_floating_point<T>::value) {
+        auto randVec = generateRealRandomVector(numRows * numCols * numMats, low, hi);
+        DTensor<T> a(randVec, numRows, numCols, numMats);
+        return a;
+    } else if constexpr (std::is_same_v<T, int>) {
+        auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
+        DTensor<T> a(randVec, numRows, numCols, numMats);
+        return a;
+    }
+}
 
 template<typename T>
 DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
@@ -623,7 +685,7 @@ template<>
 inline DTensor<double> &DTensor<double>::operator*=(double scalar) {
     double alpha = scalar;
     gpuErrChk(
-        cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+            cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
     return *this;
 }
 
@@ -641,7 +703,7 @@ template<>
 inline DTensor<float> &DTensor<float>::operator*=(float scalar) {
     float alpha = scalar;
     gpuErrChk(
-        cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+            cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
     return *this;
 }
 
@@ -649,8 +711,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator+=(const DTensor<double> &rhs) {
     const double alpha = 1.;
     gpuErrChk(
-        cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
-                    1, m_d_data, 1));
+            cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                        1, m_d_data, 1));
     return *this;
 }
 
@@ -658,8 +720,8 @@ template<>
 inline DTensor<float> &DTensor<float>::operator+=(const DTensor<float> &rhs) {
     const float alpha = 1.;
     gpuErrChk(
-        cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
-                    1, m_d_data, 1));
+            cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                        1, m_d_data, 1));
     return *this;
 }
 
@@ -675,8 +737,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator-=(const DTensor<double> &rhs) {
     const double alpha = -1.;
     gpuErrChk(
-        cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
-                    1, m_d_data, 1));
+            cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+                        1, m_d_data, 1));
     return *this;
 }
 
@@ -1021,17 +1083,17 @@ inline bool Svd<double>::factorise() {
         if (m_computeU)
             Ui = std::make_unique<DTensor<double>>(*m_U, 2, i, i);
         gpuErrChk(
-            cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
-                             (m_computeU) ? 'A' : 'N', 'A',
-                             m, n,
-                             Ai.raw(), m,
-                             Si.raw(),
-                             (m_computeU) ? Ui->raw() : nullptr, m,
-                             Vtri.raw(), n,
-                             m_workspace->raw(),
-                             m_lwork,
-                             nullptr,  // rwork (used only if SVD fails)
-                             m_info->raw()));
+                cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
+                                 (m_computeU) ? 'A' : 'N', 'A',
+                                 m, n,
+                                 Ai.raw(), m,
+                                 Si.raw(),
+                                 (m_computeU) ? Ui->raw() : nullptr, m,
+                                 Vtri.raw(), n,
+                                 m_workspace->raw(),
+                                 m_lwork,
+                                 nullptr,  // rwork (used only if SVD fails)
+                                 m_info->raw()));
         info = info && ((*m_info)(0, 0, 0) == 0);
     }
     return info;
@@ -1051,17 +1113,17 @@ inline bool Svd<float>::factorise() {
         if (m_computeU)
             Ui = std::make_unique<DTensor<float>>(*m_U, 2, i, i);
         gpuErrChk(
-            cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
-                             (m_computeU) ? 'A' : 'N', 'A',
-                             m, n,
-                             Ai.raw(), m,
-                             Si.raw(),
-                             (m_computeU) ? Ui->raw() : nullptr, m,
-                             Vtri.raw(), n,
-                             m_workspace->raw(),
-                             m_lwork,
-                             nullptr,  // rwork (used only if SVD fails)
-                             m_info->raw()));
+                cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
+                                 (m_computeU) ? 'A' : 'N', 'A',
+                                 m, n,
+                                 Ai.raw(), m,
+                                 Si.raw(),
+                                 (m_computeU) ? Ui->raw() : nullptr, m,
+                                 Vtri.raw(), n,
+                                 m_workspace->raw(),
+                                 m_lwork,
+                                 nullptr,  // rwork (used only if SVD fails)
+                                 m_info->raw()));
         info = info && ((*m_info)(0, 0, 0) == 0);
     }
     return info;
@@ -1304,7 +1366,7 @@ public:
      * @param A either matrices to be factorised or lower-triangular Cholesky decomposition matrices
      * @param factorised whether A is the original matrices or the factorised ones (default=original matrices)
      */
-    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised=false) : m_factorisationDone(factorised) {
+    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : m_factorisationDone(factorised) {
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be square");
         m_matrix = &A;
         m_numRows = A.numRows();
