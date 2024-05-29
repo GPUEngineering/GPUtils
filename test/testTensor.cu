@@ -95,6 +95,27 @@ TEST_F(TensorTest, tensorConstructionStorageMode) {
 }
 
 /* ---------------------------------------
+ * Create random tensors
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void randomTensorCreation() {
+    // 20 x 40 x 60-tensor; elements drawn from U[-1, 1]
+    auto r = DTensor<T>::createRandomTensor(20, 40, 60, -1, 1);
+    EXPECT_EQ(20, r.numRows());
+    EXPECT_EQ(40, r.numCols());
+    EXPECT_EQ(60, r.numMats());
+    auto rEle = r(19, 39, 59);
+    EXPECT_TRUE(rEle >= -1 && rEle <= 1);
+}
+
+TEST_F(TensorTest, randomTensorCreation) {
+    randomTensorCreation<float>();
+    randomTensorCreation<double>();
+    randomTensorCreation<int>();
+}
+
+/* ---------------------------------------
  * Move constructor
  * --------------------------------------- */
 
@@ -672,8 +693,7 @@ protected:
  * and matrix rank
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesComputation(float epsilon) {
     std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
                             2, 7, 7, 7, 7, 7, 7, 7,
@@ -699,8 +719,7 @@ TEST_F(SvdTest, singularValuesComputation) {
  * Singular values - memory mgmt
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesMemory(float epsilon) {
     std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
                             2, 7, 7, 7, 7, 7, 7, 7,
@@ -731,8 +750,7 @@ TEST_F(SvdTest, singularValuesMemory) {
 /* ---------------------------------------
  * SVD with multiple matrices
  * --------------------------------------- */
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesMultipleMatrices(float epsilon) {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
     DTensor<T> A(aData, 3, 2, 3);
@@ -753,15 +771,15 @@ void singularValuesMultipleMatrices(float epsilon) {
     S.download(actual_s);
     for (size_t i = 0; i < 6; i++) EXPECT_NEAR(expected_s[i], actual_s[i], epsilon);
     std::vector<T> expected_u = {
-        -0.428667133548626, -0.566306918848035, -0.703946704147444,
-        0.805963908589298, 0.112382414096594, -0.581199080396110,
-        0.408248290463863, -0.816496580927726, 0.408248290463863,
-        -0.577350269189626, -0.577350269189626, -0.577350269189626,
-        0.816496580927726, -0.408248290463863, -0.408248290463863,
-        0.000000000000000, -0.707106781186548, 0.707106781186547,
-        0, 0, -1,
-        1, 0, 0,
-        0, -1, 0,
+            -0.428667133548626, -0.566306918848035, -0.703946704147444,
+            0.805963908589298, 0.112382414096594, -0.581199080396110,
+            0.408248290463863, -0.816496580927726, 0.408248290463863,
+            -0.577350269189626, -0.577350269189626, -0.577350269189626,
+            0.816496580927726, -0.408248290463863, -0.408248290463863,
+            0.000000000000000, -0.707106781186548, 0.707106781186547,
+            0, 0, -1,
+            1, 0, 0,
+            0, -1, 0,
     };
     std::vector<T> actual_u(27);
     U->download(actual_u);
@@ -779,8 +797,7 @@ TEST_F(SvdTest, singularValuesMultipleMatrices) {
  * SVD for rank computation of multiple
  * matrices
  * --------------------------------------- */
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesRankMultipleMatrices(float epsilon) {
     std::vector<T> aData = {1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 0,
                             1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12,
@@ -815,8 +832,7 @@ protected:
  * Cholesky factorisation
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyFactorisation(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -838,8 +854,7 @@ TEST_F(CholeskyTest, choleskyFactorisation) {
  * Cholesky factorisation: solve system
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyFactorisationSolution(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -874,8 +889,7 @@ TEST_F(CholeskyTest, choleskyFactorisationSolution) {
  * Batched Cholesky factorisation
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchFactorisation(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -906,8 +920,7 @@ TEST_F(CholeskyTest, choleskyBatchFactorisation) {
  * Batched Cholesky solve
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchFactorSolve(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -947,8 +960,7 @@ TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
  * Batched Cholesky solve (factor provided)
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchSolve(T epsilon) {
     std::vector<T> aData = {10.0, 2.0, 3.0,
                             2.0, 20.0, -1.0,
@@ -1007,8 +1019,7 @@ protected:
  * Basic nullspace test
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void computeNullspaceTensor(T epsilon) {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
                             1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
@@ -1048,8 +1059,7 @@ TEST_F(NullspaceTest, computeNullspaceTensor) {
  * Nullspace is trivial
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void computeNullspaceTrivial(T epsilon) {
     std::vector<T> data{4, 5, 7,
                         4, 1, 8,
@@ -1072,8 +1082,7 @@ TEST_F(NullspaceTest, computeNullspaceTrivial) {
  * Project onto nullspace
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void projectOnNullspaceTensor(T epsilon) {
     // offline
     size_t m = 3;

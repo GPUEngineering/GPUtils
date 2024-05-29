@@ -1,3 +1,6 @@
+#include <random>
+#include <algorithm>
+#include <iterator>
 #include <vector>
 #include <iostream>
 #include <iomanip>
@@ -27,6 +30,41 @@
 #else
 #define TEMPLATE_CONSTRAINT_REQUIRES_FPX
 #endif
+
+std::random_device RND_DEVICE;
+
+
+/**
+ * Generate vector of random elements
+ * @tparam T
+ * @param n
+ * @param low
+ * @param hi
+ * @return
+ */
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
+std::vector<T> generateRealRandomVector(size_t n, T low, T hi) {
+    std::mt19937_64 mersenne_engine(RND_DEVICE());
+    std::uniform_real_distribution<T> dist(low, hi);
+    auto gen = [&dist, &mersenne_engine]() {
+        return dist(mersenne_engine);
+    };
+    std::vector<T> vec(n);
+    generate(begin(vec), end(vec), gen);
+    return vec;
+}
+
+std::vector<int> generateIntRandomVector(size_t n, int low, int hi) {
+    std::mt19937_64 mersenne_engine(RND_DEVICE());
+    std::uniform_int_distribution dist(low, hi);
+    auto gen = [&dist, &mersenne_engine]() {
+        return dist(mersenne_engine);
+    };
+    std::vector<int> vec(n);
+    generate(begin(vec), end(vec), gen);
+    return vec;
+}
 
 /**
  * Determines the number of blocks needed for a given number of tasks, n,
@@ -188,6 +226,17 @@ private:
     std::ostream &print(std::ostream &out) const;
 
 public:
+
+    /**
+     * Create a tensor with random elements
+     * @param numRows
+     * @param numCols
+     * @param numMats
+     * @param low
+     * @param hi
+     */
+    static DTensor<T> createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi);
+
     /**
     * Constructs a DTensor object.
     */
@@ -397,6 +446,19 @@ public:
     }
 
 }; /* END OF DTENSOR */
+
+template<typename T>
+DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi) {
+    if constexpr (std::is_floating_point<T>::value) {
+        auto randVec = generateRealRandomVector(numRows * numCols * numMats, low, hi);
+        DTensor<T> a(randVec, numRows, numCols, numMats);
+        return a;
+    } else if constexpr (std::is_same_v<T, int>) {
+        auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
+        DTensor<T> a(randVec, numRows, numCols, numMats);
+        return a;
+    }
+}
 
 template<typename T>
 void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats) {
