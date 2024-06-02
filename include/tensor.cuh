@@ -515,7 +515,7 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numCols = other.m_numCols;
         m_numMats = len;
     } else if (axis == 1) {
-        offset = other.m_numCols * from;
+        offset = other.m_numRows * from;
         m_numRows = other.m_numRows;
         m_numCols = len;
         m_numMats = 1;
