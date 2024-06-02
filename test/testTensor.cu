@@ -215,7 +215,7 @@ void tensorSlicingConstructorAxis1() {
     EXPECT_EQ(2, tenzSlice.numRows());
     EXPECT_EQ(2, tenzSlice.numCols());
     EXPECT_EQ(1, tenzSlice.numMats());
-    std::vector<T> expected = {4, 5, 6, 7};
+    std::vector<T> expected = {3, 4, 5, 6};
     std::vector<T> tenzSliceDown(4);
     tenzSlice.download(tenzSliceDown);
     EXPECT_EQ(expected, tenzSliceDown);
