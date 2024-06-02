@@ -31,7 +31,7 @@
 #define TEMPLATE_CONSTRAINT_REQUIRES_FPX
 #endif
 
-std::random_device RND_DEVICE;
+static std::random_device RND_DEVICE;
 
 
 /**
@@ -55,7 +55,7 @@ std::vector<T> generateRealRandomVector(size_t n, T low, T hi) {
     return vec;
 }
 
-std::vector<int> generateIntRandomVector(size_t n, int low, int hi) {
+inline std::vector<int> generateIntRandomVector(size_t n, int low, int hi) {
     std::mt19937_64 mersenne_engine(RND_DEVICE());
     std::uniform_int_distribution dist(low, hi);
     auto gen = [&dist, &mersenne_engine]() {
