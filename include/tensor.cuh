@@ -380,15 +380,15 @@ public:
     /**
      * Maximum of absolute of all elements.
      * Equivalent to inf-norm, max(|x_i|) for all i.
-     * @return max as same data type
+     * @return max of absolute as same data type
      */
-    T max() const;
+    T maxAbs() const;
 
     /**
      * Minimum of absolute of all elements, min(|x_i|) for all i.
-     * @return min as same data type
+     * @return min of absolute as same data type
      */
-    T min() const;
+    T minAbs() const;
 
     /**
      * Solves for the least squares solution of A \ b.
@@ -635,7 +635,7 @@ inline double DTensor<double>::sumAbs() const {
 }
 
 template<>
-inline float DTensor<float>::max() const {
+inline float DTensor<float>::maxAbs() const {
     int idx;
     float hostDst;
     gpuErrChk(cublasIsamax(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
@@ -645,7 +645,7 @@ inline float DTensor<float>::max() const {
 }
 
 template<>
-inline double DTensor<double>::max() const {
+inline double DTensor<double>::maxAbs() const {
     int idx;
     double hostDst;
     gpuErrChk(cublasIdamax(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
@@ -655,7 +655,7 @@ inline double DTensor<double>::max() const {
 }
 
 template<>
-inline float DTensor<float>::min() const {
+inline float DTensor<float>::minAbs() const {
     int idx;
     float hostDst;
     gpuErrChk(cublasIsamin(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
@@ -665,7 +665,7 @@ inline float DTensor<float>::min() const {
 }
 
 template<>
-inline double DTensor<double>::min() const {
+inline double DTensor<double>::minAbs() const {
     int idx;
     double hostDst;
     gpuErrChk(cublasIdamin(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,

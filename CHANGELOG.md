@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Implementation and test of methods `.max()` and `.min()` for any tensor.
+- Implementation and test of methods `.maxAbs()` and `.minAbs()` for any tensor.
 
 <!-- ---------------------
       v1.0.0

@@ -358,14 +358,14 @@ TEST_F(TensorTest, tensorSumAbs) {
 }
 
 /* ---------------------------------------
- * Tensor: max of all elements
+ * Tensor: max of absolute of all elements
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
 void tensorMax() {
     std::vector<T> data = TENSOR_DATA_234AMB;
     DTensor<T> tenz(data, 2, 3, 4);
-    T m = tenz.max();
+    T m = tenz.maxAbs();
     EXPECT_EQ(27, m);
 }
 
@@ -375,14 +375,14 @@ TEST_F(TensorTest, tensorMax) {
 }
 
 /* ---------------------------------------
- * Tensor: min of all elements
+ * Tensor: min of absolute of all elements
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
 void tensorMin() {
     std::vector<T> data = TENSOR_DATA_234AMB;
     DTensor<T> tenz(data, 2, 3, 4);
-    T m = tenz.min();
+    T m = tenz.minAbs();
     EXPECT_EQ(0, m);
 }
 
