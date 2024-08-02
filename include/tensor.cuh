@@ -378,6 +378,19 @@ public:
     T sumAbs() const;
 
     /**
+     * Maximum of absolute of all elements.
+     * Equivalent to inf-norm, max(|x_i|) for all i.
+     * @return max of absolute as same data type
+     */
+    T maxAbs() const;
+
+    /**
+     * Minimum of absolute of all elements, min(|x_i|) for all i.
+     * @return min of absolute as same data type
+     */
+    T minAbs() const;
+
+    /**
      * Solves for the least squares solution of A \ b.
      * A is this tensor and b is the provided tensor.
      * A and b must have compatible dimensions (same number of rows and matrices).
@@ -405,7 +418,7 @@ public:
 
     DTensor &operator=(const DTensor &other);
 
-    T operator()(size_t i, size_t j = 0, size_t k = 0);
+    T operator()(size_t i, size_t j = 0, size_t k = 0) const;
 
     DTensor &operator*=(T scalar);
 
@@ -605,7 +618,6 @@ inline float DTensor<float>::normF() const {
     return the_norm;
 }
 
-
 template<>
 inline float DTensor<float>::sumAbs() const {
     float sumAbsAllElements;
@@ -620,6 +632,46 @@ inline double DTensor<double>::sumAbs() const {
     gpuErrChk(cublasDasum(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
                           &sumAbsAllElements));
     return sumAbsAllElements;
+}
+
+template<>
+inline float DTensor<float>::maxAbs() const {
+    int idx;
+    float hostDst;
+    gpuErrChk(cublasIsamax(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                           &idx));
+    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
+    return std::signbit(hostDst) ? -hostDst : hostDst;
+}
+
+template<>
+inline double DTensor<double>::maxAbs() const {
+    int idx;
+    double hostDst;
+    gpuErrChk(cublasIdamax(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                           &idx));
+    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
+    return std::signbit(hostDst) ? -hostDst : hostDst;
+}
+
+template<>
+inline float DTensor<float>::minAbs() const {
+    int idx;
+    float hostDst;
+    gpuErrChk(cublasIsamin(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                           &idx));
+    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
+    return std::signbit(hostDst) ? -hostDst : hostDst;
+}
+
+template<>
+inline double DTensor<double>::minAbs() const {
+    int idx;
+    double hostDst;
+    gpuErrChk(cublasIdamin(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+                           &idx));
+    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
+    return std::signbit(hostDst) ? -hostDst : hostDst;
 }
 
 template<typename T>
@@ -772,7 +824,7 @@ inline DTensor<double> &DTensor<double>::operator-=(const DTensor<double> &rhs) 
 }
 
 template<typename T>
-inline T DTensor<T>::operator()(size_t i, size_t j, size_t k) {
+inline T DTensor<T>::operator()(size_t i, size_t j, size_t k) const {
     T hostDst;
     size_t offset = i + m_numRows * (j + m_numCols * k);
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
