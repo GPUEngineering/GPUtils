@@ -352,9 +352,43 @@ void tensorSumAbs() {
     EXPECT_NEAR(112, tenz.sumAbs(), PRECISION_HIGH); // from MATLAB
 }
 
-TEST_F(TensorTest, tensorNormFtensorSumAbs) {
+TEST_F(TensorTest, tensorSumAbs) {
     tensorSumAbs<float>();
     tensorSumAbs<double>();
+}
+
+/* ---------------------------------------
+ * Tensor: max of all elements
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorMax() {
+    std::vector<T> data = TENSOR_DATA_234AMB;
+    DTensor<T> tenz(data, 2, 3, 4);
+    T m = tenz.max();
+    EXPECT_EQ(27, m);
+}
+
+TEST_F(TensorTest, tensorMax) {
+    tensorMax<float>();
+    tensorMax<double>();
+}
+
+/* ---------------------------------------
+ * Tensor: min of all elements
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorMin() {
+    std::vector<T> data = TENSOR_DATA_234AMB;
+    DTensor<T> tenz(data, 2, 3, 4);
+    T m = tenz.min();
+    EXPECT_EQ(0, m);
+}
+
+TEST_F(TensorTest, tensorMin) {
+    tensorMin<float>();
+    tensorMin<double>();
 }
 
 /* ---------------------------------------
