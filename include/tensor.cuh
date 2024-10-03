@@ -398,7 +398,7 @@ public:
      * @param b provided tensor
      * @return least squares solution (overwrites b)
      */
-    void leastSquares(DTensor &b);
+    void leastSquaresBatched(DTensor &b);
 
     /**
      * Batched `C <- bC + a*A*B`.
@@ -884,17 +884,17 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
 }
 
 template<>
-inline void DTensor<double>::leastSquares(DTensor &B) {
+inline void DTensor<double>::leastSquaresBatched(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
-        throw std::invalid_argument("[Least squares] rhs rows does not equal lhs rows");
+        throw std::invalid_argument("[Least squares batched] rhs rows does not equal lhs rows");
     if (nColsB != 1)
-        throw std::invalid_argument("[Least squares] rhs are not vectors");
+        throw std::invalid_argument("[Least squares batched] rhs are not vectors");
     if (B.numMats() != batchSize)
-        throw std::invalid_argument("[Least squares] rhs numMats does not equal lhs numMats");
+        throw std::invalid_argument("[Least squares batched] rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("[Least squares] supports square or tall matrices only");
+        throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<double *> As = pointersToMatrices();
@@ -914,17 +914,17 @@ inline void DTensor<double>::leastSquares(DTensor &B) {
 }
 
 template<>
-inline void DTensor<float>::leastSquares(DTensor &B) {
+inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
-        throw std::invalid_argument("[Least squares] rhs rows does not equal lhs rows");
+        throw std::invalid_argument("[Least squares batched] rhs rows does not equal lhs rows");
     if (nColsB != 1)
-        throw std::invalid_argument("[Least squares] rhs are not vectors");
+        throw std::invalid_argument("[Least squares batched] rhs are not vectors");
     if (B.numMats() != batchSize)
-        throw std::invalid_argument("[Least squares] rhs numMats does not equal lhs numMats");
+        throw std::invalid_argument("[Least squares batched] rhs numMats does not equal lhs numMats");
     if (m_numCols > m_numRows)
-        throw std::invalid_argument("[Least squares] supports square or tall matrices only");
+        throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize);
     DTensor<float *> As = pointersToMatrices();
@@ -1238,7 +1238,7 @@ private:
 public:
 
     CholeskyFactoriser(DTensor<T> &A) {
-        if (A.numMats() > 1) throw std::invalid_argument("[Cholesky] 3D tensors require `CholeskyBatchFactoriser");
+        if (A.numMats() > 1) throw std::invalid_argument("[Cholesky] 3D tensors require `CholeskyBatchFactoriser`");
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be square");
         m_matrix = &A;
         computeWorkspaceSize();
@@ -1325,6 +1325,185 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
                                rhs.raw(), n,
                                m_info->raw()));
     return (*m_info)(0);
+}
+
+
+/* ================================================================================================
+ *  QR DECOMPOSITION (QR)
+ * ================================================================================================ */
+
+/**
+ * QR decomposition (QR) needs a workspace to be setup for cuSolver before factorisation.
+ * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
+ * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace
+ * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
+ */
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+class QRFactoriser {
+
+private:
+    int m_workspaceSize = 0;  ///< Size of workspace needed for LS
+    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
+    std::unique_ptr<DTensor<T>> m_householder;  ///< For storing householder reflectors
+    std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for LS
+    DTensor<T> *m_matrix;  ///< Lhs matrix template. Do not destroy!
+
+    /**
+     * Computes the workspace size required by cuSolver.
+     */
+    void computeWorkspaceSize();
+
+public:
+
+    QRFactoriser(DTensor<T> &A) {
+        if (A.numMats() > 1) throw std::invalid_argument("[LeastSquares] 3D tensors require `leastSquaresBatched`");
+        if (A.numRows() < A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be tall or square");
+        m_matrix = &A;
+        computeWorkspaceSize();
+        m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
+        m_householder = std::make_unique<DTensor<T>>(m_matrix->numCols());
+        m_info = std::make_unique<DTensor<int>>(1);
+    }
+
+    /**
+     * Factorise matrix.
+     * @return status code of computation
+     */
+    int factorise();
+
+    /**
+     * Solves for the solution of A \ b using the QR of A.
+     * A is the matrix that is factorised and b is the provided matrix.
+     * A and b must have compatible dimensions (same number of rows and matrices=1).
+     * A must be tall or square (m>=n).
+     * @param b provided matrix
+     * @return status code of computation
+     */
+    int leastSquares(DTensor<T> &);
+
+    /**
+     * Populate the given tensors with Q and R.
+     */
+     void getQR(DTensor<T> &, DTensor<T> &);
+
+};
+
+template<>
+inline void QRFactoriser<double>::computeWorkspaceSize() {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    gpuErrChk(cusolverDnDgeqrf_bufferSize(Session::getInstance().cuSolverHandle(),
+                                          m, n,
+                                          nullptr, m,
+                                          &m_workspaceSize));
+}
+
+template<>
+inline void QRFactoriser<float>::computeWorkspaceSize() {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    gpuErrChk(cusolverDnSgeqrf_bufferSize(Session::getInstance().cuSolverHandle(),
+                                          m, n,
+                                          nullptr, m,
+                                          &m_workspaceSize));
+}
+
+template<>
+inline int QRFactoriser<double>::factorise() {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    gpuErrChk(cusolverDnDgeqrf(Session::getInstance().cuSolverHandle(),
+                               m, n,
+                               m_matrix->raw(), m,
+                               m_householder->raw(),
+                               m_workspace->raw(), m_workspaceSize,
+                               m_info->raw()));
+    return (*m_info)(0);
+}
+
+
+template<>
+inline int QRFactoriser<float>::factorise() {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    gpuErrChk(cusolverDnSgeqrf(Session::getInstance().cuSolverHandle(),
+                               m, n,
+                               m_matrix->raw(), m,
+                               m_householder->raw(),
+                               m_workspace->raw(), m_workspaceSize,
+                               m_info->raw()));
+    return (*m_info)(0);
+}
+
+template<>
+inline int QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    double alpha = 1.;
+    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(),
+                               CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
+                               m_matrix->raw(), m,
+                               m_householder->raw(),
+                               rhs.raw(), m,
+                               m_workspace->raw(), m_workspaceSize,
+                               m_info->raw()));
+    gpuErrChk(cublasDtrsm(Session::getInstance().cuBlasHandle(),
+                          CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, n, 1,
+                          &alpha,
+                          m_matrix->raw(), m,
+                          rhs.raw(), m));
+    return (*m_info)(0);
+}
+
+template<>
+inline int QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    float alpha = 1.;
+    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(),
+                               CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
+                               m_matrix->raw(), m,
+                               m_householder->raw(),
+                               rhs.raw(), m,
+                               m_workspace->raw(), m_workspaceSize,
+                               m_info->raw()));
+    gpuErrChk(cublasStrsm(Session::getInstance().cuBlasHandle(),
+                          CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, n, 1,
+                          &alpha,
+                          m_matrix->raw(), m,
+                          rhs.raw(), m));
+    return (*m_info)(0);
+}
+
+template<>
+inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
+    // Initialize Q
+    if (Q.numRows() != m_matrix->numRows() || Q.numCols() != m_matrix->numCols())
+        throw std::invalid_argument("[QRFactoriser] invalid shape of Q.");
+    if (R.numRows() != m_matrix->numCols() || R.numCols() != m_matrix->numCols())
+        throw std::invalid_argument("[QRFactoriser] invalid shape of R.");
+    cublasDgeam(Session::getInstance().cuBlasHandle(), CUBLAS_OP_N, CUBLAS_OP_N,
+                nR, nC, &alpha, nullptr, 0, &beta, nullptr, 0, Q, nR);
+
+    // Apply Householder reflectors to compute Q
+    cusolverDnDormqr(
+        cusolver_handle,
+        CUBLAS_SIDE_LEFT,   // Apply reflectors from the left
+        CUBLAS_OP_N,        // No transpose
+        m,                  // Number of rows of Q
+        m,                  // Number of columns of Q
+        n,                  // Number of Householder reflectors
+        A, lda,             // Matrix containing reflectors
+        tau,                // Array containing Householder scalars
+        Q, m,               // Output Q
+        work, lwork,        // Workspace
+        dev_info            // Device info
+    );
+
+    Ax.addAB(A, x);
+    Ax -= b;
+    real_t nrm = Ax.normF();
+    std::cout << "norm: " << nrm << "\n";
 }
 
 

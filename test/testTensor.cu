@@ -698,7 +698,7 @@ void tensorLeastSquares1(T epsilon) {
     DTensor<T> A(A0);
     DTensor<T> B(bData, 2, 1, 3);
     DTensor<T> sol(B);
-    A0.leastSquares(sol);
+    A0.leastSquaresBatched(sol);
     DTensor<T> C(2, 1, 3);
     C.addAB(A, sol);
     C -= B;
@@ -1035,6 +1035,100 @@ void choleskyBatchSolve(T epsilon) {
 TEST_F(CholeskyTest, choleskyBatchSolve) {
     choleskyBatchSolve<float>(PRECISION_LOW);
     choleskyBatchSolve<double>(PRECISION_HIGH);
+}
+
+
+/* ================================================================================================
+ *  QR TESTS
+ * ================================================================================================ */
+class QRTest : public testing::Test {
+protected:
+    QRTest() {}
+
+    virtual ~QRTest() {}
+};
+
+
+/* ---------------------------------------
+ * Cholesky factorisation
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void qrFactorisation(T epsilon) {
+    size_t nR = 4;
+    size_t nC = 3;
+    DTensor<T> temp(nR, nC);
+    DTensor<T> A = DTensor<T>::createRandomTensor(nR, nC, 1, -100, 100);
+    QRFactoriser<T> qr(temp);
+    A.deviceCopyTo(temp);
+    int status = qr.factorise();
+    EXPECT_EQ(status, 0);
+    // Initialize Q to identity matrix
+    DTensor<T> Q(nR, nC);
+    T alpha = 1.;
+    T beta = 0.;
+    cublasDgeam(Session::getInstance().cuBlasHandle(), CUBLAS_OP_N, CUBLAS_OP_N,
+                nR, nC, &alpha, nullptr, 0, &beta, nullptr, 0, Q, nR);
+
+    // Apply Householder reflectors to compute Q
+    cusolverDnDormqr(
+        cusolver_handle,
+        CUBLAS_SIDE_LEFT,   // Apply reflectors from the left
+        CUBLAS_OP_N,        // No transpose
+        m,                  // Number of rows of Q
+        m,                  // Number of columns of Q
+        n,                  // Number of Householder reflectors
+        A, lda,             // Matrix containing reflectors
+        tau,                // Array containing Householder scalars
+        Q, m,               // Output Q
+        work, lwork,        // Workspace
+        dev_info            // Device info
+    );
+
+    Ax.addAB(A, x);
+    Ax -= b;
+    real_t nrm = Ax.normF();
+    std::cout << "norm: " << nrm << "\n";
+}
+
+TEST_F(QRTest, qrFactorisation) {
+    qrFactorisation<float>(PRECISION_LOW);
+    qrFactorisation<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Cholesky factorisation: solve system
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void choleskyFactorisationSolution(T epsilon) {
+    std::vector<T> aData = {10.0, 2.0, 3.0,
+                            2.0, 20.0, -1.0,
+                            3.0, -1.0, 30.0};
+    DTensor<T> A(aData, 3, 3, 1);
+    DTensor<T> L(A); // L = A
+    CholeskyFactoriser<T> chol(L);
+    chol.factorise();
+
+    std::vector<T> bData = {-1., -3., 5.};
+    DTensor<T> rhs(bData, 3, 1, 1);
+    DTensor<T> sol(rhs);
+    chol.solve(sol);
+
+    std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
+    std::vector<T> actual(3);
+    sol.download(actual);
+    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);
+
+    DTensor<T> error = A * sol;
+    error -= rhs;
+    EXPECT_TRUE(error.normF() < epsilon);
+
+}
+
+TEST_F(QRTest, choleskyFactorisationSolution) {
+    choleskyFactorisationSolution<float>(PRECISION_LOW);
+    choleskyFactorisationSolution<double>(PRECISION_HIGH);
 }
 
 
