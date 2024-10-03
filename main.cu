@@ -1,3 +1,6 @@
+#include <random>
+#include <algorithm>
+#include <iterator>
 #include <vector>
 #include <iostream>
 #include <cublas_v2.h>
@@ -7,28 +10,21 @@
 #define real_t double
 
 
+
 int main() {
-    size_t m = 3;
-    size_t n = 7;
-    std::vector<real_t> mat{1, -2, 3, 4, -1, -1, -1,
-                            1, 2, -3, 4, -1, -1, -1,
-                            -1, 3, 5, -7, -1, -1, -1};
-    DTensor mats(m, n, 1);
-    mats.upload(mat, rowMajor);
+//    cudaStream_t stream1;
+//    cudaStreamCreate(&stream1);
+//    cublasSetStream(Session::getInstance().cuBlasHandle(), stream1);
 
-    Nullspace ns = Nullspace(mats);
+    cudaStream_t s1;
+    cudaStreamCreate(&s1);
 
-    std::vector<real_t> vec{1, 2, 3, 4, 5, 6, 7};
-    DTensor vecs(vec, n);
+    auto a = DTensor<float>::createRandomTensor(2000, 200, 1, -2, 2);
+    Svd svd(a);
+    svd.factorise();
 
-    ns.project(vecs);
+    std::cout << svd.singularValues();
 
-    std::cout << mats << "\n";
-    std::cout << vecs << "\n";
-
-    DTensor op(m, 1, 1);
-    op.addAB(mats, vecs);
-    std::cout << op << "\n";
 
     return 0;
 }
