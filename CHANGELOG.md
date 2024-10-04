@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 <!-- ---------------------
+      v1.2.0
+     --------------------- -->
+## v1.2.0 - 04-10-2024
+
+### Added
+
+- Implementation and test of QR factorisation for tall or square matrices.
+- Solve least-square problems with QR factorisation.
+- Improve documentation.
+
+<!-- ---------------------
       v1.1.0
      --------------------- -->
 ## v1.1.0 - 03-08-2024
