@@ -1050,7 +1050,7 @@ protected:
 
 
 /* ---------------------------------------
- * Cholesky factorisation
+ * QR factorisation
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
@@ -1080,7 +1080,7 @@ TEST_F(QRTest, qrFactorisation) {
 }
 
 /* ---------------------------------------
- * Cholesky factorisation: solve system
+ * QR factorisation: solve least squares
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX

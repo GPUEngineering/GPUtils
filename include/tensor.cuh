@@ -391,12 +391,13 @@ public:
     T minAbs() const;
 
     /**
-     * Solves for the least squares solution of A \ b.
-     * A is this tensor and b is the provided tensor.
+     * Batch solves `A \ b`.
+     * Solves `bi <- Ai \ bi` for each k-index `i`.
+     * A is this (m,n,k)-tensor and b is the provided (m,1,k)-tensor.
      * A and b must have compatible dimensions (same number of rows and matrices).
      * A must be a square or tall matrix (m>=n).
      * @param b provided tensor
-     * @return least squares solution (overwrites b)
+     * @return least squares solutions (overwrites (n,1,k)-part of b)
      */
     void leastSquaresBatched(DTensor &b);
 
@@ -1356,8 +1357,8 @@ private:
 public:
 
     QRFactoriser(DTensor<T> &A) {
-        if (A.numMats() > 1) throw std::invalid_argument("[LeastSquares] 3D tensors require `leastSquaresBatched`");
-        if (A.numRows() < A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be tall or square");
+        if (A.numMats() > 1) throw std::invalid_argument("[QR] 3D tensors require `leastSquaresBatched`");
+        if (A.numRows() < A.numCols()) throw std::invalid_argument("[QR] Matrix A must be tall or square");
         m_matrix = &A;
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
@@ -1372,7 +1373,7 @@ public:
     int factorise();
 
     /**
-     * Solves for the solution of A \ b using the QR of A.
+     * Solves A \ b using the QR of A.
      * A is the matrix that is factorised and b is the provided matrix.
      * A and b must have compatible dimensions (same number of rows and matrices=1).
      * A must be tall or square (m>=n).
@@ -1482,15 +1483,13 @@ inline int QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     if (Q.numRows() != m || Q.numCols() != n)
-        throw std::invalid_argument("[QRFactoriser] invalid shape of Q.");
+        throw std::invalid_argument("[QR] invalid shape of Q.");
     if (R.numRows() != n || R.numCols() != n)
-        throw std::invalid_argument("[QRFactoriser] invalid shape of R.");
+        throw std::invalid_argument("[QR] invalid shape of R.");
     // Initialize Q to 1's on diagonal
     std::vector<double> vecQ(m * n, 0.);
-    for (int r = 0; r < m; r++) {
-        for (int c = 0; c < n; c++) {
-            if (r == c) { vecQ[r * n + c] = 1.; }
-        }
+    for (size_t i = 0; i < m; i++) {
+        vecQ[i * n + i] = 1.;
     }
     Q.upload(vecQ, rowMajor);
     // Apply Householder reflectors to compute Q
@@ -1517,15 +1516,13 @@ inline int QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     if (Q.numRows() != m || Q.numCols() != n)
-        throw std::invalid_argument("[QRFactoriser] invalid shape of Q.");
+        throw std::invalid_argument("[QR] invalid shape of Q.");
     if (R.numRows() != n || R.numCols() != n)
-        throw std::invalid_argument("[QRFactoriser] invalid shape of R.");
+        throw std::invalid_argument("[QR] invalid shape of R.");
     // Initialize Q to 1's on diagonal
     std::vector<float> vecQ(m * n, 0.);
-    for (int r = 0; r < m; r++) {
-        for (int c = 0; c < n; c++) {
-            if (r == c) { vecQ[r * n + c] = 1.; }
-        }
+    for (size_t i = 0; i < m; i++) {
+        vecQ[i * n + i] = 1.;
     }
     Q.upload(vecQ, rowMajor);
     // Apply Householder reflectors to compute Q
