@@ -236,7 +236,7 @@ DTensor<float> B(bData, m);
 Then, we can solve the system by
 
 ```c++
-A.leastSquares(B);
+A.leastSquaresBatched(B);
 ```
 
 The `DTensor` `B` will be overwritten with the solution.

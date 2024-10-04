@@ -698,7 +698,7 @@ void tensorLeastSquares1(T epsilon) {
     DTensor<T> A(A0);
     DTensor<T> B(bData, 2, 1, 3);
     DTensor<T> sol(B);
-    A0.leastSquares(sol);
+    A0.leastSquaresBatched(sol);
     DTensor<T> C(2, 1, 3);
     C.addAB(A, sol);
     C -= B;
@@ -1035,6 +1035,88 @@ void choleskyBatchSolve(T epsilon) {
 TEST_F(CholeskyTest, choleskyBatchSolve) {
     choleskyBatchSolve<float>(PRECISION_LOW);
     choleskyBatchSolve<double>(PRECISION_HIGH);
+}
+
+
+/* ================================================================================================
+ *  QR TESTS
+ * ================================================================================================ */
+class QRTest : public testing::Test {
+protected:
+    QRTest() {}
+
+    virtual ~QRTest() {}
+};
+
+
+/* ---------------------------------------
+ * QR factorisation
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void qrFactorisation(T epsilon) {
+    size_t nR = 4;
+    size_t nC = 3;
+    DTensor<T> temp(nR, nC);
+    DTensor<T> A = DTensor<T>::createRandomTensor(nR, nC, 1, -100, 100);
+    QRFactoriser<T> qr(temp);
+    A.deviceCopyTo(temp);
+    int status = qr.factorise();
+    EXPECT_EQ(status, 0);
+    DTensor<T> Q(nR, nC);
+    DTensor<T> R(nC, nC, 1, true);
+    DTensor<T> QR(nR, nC);
+    status = qr.getQR(Q, R);
+    EXPECT_EQ(status, 0);
+    QR.addAB(Q, R);
+    QR -= A;
+    T nrm = QR.normF();
+    EXPECT_NEAR(nrm, 0., epsilon);
+}
+
+TEST_F(QRTest, qrFactorisation) {
+    qrFactorisation<float>(PRECISION_LOW);
+    qrFactorisation<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * QR factorisation: solve least squares
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void qrLeastSquares(T epsilon) {
+    size_t nR = 4;
+    size_t nC = 3;
+    DTensor<T> temp(nR, nC);
+    std::vector<T> vecA = { 85.5638, -59.4001, -80.1992,
+                            99.9464, 5.51393, 5.17935,
+                            6.87488, -26.7536, 36.0914,
+                            -44.3857, -32.1268, 54.8915 };  // Random matrix
+    std::vector<T> vecB = { -23.3585,
+                            -48.5744,
+                            43.4229,
+                            -56.5081 };  // Random vector
+    DTensor<T> A(vecA, nR, nC, 1, rowMajor);
+    DTensor<T> b(vecB, nR);
+    DTensor<T> xFull(nR);
+    DTensor<T> x(xFull, 0, 0, nC - 1);
+    DTensor<T> Ax(nR);
+    QRFactoriser<T> qr(temp);
+    A.deviceCopyTo(temp);
+    int status = qr.factorise();
+    EXPECT_EQ(status, 0);
+    b.deviceCopyTo(xFull);
+    status = qr.leastSquares(xFull);
+    EXPECT_EQ(status, 0);
+    Ax.addAB(A, x);
+    Ax -= b;
+    T nrm = Ax.normF();
+    EXPECT_NEAR(nrm, 80.003169364198072, epsilon);  // From MatLab
+}
+
+TEST_F(QRTest, qrLeastSquares) {
+    qrLeastSquares<float>(PRECISION_LOW);
+    qrLeastSquares<double>(PRECISION_HIGH);
 }
 
 
