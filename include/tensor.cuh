@@ -1383,8 +1383,10 @@ public:
 
     /**
      * Populate the given tensors with Q and R.
+     * Caution! This is an inefficient method: only to be used for debugging.
+     * @return resulting Q and R from factorisation
      */
-     void getQR(DTensor<T> &, DTensor<T> &);
+     int getQR(DTensor<T> &, DTensor<T> &);
 
 };
 
@@ -1476,34 +1478,73 @@ inline int QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
 }
 
 template<>
-inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
-    // Initialize Q
-    if (Q.numRows() != m_matrix->numRows() || Q.numCols() != m_matrix->numCols())
+inline int QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    if (Q.numRows() != m || Q.numCols() != n)
         throw std::invalid_argument("[QRFactoriser] invalid shape of Q.");
-    if (R.numRows() != m_matrix->numCols() || R.numCols() != m_matrix->numCols())
+    if (R.numRows() != n || R.numCols() != n)
         throw std::invalid_argument("[QRFactoriser] invalid shape of R.");
-    cublasDgeam(Session::getInstance().cuBlasHandle(), CUBLAS_OP_N, CUBLAS_OP_N,
-                nR, nC, &alpha, nullptr, 0, &beta, nullptr, 0, Q, nR);
-
+    // Initialize Q to 1's on diagonal
+    std::vector<double> vecQ(m * n, 0.);
+    for (int r = 0; r < m; r++) {
+        for (int c = 0; c < n; c++) {
+            if (r == c) { vecQ[r * n + c] = 1.; }
+        }
+    }
+    Q.upload(vecQ, rowMajor);
     // Apply Householder reflectors to compute Q
-    cusolverDnDormqr(
-        cusolver_handle,
-        CUBLAS_SIDE_LEFT,   // Apply reflectors from the left
-        CUBLAS_OP_N,        // No transpose
-        m,                  // Number of rows of Q
-        m,                  // Number of columns of Q
-        n,                  // Number of Householder reflectors
-        A, lda,             // Matrix containing reflectors
-        tau,                // Array containing Householder scalars
-        Q, m,               // Output Q
-        work, lwork,        // Workspace
-        dev_info            // Device info
-    );
+    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(),
+                               CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
+                               m_matrix->raw(), m,
+                               m_householder->raw(),
+                               Q.raw(), m,
+                               m_workspace->raw(), m_workspaceSize,
+                               m_info->raw()));
+    // Extract upper triangular R
+    std::vector<double> vecR(n * n, 0.);
+    for (size_t r = 0; r < n; r++) {
+        for (size_t c = r; c < n; c++) {
+            vecR[r * n + c] = (*m_matrix)(r, c);
+        }
+    }
+    R.upload(vecR, rowMajor);
+    return (*m_info)(0);
+}
 
-    Ax.addAB(A, x);
-    Ax -= b;
-    real_t nrm = Ax.normF();
-    std::cout << "norm: " << nrm << "\n";
+template<>
+inline int QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
+    size_t m = m_matrix->numRows();
+    size_t n = m_matrix->numCols();
+    if (Q.numRows() != m || Q.numCols() != n)
+        throw std::invalid_argument("[QRFactoriser] invalid shape of Q.");
+    if (R.numRows() != n || R.numCols() != n)
+        throw std::invalid_argument("[QRFactoriser] invalid shape of R.");
+    // Initialize Q to 1's on diagonal
+    std::vector<float> vecQ(m * n, 0.);
+    for (int r = 0; r < m; r++) {
+        for (int c = 0; c < n; c++) {
+            if (r == c) { vecQ[r * n + c] = 1.; }
+        }
+    }
+    Q.upload(vecQ, rowMajor);
+    // Apply Householder reflectors to compute Q
+    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(),
+                               CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
+                               m_matrix->raw(), m,
+                               m_householder->raw(),
+                               Q.raw(), m,
+                               m_workspace->raw(), m_workspaceSize,
+                               m_info->raw()));
+    // Extract upper triangular R
+    std::vector<float> vecR(n * n, 0.);
+    for (size_t r = 0; r < n; r++) {
+        for (size_t c = r; c < n; c++) {
+            vecR[r * n + c] = (*m_matrix)(r, c);
+        }
+    }
+    R.upload(vecR, rowMajor);
+    return (*m_info)(0);
 }
 
 

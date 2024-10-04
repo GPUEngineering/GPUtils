@@ -1063,32 +1063,15 @@ void qrFactorisation(T epsilon) {
     A.deviceCopyTo(temp);
     int status = qr.factorise();
     EXPECT_EQ(status, 0);
-    // Initialize Q to identity matrix
     DTensor<T> Q(nR, nC);
-    T alpha = 1.;
-    T beta = 0.;
-    cublasDgeam(Session::getInstance().cuBlasHandle(), CUBLAS_OP_N, CUBLAS_OP_N,
-                nR, nC, &alpha, nullptr, 0, &beta, nullptr, 0, Q, nR);
-
-    // Apply Householder reflectors to compute Q
-    cusolverDnDormqr(
-        cusolver_handle,
-        CUBLAS_SIDE_LEFT,   // Apply reflectors from the left
-        CUBLAS_OP_N,        // No transpose
-        m,                  // Number of rows of Q
-        m,                  // Number of columns of Q
-        n,                  // Number of Householder reflectors
-        A, lda,             // Matrix containing reflectors
-        tau,                // Array containing Householder scalars
-        Q, m,               // Output Q
-        work, lwork,        // Workspace
-        dev_info            // Device info
-    );
-
-    Ax.addAB(A, x);
-    Ax -= b;
-    real_t nrm = Ax.normF();
-    std::cout << "norm: " << nrm << "\n";
+    DTensor<T> R(nC, nC, 1, true);
+    DTensor<T> QR(nR, nC);
+    status = qr.getQR(Q, R);
+    EXPECT_EQ(status, 0);
+    QR.addAB(Q, R);
+    QR -= A;
+    T nrm = QR.normF();
+    EXPECT_NEAR(nrm, 0., epsilon);
 }
 
 TEST_F(QRTest, qrFactorisation) {
@@ -1101,34 +1084,39 @@ TEST_F(QRTest, qrFactorisation) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-void choleskyFactorisationSolution(T epsilon) {
-    std::vector<T> aData = {10.0, 2.0, 3.0,
-                            2.0, 20.0, -1.0,
-                            3.0, -1.0, 30.0};
-    DTensor<T> A(aData, 3, 3, 1);
-    DTensor<T> L(A); // L = A
-    CholeskyFactoriser<T> chol(L);
-    chol.factorise();
-
-    std::vector<T> bData = {-1., -3., 5.};
-    DTensor<T> rhs(bData, 3, 1, 1);
-    DTensor<T> sol(rhs);
-    chol.solve(sol);
-
-    std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
-    std::vector<T> actual(3);
-    sol.download(actual);
-    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);
-
-    DTensor<T> error = A * sol;
-    error -= rhs;
-    EXPECT_TRUE(error.normF() < epsilon);
-
+void qrLeastSquares(T epsilon) {
+    size_t nR = 4;
+    size_t nC = 3;
+    DTensor<T> temp(nR, nC);
+    std::vector<T> vecA = { 85.5638, -59.4001, -80.1992,
+                            99.9464, 5.51393, 5.17935,
+                            6.87488, -26.7536, 36.0914,
+                            -44.3857, -32.1268, 54.8915 };  // Random matrix
+    std::vector<T> vecB = { -23.3585,
+                            -48.5744,
+                            43.4229,
+                            -56.5081 };  // Random vector
+    DTensor<T> A(vecA, nR, nC, 1, rowMajor);
+    DTensor<T> b(vecB, nR);
+    DTensor<T> xFull(nR);
+    DTensor<T> x(xFull, 0, 0, nC - 1);
+    DTensor<T> Ax(nR);
+    QRFactoriser<T> qr(temp);
+    A.deviceCopyTo(temp);
+    int status = qr.factorise();
+    EXPECT_EQ(status, 0);
+    b.deviceCopyTo(xFull);
+    status = qr.leastSquares(xFull);
+    EXPECT_EQ(status, 0);
+    Ax.addAB(A, x);
+    Ax -= b;
+    T nrm = Ax.normF();
+    EXPECT_NEAR(nrm, 80.003169364198072, epsilon);  // From MatLab
 }
 
-TEST_F(QRTest, choleskyFactorisationSolution) {
-    choleskyFactorisationSolution<float>(PRECISION_LOW);
-    choleskyFactorisationSolution<double>(PRECISION_HIGH);
+TEST_F(QRTest, qrLeastSquares) {
+    qrLeastSquares<float>(PRECISION_LOW);
+    qrLeastSquares<double>(PRECISION_HIGH);
 }
 
 
