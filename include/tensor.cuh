@@ -1488,8 +1488,10 @@ inline int QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
         throw std::invalid_argument("[QR] invalid shape of R.");
     // Initialize Q to 1's on diagonal
     std::vector<double> vecQ(m * n, 0.);
-    for (size_t i = 0; i < m; i++) {
-        vecQ[i * n + i] = 1.;
+    for (size_t r = 0; r < m; r++) {
+        for (size_t c = 0; c < n; c++) {
+            if (r == c) { vecQ[r * n + c] = 1.; }
+        }
     }
     Q.upload(vecQ, rowMajor);
     // Apply Householder reflectors to compute Q
@@ -1521,8 +1523,10 @@ inline int QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
         throw std::invalid_argument("[QR] invalid shape of R.");
     // Initialize Q to 1's on diagonal
     std::vector<float> vecQ(m * n, 0.);
-    for (size_t i = 0; i < m; i++) {
-        vecQ[i * n + i] = 1.;
+    for (size_t r = 0; r < m; r++) {
+        for (size_t c = 0; c < n; c++) {
+            if (r == c) { vecQ[r * n + c] = 1.; }
+        }
     }
     Q.upload(vecQ, rowMajor);
     // Apply Householder reflectors to compute Q
