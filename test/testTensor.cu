@@ -1080,6 +1080,37 @@ TEST_F(QRTest, qrFactorisation) {
 }
 
 /* ---------------------------------------
+ * QR factorisation
+ * - tall and skinny matrix
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void qrFactorisationTall(T epsilon) {
+    size_t nR = 20;
+    size_t nC = 3;
+    DTensor<T> temp(nR, nC);
+    DTensor<T> A = DTensor<T>::createRandomTensor(nR, nC, 1, -100, 100);
+    QRFactoriser<T> qr(temp);
+    A.deviceCopyTo(temp);
+    int status = qr.factorise();
+    EXPECT_EQ(status, 0);
+    DTensor<T> Q(nR, nC);
+    DTensor<T> R(nC, nC, 1, true);
+    DTensor<T> QR(nR, nC);
+    status = qr.getQR(Q, R);
+    EXPECT_EQ(status, 0);
+    QR.addAB(Q, R);
+    QR -= A;
+    T nrm = QR.normF();
+    EXPECT_NEAR(nrm, 0., epsilon);
+}
+
+TEST_F(QRTest, qrFactorisationTall) {
+    qrFactorisationTall<float>(PRECISION_LOW);
+    qrFactorisationTall<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
  * QR factorisation: solve least squares
  * --------------------------------------- */
 
