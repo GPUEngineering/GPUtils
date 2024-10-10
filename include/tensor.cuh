@@ -395,25 +395,30 @@ public:
      * with cos θ = c, and sin θ = s. The rotation is applied in-place
      * to all slices of the tensor. Recall that the Givens rotation is
      *
-     *              i     j
-     *     |1  0             ...  0 |
-     *     |0  1             ...  0 |
-     *     |                        |
-     *     |      1                 |
-     *   i |        c     s         |
-     *                              |
-     *   j |       -s     c         |
-     *     |                1       |
-     *     |                        |
-     *     |                      0 |
+     *                  i     j
+     *         |1  0             ...  0 |
+     *         |0  1             ...  0 |
+     *         |                        |
+     *         |      1                 |
+     *       i |        c     s         |
+     * G' =    '                        '
+     *       j |       -s     c         |
+     *         |                1       |
+     *         |                        |
+     *         |                      0 |
+     *
+     * The right Givens rotation consists in multiplying from the right
+     * by G.
      *
      * @param i row index
      * @param j column index
-     * @param s
-     * @param c
-     * @throws Exception if i > nrows or j>ncols
+     * @param s sin θ
+     * @param c cos θ
+     * @throws std::invalid_argument if i > nrows or j>ncols
      */
     void applyRightGivensRotation(size_t i, size_t j, T c, T s);
+
+    void applyLeftGivensRotation(size_t i, size_t j, T c, T s);
 
     /**
      * Batch solves `A \ b`.
@@ -723,6 +728,24 @@ void DTensor<float>::applyRightGivensRotation(size_t i, size_t j, float c, float
                          col_i, 1,
                          col_j, 1,
                          &c, &minus_s) );
+}
+
+template<typename T>
+void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, T c, T s) {
+    if constexpr (std::is_same_v<T, double>) {
+        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numCols,
+                             m_d_data + i, m_numRows,
+                             m_d_data + j, m_numRows,
+                             &c, &s) );
+    } else if constexpr (std::is_same_v<T, float>) {
+        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numCols,
+                             m_d_data + i, m_numRows,
+                             m_d_data + j, m_numRows,
+                             &c, &s) );
+    } else {
+        throw std::invalid_argument("[applyLeftGivensRotation] Unsupported type T");
+    }
+
 }
 
 template<typename T>
