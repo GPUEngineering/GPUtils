@@ -413,7 +413,7 @@ public:
      * @param c
      * @throws Exception if i > nrows or j>ncols
      */
-    void applyRightGivensRotation(size_t i, size_t j, T s, T c);
+    void applyRightGivensRotation(size_t i, size_t j, T c, T s);
 
     /**
      * Batch solves `A \ b`.
@@ -474,7 +474,6 @@ public:
     }
 
     friend DTensor<T> operator*(T a, DTensor &B) {
-        size_t nrA = B.m_numRows, ncB = B.m_numCols, nmB = B.m_numMats;
         DTensor<T> result(B);
         result *= a;
         return result;
@@ -496,6 +495,8 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
         auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
         DTensor<T> a(randVec, numRows, numCols, numMats);
         return a;
+    } else {
+        throw std::invalid_argument("[createRandomTensor] unsupported type T");
     }
 }
 
@@ -701,25 +702,27 @@ inline double DTensor<double>::minAbs() const {
 }
 
 template<>
-void DTensor<double>::applyRightGivensRotation(size_t i, size_t j, double s, double c) {
+void DTensor<double>::applyRightGivensRotation(size_t i, size_t j, double c, double s) {
     if (m_numMats > 1 ) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
     double *col_i = m_d_data + i * m_numRows;
     double *col_j = m_d_data + j * m_numRows;
+    double minus_s = -s;
     gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numRows,
                          col_i, 1,
                          col_j, 1,
-                         &s, &c) );
+                         &c, &minus_s) );
 }
 
 template<>
-void DTensor<float>::applyRightGivensRotation(size_t i, size_t j, float s, float c) {
+void DTensor<float>::applyRightGivensRotation(size_t i, size_t j, float c, float s) {
     if (m_numMats > 1 ) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
     float *col_i = m_d_data + i * m_numRows;
     float *col_j = m_d_data + j * m_numRows;
+    float minus_s = -s;
     gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numRows,
                          col_i, 1,
                          col_j, 1,
-                         &s, &c) );
+                         &c, &minus_s) );
 }
 
 template<typename T>

@@ -392,6 +392,41 @@ TEST_F(TensorTest, tensorMin) {
 }
 
 /* ---------------------------------------
+ * Tensor: right Givens rotation
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorRightGivens(T epsilon) {
+    // Construct matrix A
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<double> v(m*n);
+    v.reserve(m*n);
+    std::iota(v.begin(), v.end(), 1);
+    auto a = DTensor<double>(v, m, n, 1);
+
+    // Apply right Givens rotation G
+    size_t i_givens = 1, j_givens = 4;
+    double c = 0.1;
+    double s = sqrt(1 - c*c);
+    a.applyRightGivensRotation(i_givens, j_givens, c, s);
+
+    // Check the result
+    for (size_t i=0;i<m; i++) {
+        EXPECT_NEAR(1 + i, a(i, 0), epsilon);
+        EXPECT_NEAR(21 + i, a(i, 2), epsilon);
+        EXPECT_NEAR(31 + i, a(i, 3), epsilon);
+        EXPECT_NEAR((11+i)*c - (41+i)*s, a(i, i_givens), epsilon);
+        EXPECT_NEAR((11+i)*s + (41+i)*c, a(i, j_givens), epsilon);
+    }
+}
+
+TEST_F(TensorTest, tensorRightGivens) {
+    tensorRightGivens<float>(1e-10);
+    tensorRightGivens<double>(1e-12);
+}
+
+/* ---------------------------------------
  * Tensor operator() to access element
  * e.g., t(2, 3, 4)
  * --------------------------------------- */

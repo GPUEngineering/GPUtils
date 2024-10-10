@@ -13,12 +13,20 @@
 
 int main() {
 
-    auto a = DTensor<double>::createRandomTensor(10, 6, 1, -2, 2);
-    auto b = DTensor<double>(a);
-    a.applyRightGivensRotation(2, 4, 0.5, 0.5);
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<double> v(m*n);
+    v.reserve(m*n);
+    std::iota(v.begin(), v.end(), 1);
 
-    auto c = a - b;
-    std::cout << c;
+    auto a = DTensor<double>(v, m, n, 1);
+    auto b = DTensor<double>(a);
+    size_t i_givens = 1, j_givens = 4;
+    double c = 0.1;
+    double s = 0.9;
+    a.applyRightGivensRotation(i_givens, j_givens, c, s);
+
+    std::cout << a;
 
 
     return 0;
