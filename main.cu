@@ -12,18 +12,13 @@
 
 
 int main() {
-//    cudaStream_t stream1;
-//    cudaStreamCreate(&stream1);
-//    cublasSetStream(Session::getInstance().cuBlasHandle(), stream1);
 
-    cudaStream_t s1;
-    cudaStreamCreate(&s1);
+    auto a = DTensor<double>::createRandomTensor(10, 6, 1, -2, 2);
+    auto b = DTensor<double>(a);
+    a.applyRightGivensRotation(2, 4, 0.5, 0.5);
 
-    auto a = DTensor<float>::createRandomTensor(2000, 200, 1, -2, 2);
-    Svd svd(a);
-    svd.factorise();
-
-    std::cout << svd.singularValues();
+    auto c = a - b;
+    std::cout << c;
 
 
     return 0;

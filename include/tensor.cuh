@@ -391,6 +391,31 @@ public:
     T minAbs() const;
 
     /**
+     * Applied the Givens rotation G(i, j, c, s) on row i and column j,
+     * with cos θ = c, and sin θ = s. The rotation is applied in-place
+     * to all slices of the tensor. Recall that the Givens rotation is
+     *
+     *              i     j
+     *     |1  0             ...  0 |
+     *     |0  1             ...  0 |
+     *     |                        |
+     *     |      1                 |
+     *   i |        c     s         |
+     *                              |
+     *   j |       -s     c         |
+     *     |                1       |
+     *     |                        |
+     *     |                      0 |
+     *
+     * @param i row index
+     * @param j column index
+     * @param s
+     * @param c
+     * @throws Exception if i > nrows or j>ncols
+     */
+    void applyRightGivensRotation(size_t i, size_t j, T s, T c);
+
+    /**
      * Batch solves `A \ b`.
      * Solves `bi <- Ai \ bi` for each k-index `i`.
      * A is this (m,n,k)-tensor and b is the provided (m,1,k)-tensor.
@@ -673,6 +698,28 @@ inline double DTensor<double>::minAbs() const {
                            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
+}
+
+template<>
+void DTensor<double>::applyRightGivensRotation(size_t i, size_t j, double s, double c) {
+    if (m_numMats > 1 ) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
+    double *col_i = m_d_data + i * m_numRows;
+    double *col_j = m_d_data + j * m_numRows;
+    gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numRows,
+                         col_i, 1,
+                         col_j, 1,
+                         &s, &c) );
+}
+
+template<>
+void DTensor<float>::applyRightGivensRotation(size_t i, size_t j, float s, float c) {
+    if (m_numMats > 1 ) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
+    float *col_i = m_d_data + i * m_numRows;
+    float *col_j = m_d_data + j * m_numRows;
+    gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numRows,
+                         col_i, 1,
+                         col_j, 1,
+                         &s, &c) );
 }
 
 template<typename T>
