@@ -18,11 +18,10 @@ int main() {
     std::vector<double> v(m*n);
     v.reserve(m*n);
     std::iota(v.begin(), v.end(), 1);
-
-    DTensor<double> a = DTensor<double>(v, m, n, 1);
+    DTensor<double> a = DTensor<double>(v, m, n);
 
     auto ga = GivensAnnihilator<double>(a);
-    ga.annihilate(1,2,4);
+    ga.annihilate(0, 1, 2);
 
     std::cout << a;
 

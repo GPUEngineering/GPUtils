@@ -1359,8 +1359,8 @@ TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void givensAnnihilateElement(T epsilon) {
     size_t m = 10;
     size_t n = 6;
-    std::vector<double> v(m*n);
-    v.reserve(m*n);
+    std::vector<double> v(m * n);
+    v.reserve(m * n);
     std::iota(v.begin(), v.end(), 1);
 
     DTensor<double> a = DTensor<double>(v, m, n, 1);
@@ -1368,7 +1368,7 @@ void givensAnnihilateElement(T epsilon) {
     auto ga = GivensAnnihilator<double>(a);
     size_t i = 0;
     for (size_t k = 1; k < m; k++) {
-        for (size_t j=0; j<n; j++) {
+        for (size_t j = 0; j < n; j++) {
             ga.annihilate(i, k, j);
             EXPECT_NEAR(0.0, a(k, j), epsilon);
         }
@@ -1379,3 +1379,35 @@ TEST_F(GivensAnnihilatorTest, givensAnnihilateElement) {
     givensAnnihilateElement<double>(1e-14);
     givensAnnihilateElement<float>(1e-12);
 }
+
+
+
+/* ---------------------------------------
+ * GivensAnnihilator: correctness
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void givensAnnihilateCorrectness(T epsilon) {
+    size_t m = 10, n = 6;
+    std::vector<double> v(m * n);
+    v.reserve(m * n);
+    std::iota(v.begin(), v.end(), 1);
+    DTensor<double> a = DTensor<double>(v, m, n);
+
+    auto ga = GivensAnnihilator<double>(a);
+    ga.annihilate(0, 1, 2);
+
+    EXPECT_NEAR(0.0, a(1, 2), epsilon);
+    EXPECT_NEAR(2.137186834969645, a(0, 0), epsilon);
+    EXPECT_NEAR(44.552125559751822, a(0, 3), epsilon);
+    EXPECT_NEAR(-0.328797974610715, a(1, 3), epsilon);
+
+}
+
+TEST_F(GivensAnnihilatorTest, givensAnnihilateCorrectness) {
+    givensAnnihilateCorrectness<double>(1e-14);
+    givensAnnihilateCorrectness<float>(1e-12);
+}
+
+
+
