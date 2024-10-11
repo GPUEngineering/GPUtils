@@ -12,18 +12,18 @@
 
 
 int main() {
-//    cudaStream_t stream1;
-//    cudaStreamCreate(&stream1);
-//    cublasSetStream(Session::getInstance().cuBlasHandle(), stream1);
 
-    cudaStream_t s1;
-    cudaStreamCreate(&s1);
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<double> v(m*n);
+    v.reserve(m*n);
+    std::iota(v.begin(), v.end(), 1);
+    DTensor<double> a = DTensor<double>(v, m, n);
 
-    auto a = DTensor<float>::createRandomTensor(2000, 200, 1, -2, 2);
-    Svd svd(a);
-    svd.factorise();
+    auto ga = GivensAnnihilator<double>(a);
+    ga.annihilate(0, 1, 2);
 
-    std::cout << svd.singularValues();
+    std::cout << a;
 
 
     return 0;

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 <!-- ---------------------
+      v1.3.0
+     --------------------- -->
+## v1.3.0 - 11-10-2024 
+
+### Added
+
+- Left/right Givens rotations
+- `GivensAnnihilator` implemented
+
+
+<!-- ---------------------
       v1.2.1
      --------------------- -->
 ## v1.2.1 - 07-10-2024

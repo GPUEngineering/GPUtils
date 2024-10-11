@@ -74,7 +74,7 @@ inline std::vector<int> generateIntRandomVector(size_t n, int low, int hi) {
  * @param threads_per_block threads per block (defaults to THREADS_PER_BLOCK)
  * @return number of blocks
  */
-constexpr size_t numBlocks(size_t n, size_t threads_per_block=THREADS_PER_BLOCK) {
+constexpr size_t numBlocks(size_t n, size_t threads_per_block = THREADS_PER_BLOCK) {
     return (n / threads_per_block + (n % threads_per_block != 0));
 }
 
@@ -391,6 +391,51 @@ public:
     T minAbs() const;
 
     /**
+     * Applied the Givens rotation G(i, j, c, s) on row i and column j,
+     * with cos θ = c, and sin θ = s. The rotation is applied in-place
+     * to all slices of the tensor. Recall that the Givens rotation is
+     *
+     *                  i     j
+     *         |1  0             ...  0 |
+     *         |0  1             ...  0 |
+     *         |                        |
+     *         |      1                 |
+     *       i |        c     s         |
+     * G' =    '                        '
+     *       j |       -s     c         |
+     *         |                1       |
+     *         |                        |
+     *         |                      0 |
+     *
+     * The right Givens rotation consists in multiplying from the right
+     * by G.
+     *
+     * Equivalently, the right Givens transformation performs the following
+     * operation on the i and j columns of this matrix:
+     *
+     * A[:, i] <-- c * A[:, i] - s * A[:, j]
+     * A[:, j] <-- s * A[:, i] + c * A[:, j]
+     *
+     * @param i first column index
+     * @param j second column index
+     * @param c cos θ
+     * @param minus_s minus sin θ
+     * @throws std::invalid_argument if either i or j is greater or equal ncols
+     */
+    void applyRightGivensRotation(size_t i, size_t j, const T *c, const T *minus_s);
+
+    /**
+     * Performs a Givens rotation (left multiplication by G')
+     *
+     * @param i first row index
+     * @param j second row index
+     * @param c cos θ
+     * @param minus_s minus sin θ
+     * @throws std::invalid_argument if either i or j is greater or equal nrows
+     */
+    void applyLeftGivensRotation(size_t i, size_t j, const T *c, const T *minus_s);
+
+    /**
      * Batch solves `A \ b`.
      * Solves `bi <- Ai \ bi` for each k-index `i`.
      * A is this (m,n,k)-tensor and b is the provided (m,1,k)-tensor.
@@ -449,7 +494,6 @@ public:
     }
 
     friend DTensor<T> operator*(T a, DTensor &B) {
-        size_t nrA = B.m_numRows, ncB = B.m_numCols, nmB = B.m_numMats;
         DTensor<T> result(B);
         result *= a;
         return result;
@@ -471,6 +515,8 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
         auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
         DTensor<T> a(randVec, numRows, numCols, numMats);
         return a;
+    } else {
+        throw std::invalid_argument("[createRandomTensor] unsupported type T");
     }
 }
 
@@ -673,6 +719,38 @@ inline double DTensor<double>::minAbs() const {
                            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
+}
+
+template<typename T>
+void DTensor<T>::applyRightGivensRotation(size_t i, size_t j, const T *c, const T *minus_s) {
+    if (m_numMats > 1) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
+    T *col_i = m_d_data + i * m_numRows;
+    T *col_j = m_d_data + j * m_numRows;
+    if constexpr (std::is_same_v<T, double>) {
+        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numRows,
+                             col_i, 1, col_j, 1, c, minus_s));
+    } else if constexpr (std::is_same_v<T, float>) {
+        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numRows,
+                             col_i, 1, col_j, 1, c, minus_s));
+    }
+}
+
+template<typename T>
+void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, const T *c, const T *minus_s) {
+    if (m_numMats > 1) throw std::invalid_argument("[applyLeftGivensRotation] tensors (nMat>1) not supported");
+    if constexpr (std::is_same_v<T, double>) {
+        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numCols,
+                             m_d_data + i, m_numRows,
+                             m_d_data + j, m_numRows,
+                             c, minus_s));
+    } else if constexpr (std::is_same_v<T, float>) {
+        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numCols,
+                             m_d_data + i, m_numRows,
+                             m_d_data + j, m_numRows,
+                             c, minus_s));
+    } else {
+        throw std::invalid_argument("[applyLeftGivensRotation] Unsupported type T");
+    }
 }
 
 template<typename T>
@@ -1132,7 +1210,7 @@ public:
             DTensor<T> Si(*m_S, 2, i, i);
             DTensor<unsigned int> rankI(*m_rank, 2, i, i);
             k_countNonzeroSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK>>>(Si.raw(), numElS,
-                                                                                       rankI.raw(), epsilon);
+                                                                                      rankI.raw(), epsilon);
         }
         return *m_rank;
     }
@@ -1380,14 +1458,19 @@ public:
      * @param b provided matrix
      * @return status code of computation
      */
-    int leastSquares(DTensor<T> &);
+    int leastSquares(DTensor<T> &b);
 
     /**
      * Populate the given tensors with Q and R.
      * Caution! This is an inefficient method: only to be used for debugging.
-     * @return resulting Q and R from factorisation
+     *
+     * @param Q matrix Q (preallocated)
+     * @param R matrix R (preallocated)
+     * @return status code
+     *
+     * @throws std::invalid_argument if Q or R have invalid dimensions
      */
-     int getQR(DTensor<T> &, DTensor<T> &);
+    int getQR(DTensor<T> &Q, DTensor<T> &R);
 
 };
 
@@ -1758,5 +1841,119 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
                                       m_deviceInfo->raw(),
                                       m_numMats));
 }
+
+
+
+/* ================================================================================================
+ *  GIVENS ANNIHILATOR
+ * ================================================================================================ */
+
+/**
+ * GivensAnnihilator is used to apply a left Givens rotation that
+ * makes a particular element (k, j) of a matrix zero by applying
+ * an appropriate Givens rotation G(i, k, c, s).
+ *
+ * @tparam T data type of tensor (must be float or double)
+ */
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+class GivensAnnihilator {
+
+private:
+    DTensor<T> *m_matrix;
+    /**
+     * Auxiliary memory on the device of length 3 used to store
+     * rhypot(xij, xkj), cos θ, and sin θ.
+     */
+    std::unique_ptr<DTensor<T>> m_d_rhyp_cos_sin;
+
+    void init() {
+        m_d_rhyp_cos_sin = std::make_unique<DTensor<T>>(3);
+    }
+
+public:
+
+    GivensAnnihilator() {
+        init();
+    }
+
+    /**
+     * Constructor of GivensAnnihilator
+     * @param a matrix
+     * @throws std::invalid_argument if a.numMats() > 1
+     */
+    GivensAnnihilator(DTensor<T> &a) {
+        if (a.numMats() > 1) {
+            throw std::invalid_argument("[GivensAnnihilator] tensors (numMats > 1) not supported");
+        }
+        m_matrix = &a;
+        init();
+    }
+
+    /**
+     * Set the reference to a matrix; this way the current
+     * object can be reused
+     *
+     * @param a
+     */
+    void setMatrix(DTensor<T> &a) {
+        if (a.numMats() > 1) {
+            throw std::invalid_argument("[GivensAnnihilator] tensors (numMats > 1) not supported");
+        }
+        m_matrix = &a;
+    }
+
+    /**
+     * Applies a left Givens rotation G(i, k, c, s) that eliminates
+     * the (k, j) element of the given matrix.
+     *
+     * @param i row index i
+     * @param k row index k
+     * @param j column index j
+     *
+     * @throws std::invalid_argument if i, k, or j are out of bounds
+     */
+    void annihilate(size_t i, size_t k, size_t j);
+
+};
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+__global__ void k_givensAnnihilateRHypot(const T *data,
+                                         T *res,
+                                         size_t i, size_t k, size_t j,
+                                         size_t nRows) {
+    T xij = data[i + j * nRows];
+    T xkj = data[k + j * nRows];
+    res[0] = rhypot(xij, xkj);
+    res[1] = xij * (*res); // cos
+    res[2] = xkj * (*res); // -sin
+}
+
+template<typename T>
+inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
+    /* A few checks */
+    size_t nR = m_matrix->numRows(), nC = m_matrix->numCols();
+    if (i >= nR or k >= nR) throw std::invalid_argument("[GivensAnnihilator::annihilate] invalid row index");
+    if (j >= nC) std::invalid_argument("[GivensAnnihilator::annihilate] invalid column index j");
+
+    /*
+     * Pass cosine and sine as device pointers
+     * (Avoid having to download first)
+     */
+    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(), CUBLAS_POINTER_MODE_DEVICE));
+
+    /* Useful definitions */
+    T *aux = m_d_rhyp_cos_sin->raw();
+    T *matData = m_matrix->raw();
+
+    /* Call kernel to determine 1/sqrt(Ai^2 + Ak^2) */
+    k_givensAnnihilateRHypot<<<1, 1>>>(m_matrix->raw(), aux, i, k, j, nR);
+
+    /* Apply Givens rotation */
+    m_matrix->applyLeftGivensRotation(i, k, aux + 1, aux + 2);
+
+    /* Change back to default behaviour */
+    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(), CUBLAS_POINTER_MODE_HOST));
+}
+
 
 #endif

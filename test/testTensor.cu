@@ -392,6 +392,78 @@ TEST_F(TensorTest, tensorMin) {
 }
 
 /* ---------------------------------------
+ * Tensor: right Givens rotation
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorRightGivens(T epsilon) {
+    // Construct matrix A
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<T> v(m * n);
+    v.reserve(m * n);
+    std::iota(v.begin(), v.end(), 1);
+    auto a = DTensor<T>(v, m, n, 1);
+
+    // Apply right Givens rotation G
+    size_t i_givens = 1, j_givens = 4;
+    T c = 0.1;
+    T minus_s = sqrt(1 - c * c);
+    a.applyRightGivensRotation(i_givens, j_givens, &c, &minus_s);
+
+    // Check the result
+    for (size_t i = 0; i < m; i++) {
+        EXPECT_NEAR(1 + i, a(i, 0), epsilon);
+        EXPECT_NEAR(21 + i, a(i, 2), epsilon);
+        EXPECT_NEAR(31 + i, a(i, 3), epsilon);
+        EXPECT_NEAR((11 + i) * c - (41 + i) * (-minus_s), a(i, i_givens), epsilon);
+        EXPECT_NEAR((11 + i) * (-minus_s) + (41 + i) * c, a(i, j_givens), epsilon);
+    }
+}
+
+TEST_F(TensorTest, tensorRightGivens) {
+    tensorRightGivens<float>(PRECISION_LOW);
+    tensorRightGivens<double>(PRECISION_HIGH);
+}
+
+/* ---------------------------------------
+ * Tensor: left Givens rotation
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorLeftGivens(T epsilon) {
+    // Construct matrix A
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<double> v(m * n);
+    v.reserve(m * n);
+    std::iota(v.begin(), v.end(), 1);
+    auto a = DTensor<double>(v, m, n, 1);
+
+    // Apply right Givens rotation G
+    size_t i_givens = 1, j_givens = 9;
+    double c = 0.1;
+    double minus_s = -sqrt(1 - c * c);
+    a.applyLeftGivensRotation(i_givens, j_givens, &c, &minus_s);
+
+
+    // Check the result
+    for (size_t j = 0; j < n; j++) {
+        EXPECT_NEAR(1 + 10 * j, a(0, j), epsilon);
+        for (size_t i = 2; i < m - 1; i++) {
+            EXPECT_NEAR(1 + i + 10 * j, a(i, j), epsilon);
+        }
+        EXPECT_NEAR((2 + 10 * j) * c + (10 + 10 * j) * minus_s, a(i_givens, j), epsilon);
+        EXPECT_NEAR((2 + 10 * j) * (-minus_s) + (10 + 10 * j) * c, a(j_givens, j), epsilon);
+    }
+}
+
+TEST_F(TensorTest, tensorLeftGivens) {
+    tensorLeftGivens<float>(1e-10);
+    tensorLeftGivens<double>(1e-14);
+}
+
+/* ---------------------------------------
  * Tensor operator() to access element
  * e.g., t(2, 3, 4)
  * --------------------------------------- */
@@ -1119,14 +1191,14 @@ void qrLeastSquares(T epsilon) {
     size_t nR = 4;
     size_t nC = 3;
     DTensor<T> temp(nR, nC);
-    std::vector<T> vecA = { 85.5638, -59.4001, -80.1992,
-                            99.9464, 5.51393, 5.17935,
-                            6.87488, -26.7536, 36.0914,
-                            -44.3857, -32.1268, 54.8915 };  // Random matrix
-    std::vector<T> vecB = { -23.3585,
-                            -48.5744,
-                            43.4229,
-                            -56.5081 };  // Random vector
+    std::vector<T> vecA = {85.5638, -59.4001, -80.1992,
+                           99.9464, 5.51393, 5.17935,
+                           6.87488, -26.7536, 36.0914,
+                           -44.3857, -32.1268, 54.8915};  // Random matrix
+    std::vector<T> vecB = {-23.3585,
+                           -48.5744,
+                           43.4229,
+                           -56.5081};  // Random vector
     DTensor<T> A(vecA, nR, nC, 1, rowMajor);
     DTensor<T> b(vecB, nR);
     DTensor<T> xFull(nR);
@@ -1266,3 +1338,75 @@ TEST_F(NullspaceTest, projectOnNullspaceTensor) {
     projectOnNullspaceTensor<float>(PRECISION_LOW);
     projectOnNullspaceTensor<double>(PRECISION_HIGH);
 }
+
+
+/* ================================================================================================
+ *  GIVENSANNIHILATOR TESTS
+ * ================================================================================================ */
+class GivensAnnihilatorTest : public testing::Test {
+protected:
+    GivensAnnihilatorTest() {}
+
+    virtual ~GivensAnnihilatorTest() {}
+};
+
+
+/* ---------------------------------------
+ * GivensAnnihilator works
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void givensAnnihilateElement(T epsilon) {
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<T> v(m * n);
+    v.reserve(m * n);
+    std::iota(v.begin(), v.end(), 1);
+
+    auto a = DTensor<T>(v, m, n, 1);
+    auto ga = GivensAnnihilator<T>(a);
+    size_t i = 0;
+    for (size_t k = 1; k < m; k++) {
+        for (size_t j = 0; j < n; j++) {
+            ga.annihilate(i, k, j);
+            EXPECT_NEAR(0.0, a(k, j), epsilon);
+        }
+    }
+}
+
+TEST_F(GivensAnnihilatorTest, givensAnnihilateElement) {
+    givensAnnihilateElement<float>(PRECISION_LOW);
+    givensAnnihilateElement<double>(PRECISION_HIGH);
+}
+
+
+
+/* ---------------------------------------
+ * GivensAnnihilator: correctness
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void givensAnnihilateCorrectness(T epsilon) {
+    size_t m = 10, n = 6;
+    std::vector<double> v(m * n);
+    v.reserve(m * n);
+    std::iota(v.begin(), v.end(), 1);
+    DTensor<double> a = DTensor<double>(v, m, n);
+
+    auto ga = GivensAnnihilator<double>(a);
+    ga.annihilate(0, 1, 2);
+
+    EXPECT_NEAR(0.0, a(1, 2), epsilon);
+    EXPECT_NEAR(2.137186834969645, a(0, 0), epsilon);
+    EXPECT_NEAR(44.552125559751822, a(0, 3), epsilon);
+    EXPECT_NEAR(-0.328797974610715, a(1, 3), epsilon);
+
+}
+
+TEST_F(GivensAnnihilatorTest, givensAnnihilateCorrectness) {
+    givensAnnihilateCorrectness<double>(1e-14);
+    givensAnnihilateCorrectness<float>(1e-12);
+}
+
+
+
