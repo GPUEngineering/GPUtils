@@ -400,30 +400,67 @@ void tensorRightGivens(T epsilon) {
     // Construct matrix A
     size_t m = 10;
     size_t n = 6;
-    std::vector<double> v(m*n);
-    v.reserve(m*n);
+    std::vector<double> v(m * n);
+    v.reserve(m * n);
     std::iota(v.begin(), v.end(), 1);
     auto a = DTensor<double>(v, m, n, 1);
 
     // Apply right Givens rotation G
     size_t i_givens = 1, j_givens = 4;
     double c = 0.1;
-    double s = sqrt(1 - c*c);
+    double s = sqrt(1 - c * c);
     a.applyRightGivensRotation(i_givens, j_givens, c, s);
 
     // Check the result
-    for (size_t i=0;i<m; i++) {
+    for (size_t i = 0; i < m; i++) {
         EXPECT_NEAR(1 + i, a(i, 0), epsilon);
         EXPECT_NEAR(21 + i, a(i, 2), epsilon);
         EXPECT_NEAR(31 + i, a(i, 3), epsilon);
-        EXPECT_NEAR((11+i)*c - (41+i)*s, a(i, i_givens), epsilon);
-        EXPECT_NEAR((11+i)*s + (41+i)*c, a(i, j_givens), epsilon);
+        EXPECT_NEAR((11 + i) * c - (41 + i) * s, a(i, i_givens), epsilon);
+        EXPECT_NEAR((11 + i) * s + (41 + i) * c, a(i, j_givens), epsilon);
     }
 }
 
 TEST_F(TensorTest, tensorRightGivens) {
     tensorRightGivens<float>(1e-10);
-    tensorRightGivens<double>(1e-12);
+    tensorRightGivens<double>(1e-14);
+}
+
+/* ---------------------------------------
+ * Tensor: left Givens rotation
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorLeftGivens(T epsilon) {
+    // Construct matrix A
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<double> v(m * n);
+    v.reserve(m * n);
+    std::iota(v.begin(), v.end(), 1);
+    auto a = DTensor<double>(v, m, n, 1);
+
+    // Apply right Givens rotation G
+    size_t i_givens = 1, j_givens = 9;
+    double c = 0.1;
+    double s = sqrt(1 - c * c);
+    a.applyLeftGivensRotation(i_givens, j_givens, c, s);
+
+    std::cout << a;
+    // Check the result
+    for (size_t j = 0; j < n; j++) {
+        EXPECT_NEAR(1 + 10 * j, a(0, j), epsilon);
+        for (size_t i = 2; i < m - 1; i++) {
+            EXPECT_NEAR(1 + i + 10 * j, a(i, j), epsilon);
+        }
+        EXPECT_NEAR((2 + 10 * j) * c - (10 + 10 * j) * s, a(i_givens, j), epsilon);
+        EXPECT_NEAR((2 + 10 * j) * s + (10 + 10 * j) * c, a(j_givens, j), epsilon);
+    }
+}
+
+TEST_F(TensorTest, tensorLeftGivens) {
+    tensorLeftGivens<float>(1e-10);
+    tensorLeftGivens<double>(1e-14);
 }
 
 /* ---------------------------------------
@@ -1154,14 +1191,14 @@ void qrLeastSquares(T epsilon) {
     size_t nR = 4;
     size_t nC = 3;
     DTensor<T> temp(nR, nC);
-    std::vector<T> vecA = { 85.5638, -59.4001, -80.1992,
-                            99.9464, 5.51393, 5.17935,
-                            6.87488, -26.7536, 36.0914,
-                            -44.3857, -32.1268, 54.8915 };  // Random matrix
-    std::vector<T> vecB = { -23.3585,
-                            -48.5744,
-                            43.4229,
-                            -56.5081 };  // Random vector
+    std::vector<T> vecA = {85.5638, -59.4001, -80.1992,
+                           99.9464, 5.51393, 5.17935,
+                           6.87488, -26.7536, 36.0914,
+                           -44.3857, -32.1268, 54.8915};  // Random matrix
+    std::vector<T> vecB = {-23.3585,
+                           -48.5744,
+                           43.4229,
+                           -56.5081};  // Random vector
     DTensor<T> A(vecA, nR, nC, 1, rowMajor);
     DTensor<T> b(vecB, nR);
     DTensor<T> xFull(nR);

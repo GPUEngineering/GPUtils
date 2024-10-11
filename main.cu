@@ -21,10 +21,10 @@ int main() {
 
     auto a = DTensor<double>(v, m, n, 1);
     auto b = DTensor<double>(a);
-    size_t i_givens = 1, j_givens = 4;
+    size_t i_givens = 1, j_givens = 9;
     double c = 0.1;
     double s = 0.9;
-    a.applyRightGivensRotation(i_givens, j_givens, c, s);
+    a.applyLeftGivensRotation(i_givens, j_givens, c, s);
 
     std::cout << a;
 

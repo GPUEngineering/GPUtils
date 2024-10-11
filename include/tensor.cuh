@@ -732,16 +732,19 @@ void DTensor<float>::applyRightGivensRotation(size_t i, size_t j, float c, float
 
 template<typename T>
 void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, T c, T s) {
+    if (m_numMats > 1 ) throw std::invalid_argument("[applyLeftGivensRotation] tensors (nMat>1) not supported");
     if constexpr (std::is_same_v<T, double>) {
+        double minus_s = -s;
         gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numCols,
                              m_d_data + i, m_numRows,
                              m_d_data + j, m_numRows,
-                             &c, &s) );
+                             &c, &minus_s) );
     } else if constexpr (std::is_same_v<T, float>) {
+        float minus_s = -s;
         gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numCols,
                              m_d_data + i, m_numRows,
                              m_d_data + j, m_numRows,
-                             &c, &s) );
+                             &c, &minus_s) );
     } else {
         throw std::invalid_argument("[applyLeftGivensRotation] Unsupported type T");
     }
