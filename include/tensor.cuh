@@ -74,7 +74,7 @@ inline std::vector<int> generateIntRandomVector(size_t n, int low, int hi) {
  * @param threads_per_block threads per block (defaults to THREADS_PER_BLOCK)
  * @return number of blocks
  */
-constexpr size_t numBlocks(size_t n, size_t threads_per_block=THREADS_PER_BLOCK) {
+constexpr size_t numBlocks(size_t n, size_t threads_per_block = THREADS_PER_BLOCK) {
     return (n / threads_per_block + (n % threads_per_block != 0));
 }
 
@@ -410,14 +410,29 @@ public:
      * The right Givens rotation consists in multiplying from the right
      * by G.
      *
-     * @param i row index
-     * @param j column index
-     * @param s sin θ
+     * Equivalently, the right Givens transformation performs the following
+     * operation on the i and j columns of this matrix:
+     *
+     * A[:, i] <-- c * A[:, i] - s * A[:, j]
+     * A[:, j] <-- s * A[:, i] + c * A[:, j]
+     *
+     * @param i first column index
+     * @param j second column index
      * @param c cos θ
-     * @throws std::invalid_argument if i > nrows or j>ncols
+     * @param s sin θ
+     * @throws std::invalid_argument if either i or j is greater or equal ncols
      */
     void applyRightGivensRotation(size_t i, size_t j, T c, T s);
 
+    /**
+     * Performs a Givens rotation (left multiplication by G')
+     *
+     * @param i first row index
+     * @param j second row index
+     * @param c cos θ
+     * @param s sin θ
+     * @throws std::invalid_argument if either i or j is greater or equal nrows
+     */
     void applyLeftGivensRotation(size_t i, size_t j, T c, T s);
 
     /**
@@ -708,43 +723,46 @@ inline double DTensor<double>::minAbs() const {
 
 template<>
 void DTensor<double>::applyRightGivensRotation(size_t i, size_t j, double c, double s) {
-    if (m_numMats > 1 ) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
+    if (m_numMats > 1)
+        throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
+    if (i >= m_numCols or j >= m_numCols)
+        throw std::invalid_argument("[applyRightGivensRotation] index out of bounds");
     double *col_i = m_d_data + i * m_numRows;
     double *col_j = m_d_data + j * m_numRows;
     double minus_s = -s;
     gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numRows,
                          col_i, 1,
                          col_j, 1,
-                         &c, &minus_s) );
+                         &c, &minus_s));
 }
 
 template<>
 void DTensor<float>::applyRightGivensRotation(size_t i, size_t j, float c, float s) {
-    if (m_numMats > 1 ) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
+    if (m_numMats > 1) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
     float *col_i = m_d_data + i * m_numRows;
     float *col_j = m_d_data + j * m_numRows;
     float minus_s = -s;
     gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numRows,
                          col_i, 1,
                          col_j, 1,
-                         &c, &minus_s) );
+                         &c, &minus_s));
 }
 
 template<typename T>
 void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, T c, T s) {
-    if (m_numMats > 1 ) throw std::invalid_argument("[applyLeftGivensRotation] tensors (nMat>1) not supported");
+    if (m_numMats > 1) throw std::invalid_argument("[applyLeftGivensRotation] tensors (nMat>1) not supported");
     if constexpr (std::is_same_v<T, double>) {
         double minus_s = -s;
         gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numCols,
                              m_d_data + i, m_numRows,
                              m_d_data + j, m_numRows,
-                             &c, &minus_s) );
+                             &c, &minus_s));
     } else if constexpr (std::is_same_v<T, float>) {
         float minus_s = -s;
         gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numCols,
                              m_d_data + i, m_numRows,
                              m_d_data + j, m_numRows,
-                             &c, &minus_s) );
+                             &c, &minus_s));
     } else {
         throw std::invalid_argument("[applyLeftGivensRotation] Unsupported type T");
     }
@@ -1208,7 +1226,7 @@ public:
             DTensor<T> Si(*m_S, 2, i, i);
             DTensor<unsigned int> rankI(*m_rank, 2, i, i);
             k_countNonzeroSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK>>>(Si.raw(), numElS,
-                                                                                       rankI.raw(), epsilon);
+                                                                                      rankI.raw(), epsilon);
         }
         return *m_rank;
     }
@@ -1463,7 +1481,7 @@ public:
      * Caution! This is an inefficient method: only to be used for debugging.
      * @return resulting Q and R from factorisation
      */
-     int getQR(DTensor<T> &, DTensor<T> &);
+    int getQR(DTensor<T> &, DTensor<T> &);
 
 };
 
