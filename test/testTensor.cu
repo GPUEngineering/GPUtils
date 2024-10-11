@@ -408,16 +408,16 @@ void tensorRightGivens(T epsilon) {
     // Apply right Givens rotation G
     size_t i_givens = 1, j_givens = 4;
     double c = 0.1;
-    double s = sqrt(1 - c * c);
-    a.applyRightGivensRotation(i_givens, j_givens, c, s);
+    double minus_s = sqrt(1 - c * c);
+    a.applyRightGivensRotation(i_givens, j_givens, &c, &minus_s);
 
     // Check the result
     for (size_t i = 0; i < m; i++) {
         EXPECT_NEAR(1 + i, a(i, 0), epsilon);
         EXPECT_NEAR(21 + i, a(i, 2), epsilon);
         EXPECT_NEAR(31 + i, a(i, 3), epsilon);
-        EXPECT_NEAR((11 + i) * c - (41 + i) * s, a(i, i_givens), epsilon);
-        EXPECT_NEAR((11 + i) * s + (41 + i) * c, a(i, j_givens), epsilon);
+        EXPECT_NEAR((11 + i) * c - (41 + i) * (-minus_s), a(i, i_givens), epsilon);
+        EXPECT_NEAR((11 + i) * (-minus_s) + (41 + i) * c, a(i, j_givens), epsilon);
     }
 }
 
@@ -443,18 +443,18 @@ void tensorLeftGivens(T epsilon) {
     // Apply right Givens rotation G
     size_t i_givens = 1, j_givens = 9;
     double c = 0.1;
-    double s = sqrt(1 - c * c);
-    a.applyLeftGivensRotation(i_givens, j_givens, c, s);
+    double minus_s = -sqrt(1 - c * c);
+    a.applyLeftGivensRotation(i_givens, j_givens, &c, &minus_s);
 
-    std::cout << a;
+
     // Check the result
     for (size_t j = 0; j < n; j++) {
         EXPECT_NEAR(1 + 10 * j, a(0, j), epsilon);
         for (size_t i = 2; i < m - 1; i++) {
             EXPECT_NEAR(1 + i + 10 * j, a(i, j), epsilon);
         }
-        EXPECT_NEAR((2 + 10 * j) * c - (10 + 10 * j) * s, a(i_givens, j), epsilon);
-        EXPECT_NEAR((2 + 10 * j) * s + (10 + 10 * j) * c, a(j_givens, j), epsilon);
+        EXPECT_NEAR((2 + 10 * j) * c + (10 + 10 * j) * minus_s, a(i_givens, j), epsilon);
+        EXPECT_NEAR((2 + 10 * j) * (-minus_s) + (10 + 10 * j) * c, a(j_givens, j), epsilon);
     }
 }
 
@@ -1337,4 +1337,45 @@ void projectOnNullspaceTensor(T epsilon) {
 TEST_F(NullspaceTest, projectOnNullspaceTensor) {
     projectOnNullspaceTensor<float>(PRECISION_LOW);
     projectOnNullspaceTensor<double>(PRECISION_HIGH);
+}
+
+
+/* ================================================================================================
+ *  GIVENSANNIHILATOR TESTS
+ * ================================================================================================ */
+class GivensAnnihilatorTest : public testing::Test {
+protected:
+    GivensAnnihilatorTest() {}
+
+    virtual ~GivensAnnihilatorTest() {}
+};
+
+
+/* ---------------------------------------
+ * GivensAnnihilator works
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+void givensAnnihilateElement(T epsilon) {
+    size_t m = 10;
+    size_t n = 6;
+    std::vector<double> v(m*n);
+    v.reserve(m*n);
+    std::iota(v.begin(), v.end(), 1);
+
+    DTensor<double> a = DTensor<double>(v, m, n, 1);
+
+    auto ga = GivensAnnihilator<double>(a);
+    size_t i = 0;
+    for (size_t k = 1; k < m; k++) {
+        for (size_t j=0; j<n; j++) {
+            ga.annihilate(i, k, j);
+            EXPECT_NEAR(0.0, a(k, j), epsilon);
+        }
+    }
+}
+
+TEST_F(GivensAnnihilatorTest, givensAnnihilateElement) {
+    givensAnnihilateElement<double>(1e-14);
+    givensAnnihilateElement<float>(1e-12);
 }

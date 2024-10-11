@@ -419,10 +419,10 @@ public:
      * @param i first column index
      * @param j second column index
      * @param c cos θ
-     * @param s sin θ
+     * @param minus_s minus sin θ
      * @throws std::invalid_argument if either i or j is greater or equal ncols
      */
-    void applyRightGivensRotation(size_t i, size_t j, T c, T s);
+    void applyRightGivensRotation(size_t i, size_t j, const T *c, const T *minus_s);
 
     /**
      * Performs a Givens rotation (left multiplication by G')
@@ -430,10 +430,10 @@ public:
      * @param i first row index
      * @param j second row index
      * @param c cos θ
-     * @param s sin θ
+     * @param minus_s minus sin θ
      * @throws std::invalid_argument if either i or j is greater or equal nrows
      */
-    void applyLeftGivensRotation(size_t i, size_t j, T c, T s);
+    void applyLeftGivensRotation(size_t i, size_t j, const T *c, const T *minus_s);
 
     /**
      * Batch solves `A \ b`.
@@ -721,52 +721,36 @@ inline double DTensor<double>::minAbs() const {
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
 
-template<>
-void DTensor<double>::applyRightGivensRotation(size_t i, size_t j, double c, double s) {
-    if (m_numMats > 1)
-        throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
-    if (i >= m_numCols or j >= m_numCols)
-        throw std::invalid_argument("[applyRightGivensRotation] index out of bounds");
-    double *col_i = m_d_data + i * m_numRows;
-    double *col_j = m_d_data + j * m_numRows;
-    double minus_s = -s;
-    gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numRows,
-                         col_i, 1,
-                         col_j, 1,
-                         &c, &minus_s));
-}
-
-template<>
-void DTensor<float>::applyRightGivensRotation(size_t i, size_t j, float c, float s) {
+template<typename T>
+void DTensor<T>::applyRightGivensRotation(size_t i, size_t j, const T *c, const T *minus_s) {
     if (m_numMats > 1) throw std::invalid_argument("[applyRightGivensRotation] tensors (nMat>1) not supported");
-    float *col_i = m_d_data + i * m_numRows;
-    float *col_j = m_d_data + j * m_numRows;
-    float minus_s = -s;
-    gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numRows,
-                         col_i, 1,
-                         col_j, 1,
-                         &c, &minus_s));
+    T *col_i = m_d_data + i * m_numRows;
+    T *col_j = m_d_data + j * m_numRows;
+    if constexpr (std::is_same_v<T, double>) {
+        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numRows,
+                             col_i, 1, col_j, 1, c, minus_s));
+    } else if constexpr (std::is_same_v<T, float>) {
+        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numRows,
+                             col_i, 1, col_j, 1, c, minus_s));
+    }
 }
 
 template<typename T>
-void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, T c, T s) {
+void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, const T *c, const T *minus_s) {
     if (m_numMats > 1) throw std::invalid_argument("[applyLeftGivensRotation] tensors (nMat>1) not supported");
     if constexpr (std::is_same_v<T, double>) {
-        double minus_s = -s;
         gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numCols,
                              m_d_data + i, m_numRows,
                              m_d_data + j, m_numRows,
-                             &c, &minus_s));
+                             c, minus_s));
     } else if constexpr (std::is_same_v<T, float>) {
-        float minus_s = -s;
         gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numCols,
                              m_d_data + i, m_numRows,
                              m_d_data + j, m_numRows,
-                             &c, &minus_s));
+                             c, minus_s));
     } else {
         throw std::invalid_argument("[applyLeftGivensRotation] Unsupported type T");
     }
-
 }
 
 template<typename T>
@@ -1852,5 +1836,81 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
                                       m_deviceInfo->raw(),
                                       m_numMats));
 }
+
+
+
+/* ================================================================================================
+ *  GIVENS ANNIHILATOR
+ * ================================================================================================ */
+
+/**
+ * GivensAnnihilator
+ * @tparam T data type of tensor (must be float or double)
+ */
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+class GivensAnnihilator {
+
+private:
+    DTensor<T> *m_matrix;
+    std::unique_ptr<DTensor<T>> m_d_rhyp_cos_sin;
+
+public:
+    GivensAnnihilator() = delete;
+
+    /**
+     * Constructor
+     * @param a
+     */
+    GivensAnnihilator(DTensor<T> &a) {
+        m_matrix = &a;
+        m_d_rhyp_cos_sin = std::make_unique<DTensor<T>>(3);
+    }
+
+    /**
+     * TODO
+     * @param i
+     * @param k
+     * @param j
+     */
+    void annihilate(size_t i, size_t k, size_t j);
+
+};
+
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+__global__ void k_givensAnnihilateRHypot(const T *data,
+                                         T *res,
+                                         size_t i, size_t k, size_t j,
+                                         size_t nRows) {
+    T xij = data[i + j * nRows];
+    T xkj = data[k + j * nRows];
+    res[0] = rhypot(xij, xkj);
+    res[1] = xij * (*res); // cos
+    res[2] = xkj * (*res); // -sin
+}
+
+template<typename T>
+void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
+    /*
+     * Pass cosine and sine as device pointers
+     * (Avoid having to download first)
+     */
+    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(), CUBLAS_POINTER_MODE_DEVICE));
+
+    /* Useful definitions */
+    T *aux = m_d_rhyp_cos_sin->raw();
+    T *matData = m_matrix->raw();
+    size_t nR = m_matrix->numRows();
+    size_t nC = m_matrix->numCols();
+
+    /* Call kernel to determine 1/sqrt(Ai^2 + Ak^2) */
+    k_givensAnnihilateRHypot<<<1, 1>>>(m_matrix->raw(), aux, i, k, j, nR);
+
+    /* Apply Givens rotation */
+    m_matrix->applyLeftGivensRotation(i, k, aux + 1, aux + 2);
+
+    /* Change back to default behaviour */
+    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(), CUBLAS_POINTER_MODE_HOST));
+}
+
 
 #endif

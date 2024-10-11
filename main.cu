@@ -19,12 +19,10 @@ int main() {
     v.reserve(m*n);
     std::iota(v.begin(), v.end(), 1);
 
-    auto a = DTensor<double>(v, m, n, 1);
-    auto b = DTensor<double>(a);
-    size_t i_givens = 1, j_givens = 9;
-    double c = 0.1;
-    double s = 0.9;
-    a.applyLeftGivensRotation(i_givens, j_givens, c, s);
+    DTensor<double> a = DTensor<double>(v, m, n, 1);
+
+    auto ga = GivensAnnihilator<double>(a);
+    ga.annihilate(1,2,4);
 
     std::cout << a;
 
