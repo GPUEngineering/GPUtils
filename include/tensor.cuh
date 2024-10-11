@@ -1844,7 +1844,10 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
  * ================================================================================================ */
 
 /**
- * GivensAnnihilator
+ * GivensAnnihilator is used to apply a left Givens rotation that
+ * makes a particular element (k, j) of a matrix zero by applying
+ * an appropriate Givens rotation G(i, k, c, s).
+ *
  * @tparam T data type of tensor (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
@@ -1852,25 +1855,37 @@ class GivensAnnihilator {
 
 private:
     DTensor<T> *m_matrix;
+    /**
+     * Auxiliary memory on the device of length 3 used to store
+     * rhypot(xij, xkj), cos θ, and sin θ.
+     */
     std::unique_ptr<DTensor<T>> m_d_rhyp_cos_sin;
 
 public:
     GivensAnnihilator() = delete;
 
     /**
-     * Constructor
-     * @param a
+     * Constructor of GivensAnnihilator
+     * @param a matrix
+     * @throws std::invalid_argument if a.numMats() > 1
      */
     GivensAnnihilator(DTensor<T> &a) {
+        if (a.numMats() > 1) {
+            throw std::invalid_argument("[GivensAnnihilator] tensors (numMats > 1) not supported");
+        }
         m_matrix = &a;
         m_d_rhyp_cos_sin = std::make_unique<DTensor<T>>(3);
     }
 
     /**
-     * TODO
-     * @param i
-     * @param k
-     * @param j
+     * Applies a left Givens rotation G(i, k, c, s) that eliminates
+     * the (k, j) element of the given matrix.
+     *
+     * @param i row index i
+     * @param k row index k
+     * @param j column index j
+     *
+     * @throws std::invalid_argument if i, k, or j are out of bounds
      */
     void annihilate(size_t i, size_t k, size_t j);
 
@@ -1890,6 +1905,11 @@ __global__ void k_givensAnnihilateRHypot(const T *data,
 
 template<typename T>
 void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
+    /* A few checks */
+    size_t nR = m_matrix->numRows(), nC = m_matrix->numCols();
+    if (i >= nR or k >= nR) throw std::invalid_argument("[GivensAnnihilator::annihilate] invalid row index");
+    if (j >= nC) std::invalid_argument("[GivensAnnihilator::annihilate] invalid column index j");
+
     /*
      * Pass cosine and sine as device pointers
      * (Avoid having to download first)
@@ -1899,8 +1919,6 @@ void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
     /* Useful definitions */
     T *aux = m_d_rhyp_cos_sin->raw();
     T *matData = m_matrix->raw();
-    size_t nR = m_matrix->numRows();
-    size_t nC = m_matrix->numCols();
 
     /* Call kernel to determine 1/sqrt(Ai^2 + Ak^2) */
     k_givensAnnihilateRHypot<<<1, 1>>>(m_matrix->raw(), aux, i, k, j, nR);
