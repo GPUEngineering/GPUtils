@@ -1458,14 +1458,19 @@ public:
      * @param b provided matrix
      * @return status code of computation
      */
-    int leastSquares(DTensor<T> &);
+    int leastSquares(DTensor<T> &b);
 
     /**
      * Populate the given tensors with Q and R.
      * Caution! This is an inefficient method: only to be used for debugging.
-     * @return resulting Q and R from factorisation
+     *
+     * @param Q matrix Q (preallocated)
+     * @param R matrix R (preallocated)
+     * @return status code
+     *
+     * @throws std::invalid_argument if Q or R have invalid dimensions
      */
-    int getQR(DTensor<T> &, DTensor<T> &);
+    int getQR(DTensor<T> &Q, DTensor<T> &R);
 
 };
 
@@ -1861,8 +1866,15 @@ private:
      */
     std::unique_ptr<DTensor<T>> m_d_rhyp_cos_sin;
 
+    void init() {
+        m_d_rhyp_cos_sin = std::make_unique<DTensor<T>>(3);
+    }
+
 public:
-    GivensAnnihilator() = delete;
+
+    GivensAnnihilator() {
+        init();
+    }
 
     /**
      * Constructor of GivensAnnihilator
@@ -1874,7 +1886,20 @@ public:
             throw std::invalid_argument("[GivensAnnihilator] tensors (numMats > 1) not supported");
         }
         m_matrix = &a;
-        m_d_rhyp_cos_sin = std::make_unique<DTensor<T>>(3);
+        init();
+    }
+
+    /**
+     * Set the reference to a matrix; this way the current
+     * object can be reused
+     *
+     * @param a
+     */
+    void setMatrix(DTensor<T> &a) {
+        if (a.numMats() > 1) {
+            throw std::invalid_argument("[GivensAnnihilator] tensors (numMats > 1) not supported");
+        }
+        m_matrix = &a;
     }
 
     /**
@@ -1904,7 +1929,7 @@ __global__ void k_givensAnnihilateRHypot(const T *data,
 }
 
 template<typename T>
-void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
+inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
     /* A few checks */
     size_t nR = m_matrix->numRows(), nC = m_matrix->numCols();
     if (i >= nR or k >= nR) throw std::invalid_argument("[GivensAnnihilator::annihilate] invalid row index");

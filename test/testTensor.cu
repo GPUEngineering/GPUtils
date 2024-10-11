@@ -400,15 +400,15 @@ void tensorRightGivens(T epsilon) {
     // Construct matrix A
     size_t m = 10;
     size_t n = 6;
-    std::vector<double> v(m * n);
+    std::vector<T> v(m * n);
     v.reserve(m * n);
     std::iota(v.begin(), v.end(), 1);
-    auto a = DTensor<double>(v, m, n, 1);
+    auto a = DTensor<T>(v, m, n, 1);
 
     // Apply right Givens rotation G
     size_t i_givens = 1, j_givens = 4;
-    double c = 0.1;
-    double minus_s = sqrt(1 - c * c);
+    T c = 0.1;
+    T minus_s = sqrt(1 - c * c);
     a.applyRightGivensRotation(i_givens, j_givens, &c, &minus_s);
 
     // Check the result
@@ -422,8 +422,8 @@ void tensorRightGivens(T epsilon) {
 }
 
 TEST_F(TensorTest, tensorRightGivens) {
-    tensorRightGivens<float>(1e-10);
-    tensorRightGivens<double>(1e-14);
+    tensorRightGivens<float>(PRECISION_LOW);
+    tensorRightGivens<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1359,13 +1359,12 @@ TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void givensAnnihilateElement(T epsilon) {
     size_t m = 10;
     size_t n = 6;
-    std::vector<double> v(m * n);
+    std::vector<T> v(m * n);
     v.reserve(m * n);
     std::iota(v.begin(), v.end(), 1);
 
-    DTensor<double> a = DTensor<double>(v, m, n, 1);
-
-    auto ga = GivensAnnihilator<double>(a);
+    auto a = DTensor<T>(v, m, n, 1);
+    auto ga = GivensAnnihilator<T>(a);
     size_t i = 0;
     for (size_t k = 1; k < m; k++) {
         for (size_t j = 0; j < n; j++) {
@@ -1376,8 +1375,8 @@ void givensAnnihilateElement(T epsilon) {
 }
 
 TEST_F(GivensAnnihilatorTest, givensAnnihilateElement) {
-    givensAnnihilateElement<double>(1e-14);
-    givensAnnihilateElement<float>(1e-12);
+    givensAnnihilateElement<float>(PRECISION_LOW);
+    givensAnnihilateElement<double>(PRECISION_HIGH);
 }
 
 
