@@ -201,15 +201,18 @@ private:
     }
 
     bool destroy() {
+        bool willDestroy = m_doDestroyData || m_doDestroyPointersToMatrices;
         if (m_doDestroyData) {
             if (m_d_data) gpuErrChk(cudaFree(m_d_data));
             m_d_data = nullptr;
+            m_doDestroyData = false;
         }
         if (m_doDestroyPointersToMatrices) {
             if (m_d_ptrMatrices) gpuErrChk(cudaFree(m_d_ptrMatrices));
             m_d_ptrMatrices = nullptr;
+            m_doDestroyPointersToMatrices = false;
         }
-        return m_doDestroyData || m_doDestroyPointersToMatrices;
+        return willDestroy;
     }
 
     /**
