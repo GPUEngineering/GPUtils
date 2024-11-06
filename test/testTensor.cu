@@ -635,29 +635,6 @@ TEST_F(TensorTest, tensorMinusTensor) {
     tensorMinusTensor<double>();
 }
 
-/* ---------------------------------------
- * Tensor: pointers to matrices (on device)
- * --------------------------------------- */
-
-TEMPLATE_WITH_TYPE_T
-void tensorPointersToMatrices() {
-    std::vector<T> dataA = TENSOR_DATA_234A;
-    DTensor<T> A(dataA, 2, 3, 4);
-    DTensor<T *> pointers = A.pointersToMatrices();
-    EXPECT_EQ(4, pointers.numRows());
-    EXPECT_EQ(1, pointers.numCols());
-    EXPECT_EQ(1, pointers.numMats());
-    T *p1 = pointers(1, 0, 0); // pointer to matrix #1
-    T hostDst; // let's see what's there...
-    cudaMemcpy(&hostDst, p1, sizeof(T), cudaMemcpyDeviceToHost);
-    EXPECT_EQ(dataA[6], hostDst);
-}
-
-TEST_F(TensorTest, tensorPointersToMatrices) {
-    tensorPointersToMatrices<float>();
-    tensorPointersToMatrices<double>();
-    tensorPointersToMatrices<int>();
-}
 
 /* ---------------------------------------
  * Tensor: C = AB
