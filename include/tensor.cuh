@@ -181,17 +181,35 @@ class DTensor {
 
 private:
     T *m_d_data = nullptr;  ///< Pointer to device data
+    T** m_d_ptrMatrices = nullptr; ///< Pointer to matrices in tensor
     size_t m_numRows = 0;  ///< Number of rows
     size_t m_numCols = 0;  ///< Number of columns
     size_t m_numMats = 0;  ///< Number of matrices
-    bool m_doDestroy = false;  ///< Whether to destroy memory
-    T** m_rawPtrToMatrices; ///< raw pointers to matrices
+    bool m_doDestroyData = false;  ///< Whether to destroy m_d_data
+    bool m_doDestroyPointersToMatrices = false; ///< Whether to destroy m_d_ptrMatrices
+
+    void makePointersToMatrices() {
+        std::vector<T *> h_pointers(m_numMats);
+        size_t numelMat = m_numRows * m_numCols;
+        h_pointers[0] = m_d_data;
+        for (size_t i = 1; i < m_numMats; i++) {
+            h_pointers[i] = m_d_data + i * numelMat;
+        }
+        size_t buffer_size = m_numMats * sizeof(T*);
+        gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers.data(), buffer_size, cudaMemcpyHostToDevice));
+        m_doDestroyPointersToMatrices = true;
+    }
 
     bool destroy() {
-        if (!m_doDestroy) return false;
-        if (m_d_data) cudaFree(m_d_data);
-        m_d_data = nullptr;
-        return true;
+        if (m_doDestroyData) {
+            if (m_d_data) gpuErrChk(cudaFree(m_d_data));
+            m_d_data = nullptr;
+        }
+        if (m_doDestroyPointersToMatrices){
+            if (m_d_ptrMatrices) gpuErrChk(cudaFree(m_d_ptrMatrices));
+            m_d_ptrMatrices = nullptr;
+        }
+        return m_doDestroyData || m_doDestroyPointersToMatrices;
     }
 
     /**
@@ -516,9 +534,8 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
         auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
         DTensor<T> a(randVec, numRows, numCols, numMats);
         return a;
-    } else {
-        throw std::invalid_argument("[createRandomTensor] unsupported type T");
     }
+    throw std::invalid_argument("[createRandomTensor] unsupported type T");
 }
 
 template<typename T>
@@ -543,6 +560,7 @@ DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
     m_numMats = k;
     size_t size = m * n * k;
     allocateOnDevice(size, zero);
+    makePointersToMatrices();
 }
 
 template<typename T>
@@ -553,6 +571,7 @@ DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k, St
     size_t size = m * n * k;
     allocateOnDevice(size);
     upload(data, mode);
+    makePointersToMatrices();
 }
 
 template<typename T>
@@ -564,6 +583,7 @@ DTensor<T>::DTensor(const DTensor<T> &other) {
     allocateOnDevice(m_numRows * m_numCols * m_numMats);
     gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToDevice));
+    makePointersToMatrices();
 }
 
 template<typename T>
@@ -575,6 +595,7 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numRows = other.m_numRows;
         m_numCols = other.m_numCols;
         m_numMats = len;
+        m_d_ptrMatrices = other.m_d_ptrMatrices + from;
     } else if (axis == 1) {
         offset = other.m_numRows * from;
         m_numRows = other.m_numRows;
@@ -587,7 +608,13 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numMats = 1;
     }
     m_d_data = other.m_d_data + offset;
-    m_doDestroy = false;
+    m_doDestroyData = false;
+    if (axis == 1 || axis == 0) {
+        gpuErrChk(cudaMalloc(&m_d_ptrMatrices, sizeof(T *))); // allocate memory for an array of one T* element
+        T* h_pointers[1] = {m_d_data}; // transfer datum to device
+        gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers, sizeof(T*), cudaMemcpyHostToDevice));
+        m_doDestroyPointersToMatrices = true; // make sure to free memory later
+    }
 }
 
 template<typename T>
@@ -596,9 +623,11 @@ DTensor<T>::DTensor(DTensor<T> &&other) {
     m_numRows = other.m_numRows;
     m_numMats = other.m_numMats;
     m_d_data = other.m_d_data;
-    m_doDestroy = true;
-    other.m_doDestroy = false;
+    m_d_ptrMatrices = other.m_d_ptrMatrices;
+    m_doDestroyData = true;
+    other.m_doDestroyData = false;
     other.m_d_data = nullptr;
+    other.m_d_ptrMatrices = nullptr;
     other.m_numCols = 0;
     other.m_numRows = 0;
     other.m_numMats = 0;
@@ -758,12 +787,18 @@ template<typename T>
 inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     if (size <= 0) return false;
     destroy();
-    m_doDestroy = true;
-    size_t buffer_size = size * sizeof(T);
-    bool cudaStatus = cudaMalloc(&m_d_data, buffer_size);
+    m_doDestroyData = true;
+    /* Allocate memory for m_d_data */
+    size_t data_size_bytes = size * sizeof(T);
+    bool cudaStatus = cudaMalloc(&m_d_data, data_size_bytes);
     if (cudaStatus != cudaSuccess) return false;
-    if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
-    return true;
+    if (zero) gpuErrChk(cudaMemset(m_d_data, 0, data_size_bytes)); // set to zero all elements
+
+    /* Allocate memory for m_d_ptrMatrices */
+    size_t ptr_matrices_bytes = m_numMats * sizeof(T*);
+    cudaStatus = cudaMalloc(&m_d_ptrMatrices, ptr_matrices_bytes);
+
+    return (cudaStatus != cudaSuccess);
 }
 
 template<typename T>
@@ -840,6 +875,10 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
                          m_d_data,
                          m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToDevice));
+    gpuErrChk(cudaMemcpy(elsewhere.m_d_ptrMatrices,
+                         m_d_ptrMatrices,
+                         m_numMats * sizeof(T*),
+                         cudaMemcpyDeviceToDevice));
 }
 
 template<>
@@ -855,7 +894,7 @@ DTensor<T> &DTensor<T>::operator=(const DTensor<T> &other) {
     m_numMats = other.m_numMats;
     m_numRows = other.m_numRows;
     m_numCols = other.m_numCols;
-    m_doDestroy = false;
+    m_doDestroyData = false;
     m_d_data = other.m_d_data;
     return *this;
 }
@@ -929,17 +968,17 @@ inline void DTensor<double>::addAB(const DTensor<double> &A, const DTensor<doubl
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    DTensor<double *> ptrA = A.pointersToMatrices();
-    DTensor<double *> ptrB = B.pointersToMatrices();
-    DTensor<double *> ptr = pointersToMatrices();
     double _alpha = alpha, _beta = beta;
+    double** ptrAraw = A.m_d_ptrMatrices;
+    double** ptrBraw = B.m_d_ptrMatrices;
+    double** ptrRaw = m_d_ptrMatrices;
     gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N, CUBLAS_OP_N,
                                  nRA, nCB, nCA, &_alpha,
-                                 ptrA.raw(), nRA,
-                                 ptrB.raw(), nCA,
+                                 ptrAraw, nRA,
+                                 ptrBraw, nCA,
                                  &_beta,
-                                 ptr.raw(), nRA,
+                                 ptrRaw, nRA,
                                  nMat));
 }
 
@@ -949,17 +988,17 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    DTensor<float *> ptrA = A.pointersToMatrices();
-    DTensor<float *> ptrB = B.pointersToMatrices();
-    DTensor<float *> ptr = pointersToMatrices();
+    float** ptrAraw = A.m_d_ptrMatrices;
+    float** ptrBraw = B.m_d_ptrMatrices;
+    float** ptrRaw = m_d_ptrMatrices;
     float _alpha = alpha, _beta = beta;
     gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N, CUBLAS_OP_N,
                                  nRA, nCB, nCA, &_alpha,
-                                 ptrA.raw(), nRA,
-                                 ptrB.raw(), nCA,
+                                 ptrAraw, nRA,
+                                 ptrBraw, nCA,
                                  &_beta,
-                                 ptr.raw(), nRA,
+                                 ptrRaw, nRA,
                                  nMat));
 }
 
