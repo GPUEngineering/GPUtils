@@ -185,6 +185,7 @@ private:
     size_t m_numCols = 0;  ///< Number of columns
     size_t m_numMats = 0;  ///< Number of matrices
     bool m_doDestroy = false;  ///< Whether to destroy memory
+    T** m_rawPtrToMatrices; ///< raw pointers to matrices
 
     bool destroy() {
         if (!m_doDestroy) return false;
