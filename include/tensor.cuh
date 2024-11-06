@@ -305,6 +305,10 @@ public:
      * @param axis axis to slice (0=rows, 1=columns, 2=matrices)
      * @param from index to slice axis from (zero-indexed)
      * @param to index to slice axis to (inclusive)
+     *
+     * @warning If axis=0 or axis=2, this method will (i) allocate memory on the GPU
+     * to store one element of size T* (pointer-to-T), (ii) will transfer one such
+     * element from the host to the device.
      */
     DTensor(const DTensor &other, size_t axis, size_t from, size_t to);
 
