@@ -613,12 +613,11 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numMats = 1;
     }
     m_d_data = other.m_d_data + offset;
-    m_doDestroyData = false;
-    if (axis == 1 || axis == 0) {
-        gpuErrChk(cudaMalloc(&m_d_ptrMatrices, sizeof(T *))); // allocate memory for an array of one T* element
-        T *h_pointers[1] = {m_d_data}; // transfer datum to device
-        gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers, sizeof(T *), cudaMemcpyHostToDevice));
-        m_doDestroyPointersToMatrices = true; // make sure to free memory later
+    m_doDestroyData = false; // no new memory allocated!
+    m_doDestroyPointersToMatrices = false; // no new auxiliary memory allocated!
+    if (axis != 2) {
+        // m_d_ptrMatrices is not needed for vectors and matrices
+        m_d_ptrMatrices = nullptr;
     }
 }
 
@@ -802,6 +801,7 @@ inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     /* Allocate memory for m_d_ptrMatrices */
     size_t ptr_matrices_bytes = m_numMats * sizeof(T *);
     cudaStatus = cudaMalloc(&m_d_ptrMatrices, ptr_matrices_bytes);
+    m_doDestroyPointersToMatrices = true;
 
     return (cudaStatus != cudaSuccess);
 }
@@ -880,10 +880,12 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
                          m_d_data,
                          m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToDevice));
-    gpuErrChk(cudaMemcpy(elsewhere.m_d_ptrMatrices,
-                         m_d_ptrMatrices,
-                         m_numMats * sizeof(T *),
-                         cudaMemcpyDeviceToDevice));
+    if (m_d_ptrMatrices) {
+        gpuErrChk(cudaMemcpy(elsewhere.m_d_ptrMatrices,
+                             m_d_ptrMatrices,
+                             m_numMats * sizeof(T *),
+                             cudaMemcpyDeviceToDevice));
+    }
 }
 
 template<>
