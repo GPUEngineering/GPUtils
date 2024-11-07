@@ -998,18 +998,25 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    DTensor<float *> ptrA = A.pointersToMatrices();
-    DTensor<float *> ptrB = B.pointersToMatrices();
-    DTensor<float *> ptr = pointersToMatrices();
     float _alpha = alpha, _beta = beta;
-    gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
-                                 CUBLAS_OP_N, CUBLAS_OP_N,
-                                 nRA, nCB, nCA, &_alpha,
-                                 ptrA.raw(), nRA,
-                                 ptrB.raw(), nCA,
-                                 &_beta,
-                                 ptr.raw(), nRA,
-                                 nMat));
+    if (nMat > 1) {
+        gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
+                                     CUBLAS_OP_N, CUBLAS_OP_N,
+                                     nRA, nCB, nCA, &_alpha,
+                                     A.m_d_ptrMatrices, nRA,
+                                     B.m_d_ptrMatrices, nCA,
+                                     &_beta,
+                                     m_d_ptrMatrices, nRA,
+                                     nMat));
+    } else {
+        gpuErrChk(cublasSgemm(Session::getInstance().cuBlasHandle(),
+                              CUBLAS_OP_N, CUBLAS_OP_N,
+                              nRA, nCB, nCA, &_alpha,
+                              A.raw(), nRA,
+                              B.raw(), nCA,
+                              &_beta,
+                              raw(), nRA));
+    }
 }
 
 template<>
