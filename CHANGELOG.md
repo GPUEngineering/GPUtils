@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 <!-- ---------------------
+      v1.3.1
+     --------------------- -->
+## v1.3.1 - 8-11-2024
+
+### Fixed
+
+- Memory management improvements: we got rid of `pointerToMatrices`, which would unnecessarily allocate memory and `addAB` does not allocate any new memory internally.
+
+<!-- ---------------------
       v1.3.0
      --------------------- -->
 ## v1.3.0 - 11-10-2024 

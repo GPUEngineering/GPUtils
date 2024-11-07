@@ -232,8 +232,8 @@ private:
 
     void initialisePointersToMatricesData() {
         /* Make sure m_d_ptrMatrices has been allocated */
-        if (!m_d_ptrMatrices || !m_doDestroyPtrMatrices) {
-            throw std::runtime_error("Unallocated memory (m_d_ptrMatrices)");
+        if (m_numMats <= 1 | !m_d_ptrMatrices || !m_doDestroyPtrMatrices) {
+            return;
         }
         /* Host-based vector of pointers */
         std::vector<T *> h_pointers(m_numMats);
@@ -287,6 +287,7 @@ public:
      * @param n number of columns
      * @param k number of matrices
      */
+
     DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1,
             StorageMode mode = StorageMode::defaultMajor);
 
@@ -553,6 +554,7 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
     }
     m_numRows = newNumRows;
     m_numCols = newNumCols;
+    // TODO allocate or reallocate new memory
     m_numMats = newNumMats;
 }
 
@@ -801,8 +803,12 @@ inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     if (cudaStatus != cudaSuccess) return false;
     if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
 
-    m_doDestroyPtrMatrices = true;
-    cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T *));
+    if (numMats() > 1) {
+        m_doDestroyPtrMatrices = true;
+        cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T *));
+    } else {
+        m_doDestroyPtrMatrices = false;
+    }
 
     return (cudaStatus != cudaSuccess);
 }
