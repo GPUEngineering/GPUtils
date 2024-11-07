@@ -287,7 +287,6 @@ public:
      * @param n number of columns
      * @param k number of matrices
      */
-
     DTensor(const std::vector<T> &data, size_t m, size_t n = 1, size_t k = 1,
             StorageMode mode = StorageMode::defaultMajor);
 
@@ -321,7 +320,7 @@ public:
      * Pointers to matrices (on device)
      * @return
      */
-    T **ptrMatrices();
+    T **ptrMatrices() const;
 
     /**
      * @return number of rows
@@ -847,7 +846,7 @@ inline T *DTensor<T>::raw() const {
 }
 
 template<typename T>
-inline T **DTensor<T>::ptrMatrices()  {
+inline T **DTensor<T>::ptrMatrices() const {
     return m_d_ptrMatrices;
 }
 
