@@ -564,6 +564,8 @@ DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
     m_numMats = k;
     size_t size = m * n * k;
     allocateOnDevice(size, zero);
+    /* Initialise m_d_ptrMatrices */
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
@@ -574,6 +576,8 @@ DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k, St
     size_t size = m * n * k;
     allocateOnDevice(size);
     upload(data, mode);
+    /* Initialise m_d_ptrMatrices */
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
@@ -585,6 +589,8 @@ DTensor<T>::DTensor(const DTensor<T> &other) {
     allocateOnDevice(m_numRows * m_numCols * m_numMats);
     gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToDevice));
+    /* Initialise m_d_ptrMatrices */
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
@@ -609,6 +615,11 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
     }
     m_d_data = other.m_d_data + offset;
     m_doDestroyData = false;
+    m_doDestroyPtrMatrices = false;
+    if (axis != 2) {
+        // m_d_ptrMatrices is not needed for vectors and matrices
+        m_d_ptrMatrices = nullptr;
+    }
 }
 
 template<typename T>
@@ -787,9 +798,6 @@ inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
 
     m_doDestroyPtrMatrices = true;
     cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T *));
-
-    /* Initialise m_d_ptrMatrices */
-    initialisePointersToMatricesData();
 
     return (cudaStatus != cudaSuccess);
 }
