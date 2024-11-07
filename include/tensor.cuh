@@ -181,16 +181,22 @@ class DTensor {
 
 private:
     T *m_d_data = nullptr;  ///< Pointer to device data
+    T **m_d_ptrMatrices = nullptr; ///< Pointer to matrices in tensor
     size_t m_numRows = 0;  ///< Number of rows
     size_t m_numCols = 0;  ///< Number of columns
     size_t m_numMats = 0;  ///< Number of matrices
-    bool m_doDestroy = false;  ///< Whether to destroy memory
+    bool m_doDestroyData = false;  ///< Whether to destroy memory
+    bool m_doDestroyPtrMatrices = false;  ///< Whether to destroy memory
 
-    bool destroy() {
-        if (!m_doDestroy) return false;
-        if (m_d_data) cudaFree(m_d_data);
-        m_d_data = nullptr;
-        return true;
+    void destroy() {
+        if (m_doDestroyData) {
+            if (m_d_data) gpuErrChk(cudaFree(m_d_data));
+            m_d_data = nullptr;
+        }
+        if (m_doDestroyPtrMatrices) {
+            if (m_d_ptrMatrices) gpuErrChk(cudaFree(m_d_ptrMatrices));
+            m_d_ptrMatrices = nullptr;
+        }
     }
 
     /**
@@ -586,7 +592,7 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numMats = 1;
     }
     m_d_data = other.m_d_data + offset;
-    m_doDestroy = false;
+    m_doDestroyData = false;
 }
 
 template<typename T>
@@ -595,8 +601,8 @@ DTensor<T>::DTensor(DTensor<T> &&other) {
     m_numRows = other.m_numRows;
     m_numMats = other.m_numMats;
     m_d_data = other.m_d_data;
-    m_doDestroy = true;
-    other.m_doDestroy = false;
+    m_doDestroyData = true;
+    other.m_doDestroyData = false;
     other.m_d_data = nullptr;
     other.m_numCols = 0;
     other.m_numRows = 0;
@@ -757,12 +763,16 @@ template<typename T>
 inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     if (size <= 0) return false;
     destroy();
-    m_doDestroy = true;
+    m_doDestroyData = true;
     size_t buffer_size = size * sizeof(T);
     bool cudaStatus = cudaMalloc(&m_d_data, buffer_size);
     if (cudaStatus != cudaSuccess) return false;
     if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
-    return true;
+
+    m_doDestroyPtrMatrices = true;
+    cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T*));
+
+    return (cudaStatus != cudaSuccess);
 }
 
 template<typename T>
@@ -854,7 +864,7 @@ DTensor<T> &DTensor<T>::operator=(const DTensor<T> &other) {
     m_numMats = other.m_numMats;
     m_numRows = other.m_numRows;
     m_numCols = other.m_numCols;
-    m_doDestroy = false;
+    m_doDestroyData = false;
     m_d_data = other.m_d_data;
     return *this;
 }
