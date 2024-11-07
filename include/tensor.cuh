@@ -555,6 +555,7 @@ template<typename T>
 void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats) {
     if (m_numRows == newNumRows && m_numCols == newNumCols && m_numMats == newNumMats) return;
     size_t newNumElements = newNumRows * newNumCols * newNumMats;
+    /* Check whether dimensions are compatible */
     if (numEl() != newNumElements) {
         char errMessage[256];
         sprintf(errMessage,
@@ -562,18 +563,22 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
                 numRows(), numRows(), numMats(), numEl(), newNumRows, newNumCols, newNumMats, newNumElements);
         throw std::invalid_argument(errMessage);
     }
+
+    /* Only free/reallocate if newNumMats > m_numMats
+     * otherwise, reuse the already allocated memory space */
+    if (newNumMats > m_numMats) {
+        /* Free the memory for m_d_ptrMatrices */
+        if (m_d_ptrMatrices && m_doDestroyPtrMatrices) {
+            gpuErrChk(cudaFree(m_d_ptrMatrices));
+            m_d_ptrMatrices = nullptr;
+        }
+        /* Reallocate memory for m_d_ptrMatrices, if necessary */
+        if (newNumMats > 1) gpuErrChk(cudaMalloc(&m_d_ptrMatrices, newNumMats * sizeof(T *)));
+    }
+
     m_numRows = newNumRows;
     m_numCols = newNumCols;
     m_numMats = newNumMats;
-    /* Free the memory for m_d_ptrMatrices */
-    if (m_d_ptrMatrices && m_doDestroyPtrMatrices) {
-        gpuErrChk(cudaFree(m_d_ptrMatrices));
-        m_d_ptrMatrices = nullptr;
-    }
-    /* Reallocate memory for m_d_ptrMatrices, if necessary */
-    if (m_numMats > 1) {
-        gpuErrChk(cudaMalloc(&m_d_ptrMatrices, m_numMats * sizeof(T *)));
-    }
     initialisePointersToMatricesData();
 }
 
