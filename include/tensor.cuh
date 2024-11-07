@@ -317,6 +317,12 @@ public:
     T *raw() const;
 
     /**
+     * Pointers to matrices (on device)
+     * @return
+     */
+    T **ptrMatrices();
+
+    /**
      * @return number of rows
      */
     size_t numRows() const;
@@ -841,6 +847,12 @@ template<typename T>
 inline T *DTensor<T>::raw() const {
     return m_d_data;
 }
+
+template<typename T>
+inline T **DTensor<T>::ptrMatrices()  {
+    return m_d_ptrMatrices;
+}
+
 
 template<>
 inline DTensor<float> DTensor<float>::tr() const {
