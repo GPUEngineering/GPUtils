@@ -571,9 +571,13 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
         if (m_d_ptrMatrices && m_doDestroyPtrMatrices) {
             gpuErrChk(cudaFree(m_d_ptrMatrices));
             m_d_ptrMatrices = nullptr;
+            m_doDestroyPtrMatrices = false;
         }
         /* Reallocate memory for m_d_ptrMatrices, if necessary */
-        if (newNumMats > 1) gpuErrChk(cudaMalloc(&m_d_ptrMatrices, newNumMats * sizeof(T *)));
+        if (newNumMats > 1) {
+            gpuErrChk(cudaMalloc(&m_d_ptrMatrices, newNumMats * sizeof(T *)));
+            m_doDestroyPtrMatrices = true;
+        }
     }
 
     m_numRows = newNumRows;
