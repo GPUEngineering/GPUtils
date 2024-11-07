@@ -362,14 +362,6 @@ public:
     void deviceCopyTo(DTensor<T> &other) const;
 
     /**
-     * Creates a vector of pointers to the matrices of this tensor.
-     * The vector is an (n,1,1)-tensor, where n is the number of matrices in this tensor.
-     * @return vector of pointers to the first element of each matrix
-     * @deprecated
-     */
-    DTensor<T *> pointersToMatrices() const;
-
-    /**
      * Slices rows from specified matrix.
      * @param rowsFrom index to slice rows from (zero-indexed)
      * @param rowsTo index to slice rows to (inclusive)
@@ -964,18 +956,6 @@ inline T DTensor<T>::operator()(size_t i, size_t j, size_t k) const {
     size_t offset = i + m_numRows * (j + m_numCols * k);
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
     return hostDst;
-}
-
-template<typename T>
-inline DTensor<T *> DTensor<T>::pointersToMatrices() const {
-    std::vector<T *> h_pointers(m_numMats);
-    size_t numelMat = m_numRows * m_numCols;
-    h_pointers[0] = m_d_data;
-    for (size_t i = 1; i < m_numMats; i++) {
-        h_pointers[i] = m_d_data + i * numelMat;
-    }
-    DTensor<T *> t(h_pointers, m_numMats, 1, 1);
-    return t;
 }
 
 template<>
@@ -1841,11 +1821,10 @@ public:
 template<>
 inline void CholeskyBatchFactoriser<double>::factorise() {
     if (m_factorisationDone) return;
-    DTensor<double *> ptrA = m_matrix->pointersToMatrices();
     gpuErrChk(cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
@@ -1855,11 +1834,10 @@ inline void CholeskyBatchFactoriser<double>::factorise() {
 template<>
 inline void CholeskyBatchFactoriser<float>::factorise() {
     if (m_factorisationDone) return;
-    DTensor<float *> ptrA = m_matrix->pointersToMatrices();
     gpuErrChk(cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
@@ -1873,15 +1851,13 @@ inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
-    DTensor<double *> ptrA = m_matrix->pointersToMatrices();
-    DTensor<double *> ptrB = b.pointersToMatrices();
     gpuErrChk(cusolverDnDpotrsBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
                                       1,  ///< only supports rhs = 1
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      ptrB.raw(),
+                                      b.ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
@@ -1894,15 +1870,13 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
-    DTensor<float *> ptrA = m_matrix->pointersToMatrices();
-    DTensor<float *> ptrB = b.pointersToMatrices();
     gpuErrChk(cusolverDnSpotrsBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
                                       1,  ///< only supports rhs = 1
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      ptrB.raw(),
+                                      b.ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
