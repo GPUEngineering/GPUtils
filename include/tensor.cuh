@@ -230,32 +230,24 @@ private:
      */
     std::ostream &print(std::ostream &out) const;
 
-    void initialisePointersToMatricesData() {
-        /* Make sure m_d_ptrMatrices has been allocated */
-        if (m_numMats <= 1 | !m_d_ptrMatrices || !m_doDestroyPtrMatrices) {
-            return;
-        }
-        /* Host-based vector of pointers */
-        std::vector<T *> h_pointers(m_numMats);
-        size_t numelMat = m_numRows * m_numCols;
-        h_pointers[0] = m_d_data;
-        for (size_t i = 1; i < m_numMats; i++) {
-            h_pointers[i] = m_d_data + i * numelMat;
-        }
-        /* Upload data to m_d_ptrMatrices */
-        size_t buffer_size = m_numMats * sizeof(T *);
-        gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers.data(), buffer_size, cudaMemcpyHostToDevice));
-    }
+    /**
+     * Initialises an array of pointers to the sub-matrices of the
+     * tensor (on the device). No allocation takes place if the tensor
+     * has only one matrix.
+     */
+    void initialisePointersToMatricesData();
 
 public:
 
     /**
      * Create a tensor with random elements
-     * @param numRows
-     * @param numCols
-     * @param numMats
-     * @param low
-     * @param hi
+     * @param numRows number of rows
+     * @param numCols number of columns
+     * @param numMats number of matrices
+     * @param low minimum value of random elements
+     * @param hi maximum value of random elements
+     *
+     * @throws std::invalid_argument if T is other than double, float, or int
      */
     static DTensor<T> createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi);
 
@@ -527,6 +519,24 @@ public:
 }; /* END OF DTENSOR */
 
 template<typename T>
+void DTensor<T>::initialisePointersToMatricesData() {
+    /* Make sure m_d_ptrMatrices has been allocated */
+    if (m_numMats <= 1 || !m_d_ptrMatrices || !m_doDestroyPtrMatrices) {
+        return;
+    }
+    /* Host-based vector of pointers */
+    std::vector<T *> h_pointers(m_numMats);
+    size_t numelMat = m_numRows * m_numCols;
+    h_pointers[0] = m_d_data;
+    for (size_t i = 1; i < m_numMats; i++) {
+        h_pointers[i] = m_d_data + i * numelMat;
+    }
+    /* Upload data to m_d_ptrMatrices */
+    size_t buffer_size = m_numMats * sizeof(T *);
+    gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers.data(), buffer_size, cudaMemcpyHostToDevice));
+}
+
+template<typename T>
 DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi) {
     if constexpr (std::is_floating_point<T>::value) {
         auto randVec = generateRealRandomVector(numRows * numCols * numMats, low, hi);
@@ -543,6 +553,7 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
 
 template<typename T>
 void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats) {
+    if (m_numRows == newNumRows && m_numCols == newNumCols && m_numMats == newNumMats) return;
     size_t newNumElements = newNumRows * newNumCols * newNumMats;
     if (numEl() != newNumElements) {
         char errMessage[256];
@@ -553,8 +564,17 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
     }
     m_numRows = newNumRows;
     m_numCols = newNumCols;
-    // TODO allocate or reallocate new memory
     m_numMats = newNumMats;
+    /* Free the memory for m_d_ptrMatrices */
+    if (m_d_ptrMatrices && m_doDestroyPtrMatrices) {
+        gpuErrChk(cudaFree(m_d_ptrMatrices));
+        m_d_ptrMatrices = nullptr;
+    }
+    /* Reallocate memory for m_d_ptrMatrices, if necessary */
+    if (m_numMats > 1) {
+        gpuErrChk(cudaMalloc(&m_d_ptrMatrices, m_numMats * sizeof(T *)));
+    }
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
