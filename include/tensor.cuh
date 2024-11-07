@@ -624,12 +624,18 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
 
 template<typename T>
 DTensor<T>::DTensor(DTensor<T> &&other) {
+    /* Steal everything from other */
     m_numCols = other.m_numCols;
     m_numRows = other.m_numRows;
     m_numMats = other.m_numMats;
     m_d_data = other.m_d_data;
-    m_doDestroyData = true;
+    m_doDestroyData = other.m_doDestroyData;
+    m_doDestroyPtrMatrices = other.m_doDestroyPtrMatrices;
+    m_d_ptrMatrices = other.m_d_ptrMatrices;
+    /* Invalidate other */
+    other.m_doDestroyPtrMatrices = false;
     other.m_doDestroyData = false;
+    other.m_d_ptrMatrices = nullptr;
     other.m_d_data = nullptr;
     other.m_numCols = 0;
     other.m_numRows = 0;
@@ -965,18 +971,25 @@ inline void DTensor<double>::addAB(const DTensor<double> &A, const DTensor<doubl
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    DTensor<double *> ptrA = A.pointersToMatrices();
-    DTensor<double *> ptrB = B.pointersToMatrices();
-    DTensor<double *> ptr = pointersToMatrices();
     double _alpha = alpha, _beta = beta;
-    gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
-                                 CUBLAS_OP_N, CUBLAS_OP_N,
-                                 nRA, nCB, nCA, &_alpha,
-                                 ptrA.raw(), nRA,
-                                 ptrB.raw(), nCA,
-                                 &_beta,
-                                 ptr.raw(), nRA,
-                                 nMat));
+    if (nMat > 1) {
+        gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
+                                     CUBLAS_OP_N, CUBLAS_OP_N,
+                                     nRA, nCB, nCA, &_alpha,
+                                     A.m_d_ptrMatrices, nRA,
+                                     B.m_d_ptrMatrices, nCA,
+                                     &_beta,
+                                     m_d_ptrMatrices, nRA,
+                                     nMat));
+    } else {
+        gpuErrChk(cublasDgemm(Session::getInstance().cuBlasHandle(),
+                              CUBLAS_OP_N, CUBLAS_OP_N,
+                              nRA, nCB, nCA, &_alpha,
+                              A.raw(), nRA,
+                              B.raw(), nCA,
+                              &_beta,
+                              raw(), nRA));
+    }
 }
 
 template<>
