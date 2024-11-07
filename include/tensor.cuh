@@ -849,7 +849,8 @@ inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
         m_doDestroyPtrMatrices = true;
         cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T *));
         if (cudaStatus != cudaSuccess) {
-            gpuErrChk(cudaFree(m_d_data));
+            gpuErrChk(cudaFree(m_d_data)); // ... free previously allocated memory
+            gpuErrChk(cudaStatus); // ... and memento mori
         }
     } else {
         m_doDestroyPtrMatrices = false;
