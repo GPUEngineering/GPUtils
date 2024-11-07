@@ -42,8 +42,7 @@ static std::random_device RND_DEVICE;
  * @param hi
  * @return
  */
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 std::vector<T> generateRealRandomVector(size_t n, T low, T hi) {
     std::mt19937_64 mersenne_engine(RND_DEVICE());
     std::uniform_real_distribution<T> dist(low, hi);
@@ -230,6 +229,23 @@ private:
      * @return tensor in `std::ostream` data format
      */
     std::ostream &print(std::ostream &out) const;
+
+    void initialisePointersToMatricesData() {
+        /* Make sure m_d_ptrMatrices has been allocated */
+        if (!m_d_ptrMatrices || !m_doDestroyPtrMatrices) {
+            throw std::runtime_error("Unallocated memory (m_d_ptrMatrices)");
+        }
+        /* Host-based vector of pointers */
+        std::vector<T *> h_pointers(m_numMats);
+        size_t numelMat = m_numRows * m_numCols;
+        h_pointers[0] = m_d_data;
+        for (size_t i = 1; i < m_numMats; i++) {
+            h_pointers[i] = m_d_data + i * numelMat;
+        }
+        /* Upload data to m_d_ptrMatrices */
+        size_t buffer_size = m_numMats * sizeof(T *);
+        gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers.data(), buffer_size, cudaMemcpyHostToDevice));
+    }
 
 public:
 
@@ -770,7 +786,10 @@ inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
 
     m_doDestroyPtrMatrices = true;
-    cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T*));
+    cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T *));
+
+    /* Initialise m_d_ptrMatrices */
+    initialisePointersToMatricesData();
 
     return (cudaStatus != cudaSuccess);
 }
