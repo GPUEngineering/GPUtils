@@ -36,14 +36,10 @@ void tensorConstructionZero() {
     EXPECT_EQ(expectedResult, zeroDown);
 }
 
-TEST_F(TensorTest, tensorConstructionZero
-) {
-tensorConstructionZero<float>();
-
-tensorConstructionZero<double>();
-
-tensorConstructionZero<int>();
-
+TEST_F(TensorTest, tensorConstructionZero) {
+    tensorConstructionZero<float>();
+    tensorConstructionZero<double>();
+    tensorConstructionZero<int>();
 }
 
 /* ---------------------------------------
@@ -92,14 +88,10 @@ void tensorConstructionStorageMode() {
     EXPECT_EQ(Cm, hostData);
 }
 
-TEST_F(TensorTest, tensorConstructionStorageMode
-) {
-tensorConstructionStorageMode<float>();
-
-tensorConstructionStorageMode<double>();
-
-tensorConstructionStorageMode<int>();
-
+TEST_F(TensorTest, tensorConstructionStorageMode) {
+    tensorConstructionStorageMode<float>();
+    tensorConstructionStorageMode<double>();
+    tensorConstructionStorageMode<int>();
 }
 
 /* ---------------------------------------
@@ -117,14 +109,10 @@ void randomTensorCreation() {
     EXPECT_TRUE(rEle >= -1 && rEle <= 1);
 }
 
-TEST_F(TensorTest, randomTensorCreation
-) {
-randomTensorCreation<float>();
-
-randomTensorCreation<double>();
-
-randomTensorCreation<int>();
-
+TEST_F(TensorTest, randomTensorCreation) {
+    randomTensorCreation<float>();
+    randomTensorCreation<double>();
+    randomTensorCreation<int>();
 }
 
 /* ---------------------------------------
@@ -138,18 +126,12 @@ void tensorMoveConstructor() {
     DTensor <T> y(DTensor < T > {100, 10, 1000});
 }
 
-TEST_F(TensorTest, tensorMoveConstructor
-) {
-tensorMoveConstructor<float>();
-
-tensorMoveConstructor<double>();
-
-tensorMoveConstructor<int>();
-
-tensorMoveConstructor<int *>();
-
-tensorMoveConstructor<double *>();
-
+TEST_F(TensorTest, tensorMoveConstructor) {
+    tensorMoveConstructor<float>();
+    tensorMoveConstructor<double>();
+    tensorMoveConstructor<int>();
+    tensorMoveConstructor<int *>();
+    tensorMoveConstructor<double *>();
 }
 
 /* ---------------------------------------
@@ -167,14 +149,10 @@ void tensorConstructionFromVector() {
     EXPECT_EQ(2 * 3 * 4, tenz.numEl());
 }
 
-TEST_F(TensorTest, tensorConstructionFromVector
-) {
-tensorConstructionFromVector<float>();
-
-tensorConstructionFromVector<double>();
-
-tensorConstructionFromVector<int>();
-
+TEST_F(TensorTest, tensorConstructionFromVector) {
+    tensorConstructionFromVector<float>();
+    tensorConstructionFromVector<double>();
+    tensorConstructionFromVector<int>();
 }
 
 /* ---------------------------------------
@@ -196,14 +174,10 @@ void tensorCopyConstructor() {
     EXPECT_NE(tenz.raw(), tenzCp.raw());
 }
 
-TEST_F(TensorTest, tensorCopyConstructor
-) {
-tensorCopyConstructor<float>();
-
-tensorCopyConstructor<double>();
-
-tensorCopyConstructor<int>();
-
+TEST_F(TensorTest, tensorCopyConstructor) {
+    tensorCopyConstructor<float>();
+    tensorCopyConstructor<double>();
+    tensorCopyConstructor<int>();
 }
 
 /* ---------------------------------------
@@ -222,14 +196,10 @@ void tensorSlicingConstructorAxis2() {
     EXPECT_EQ(tens.raw(), tensSlice.raw()); // it is indeed a slice
 }
 
-TEST_F(TensorTest, tensorSlicingConstructorAxis2
-) {
-tensorSlicingConstructorAxis2<float>();
-
-tensorSlicingConstructorAxis2<double>();
-
-tensorSlicingConstructorAxis2<int>();
-
+TEST_F(TensorTest, tensorSlicingConstructorAxis2) {
+    tensorSlicingConstructorAxis2<float>();
+    tensorSlicingConstructorAxis2<double>();
+    tensorSlicingConstructorAxis2<int>();
 }
 
 /* ---------------------------------------
@@ -251,14 +221,10 @@ void tensorSlicingConstructorAxis1() {
     EXPECT_EQ(expected, tenzSliceDown);
 }
 
-TEST_F(TensorTest, tensorSlicingConstructorAxis1
-) {
-tensorSlicingConstructorAxis1<float>();
-
-tensorSlicingConstructorAxis1<double>();
-
-tensorSlicingConstructorAxis1<int>();
-
+TEST_F(TensorTest, tensorSlicingConstructorAxis1) {
+    tensorSlicingConstructorAxis1<float>();
+    tensorSlicingConstructorAxis1<double>();
+    tensorSlicingConstructorAxis1<int>();
 }
 
 /* ---------------------------------------
@@ -280,14 +246,10 @@ void tensorSlicingConstructorAxis0() {
     EXPECT_EQ(expected, tenzSliceDown);
 }
 
-TEST_F(TensorTest, tensorSlicingConstructorAxis0
-) {
-tensorSlicingConstructorAxis0<float>();
-
-tensorSlicingConstructorAxis0<double>();
-
-tensorSlicingConstructorAxis0<int>();
-
+TEST_F(TensorTest, tensorSlicingConstructorAxis0) {
+    tensorSlicingConstructorAxis0<float>();
+    tensorSlicingConstructorAxis0<double>();
+    tensorSlicingConstructorAxis0<int>();
 }
 
 /* ---------------------------------------
@@ -307,14 +269,10 @@ void tensorUpload() {
     EXPECT_EQ(8, tenz(1, 2, 3));
 }
 
-TEST_F(TensorTest, tensorUpload
-) {
-tensorUpload<float>();
-
-tensorUpload<double>();
-
-tensorUpload<int>();
-
+TEST_F(TensorTest, tensorUpload) {
+    tensorUpload<float>();
+    tensorUpload<double>();
+    tensorUpload<int>();
 }
 
 /* ---------------------------------------
@@ -335,14 +293,10 @@ void tensorDeviceCopyTo() {
     EXPECT_EQ(expected, actual);
 }
 
-TEST_F(TensorTest, tensorDeviceCopyTo
-) {
-tensorDeviceCopyTo<float>();
-
-tensorDeviceCopyTo<double>();
-
-tensorDeviceCopyTo<int>();
-
+TEST_F(TensorTest, tensorDeviceCopyTo) {
+    tensorDeviceCopyTo<float>();
+    tensorDeviceCopyTo<double>();
+    tensorDeviceCopyTo<int>();
 }
 
 
@@ -354,6 +308,8 @@ TEMPLATE_WITH_TYPE_T
 void tensorReshape() {
     size_t m = 5, n = 10, k = 3;
     DTensor <T> a = DTensor<T>::createRandomTensor(m, n, k, -1, 1); // dim = (m, n, k)
+    T lastElement = a(m - 1, n - 1, k - 1); // last element
+    T firstElement = a(0, 0, 0);
     ASSERT_EQ(m, a.numRows());
     ASSERT_EQ(n, a.numCols());
     ASSERT_EQ(k, a.numMats());
@@ -365,6 +321,20 @@ void tensorReshape() {
     ASSERT_EQ(k, a.numRows());
     ASSERT_EQ(n, a.numCols());
     ASSERT_EQ(m, a.numMats());
+    a.reshape(k * n, m, 1); // dim = (k*n, m, 1)
+    ASSERT_EQ(k * n, a.numRows());
+    ASSERT_EQ(m, a.numCols());
+    ASSERT_EQ(1, a.numMats());
+    a.reshape(m, k * n, 1); // dim = (m, k*n, 1)
+    ASSERT_EQ(m, a.numRows());
+    ASSERT_EQ(k * n, a.numCols());
+    ASSERT_EQ(1, a.numMats());
+    a.reshape(m * k * n, 1, 1); // dim = (m*k*n, 1, 1)
+    ASSERT_EQ(m * k * n, a.numRows());
+    ASSERT_EQ(1, a.numCols());
+    ASSERT_EQ(1, a.numMats());
+    ASSERT_EQ(lastElement, a(m * n * k - 1, 0, 0));
+    ASSERT_EQ(firstElement, a(0, 0, 0));
 }
 
 TEST_F(TensorTest, tensorReshape) {
@@ -393,10 +363,9 @@ void tensorDotF(T epsilon) {
     EXPECT_EQ(604, dotTensor);  // from MATLAB
 }
 
-TEST_F(TensorTest, tensorDotF
-) {
-tensorDotF<float>(PRECISION_LOW);
-tensorDotF<double>(PRECISION_HIGH);
+TEST_F(TensorTest, tensorDotF) {
+    tensorDotF<float>(PRECISION_LOW);
+    tensorDotF<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -410,10 +379,9 @@ void tensorNormF(T epsilon) {
     EXPECT_NEAR(26.153393661244042, tenz.normF(), epsilon); // from MATLAB
 }
 
-TEST_F(TensorTest, tensorNormF
-) {
-tensorNormF<float>(PRECISION_LOW);
-tensorNormF<double>(PRECISION_HIGH);
+TEST_F(TensorTest, tensorNormF) {
+    tensorNormF<float>(PRECISION_LOW);
+    tensorNormF<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -428,12 +396,9 @@ void tensorSumAbs() {
     EXPECT_NEAR(112, tenz.sumAbs(), PRECISION_HIGH); // from MATLAB
 }
 
-TEST_F(TensorTest, tensorSumAbs
-) {
-tensorSumAbs<float>();
-
-tensorSumAbs<double>();
-
+TEST_F(TensorTest, tensorSumAbs) {
+    tensorSumAbs<float>();
+    tensorSumAbs<double>();
 }
 
 /* ---------------------------------------
@@ -448,12 +413,9 @@ void tensorMax() {
     EXPECT_EQ(27, m);
 }
 
-TEST_F(TensorTest, tensorMax
-) {
-tensorMax<float>();
-
-tensorMax<double>();
-
+TEST_F(TensorTest, tensorMax) {
+    tensorMax<float>();
+    tensorMax<double>();
 }
 
 /* ---------------------------------------
@@ -468,12 +430,9 @@ void tensorMin() {
     EXPECT_EQ(0, m);
 }
 
-TEST_F(TensorTest, tensorMin
-) {
-tensorMin<float>();
-
-tensorMin<double>();
-
+TEST_F(TensorTest, tensorMin) {
+    tensorMin<float>();
+    tensorMin<double>();
 }
 
 /* ---------------------------------------
@@ -506,10 +465,9 @@ void tensorRightGivens(T epsilon) {
     }
 }
 
-TEST_F(TensorTest, tensorRightGivens
-) {
-tensorRightGivens<float>(PRECISION_LOW);
-tensorRightGivens<double>(PRECISION_HIGH);
+TEST_F(TensorTest, tensorRightGivens ) {
+    tensorRightGivens<float>(PRECISION_LOW);
+    tensorRightGivens<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -544,10 +502,9 @@ void tensorLeftGivens(T epsilon) {
     }
 }
 
-TEST_F(TensorTest, tensorLeftGivens
-) {
-tensorLeftGivens<float>(1e-10);
-tensorLeftGivens<double>(1e-14);
+TEST_F(TensorTest, tensorLeftGivens) {
+    tensorLeftGivens<float>(1e-10);
+    tensorLeftGivens<double>(1e-14);
 }
 
 /* ---------------------------------------
@@ -564,14 +521,10 @@ void tensorBracketOperator() {
     EXPECT_EQ(8, tenz(1, 2, 3));
 }
 
-TEST_F(TensorTest, tensorBracketOperator
-) {
-tensorBracketOperator<float>();
-
-tensorBracketOperator<double>();
-
-tensorBracketOperator<int>();
-
+TEST_F(TensorTest, tensorBracketOperator) {
+    tensorBracketOperator<float>();
+    tensorBracketOperator<double>();
+    tensorBracketOperator<int>();
 }
 
 /* ---------------------------------------
@@ -590,14 +543,10 @@ void tensorAssignmentOperator() {
     EXPECT_EQ(4, other.numMats());
 }
 
-TEST_F(TensorTest, tensorAssignmentOperator
-) {
-tensorAssignmentOperator<float>();
-
-tensorAssignmentOperator<double>();
-
-tensorAssignmentOperator<int>();
-
+TEST_F(TensorTest, tensorAssignmentOperator) {
+    tensorAssignmentOperator<float>();
+    tensorAssignmentOperator<double>();
+    tensorAssignmentOperator<int>();
 }
 
 /* ---------------------------------------
@@ -616,12 +565,9 @@ void tensorTimesEqualsScalar() {
     EXPECT_EQ(dataTimes3, actual);
 }
 
-TEST_F(TensorTest, tensorTimesEqualsScalar
-) {
-tensorTimesEqualsScalar<float>();
-
-tensorTimesEqualsScalar<double>();
-
+TEST_F(TensorTest, tensorTimesEqualsScalar) {
+    tensorTimesEqualsScalar<float>();
+    tensorTimesEqualsScalar<double>();
 }
 
 /* ---------------------------------------
@@ -640,12 +586,9 @@ void tensorTimesScalar() {
     EXPECT_EQ(dataTimes3, actual);
 }
 
-TEST_F(TensorTest, tensorTimesScalar
-) {
-tensorTimesScalar<float>();
-
-tensorTimesScalar<double>();
-
+TEST_F(TensorTest, tensorTimesScalar) {
+    tensorTimesScalar<float>();
+    tensorTimesScalar<double>();
 }
 
 /* ---------------------------------------
@@ -665,12 +608,9 @@ void tensorPlusEqualsTensor() {
     EXPECT_EQ(expected, actual);
 }
 
-TEST_F(TensorTest, tensorPlusEqualsTensor
-) {
-tensorPlusEqualsTensor<float>();
-
-tensorPlusEqualsTensor<double>();
-
+TEST_F(TensorTest, tensorPlusEqualsTensor) {
+    tensorPlusEqualsTensor<float>();
+    tensorPlusEqualsTensor<double>();
 }
 
 /* ---------------------------------------
@@ -690,12 +630,9 @@ void tensorMinusEqualsTensor() {
     EXPECT_EQ(expected, actual);
 }
 
-TEST_F(TensorTest, tensorMinusEqualsTensor
-) {
-tensorMinusEqualsTensor<float>();
-
-tensorMinusEqualsTensor<double>();
-
+TEST_F(TensorTest, tensorMinusEqualsTensor) {
+    tensorMinusEqualsTensor<float>();
+    tensorMinusEqualsTensor<double>();
 }
 
 /* ---------------------------------------
@@ -715,12 +652,9 @@ void tensorPlusTensor() {
     EXPECT_EQ(expected, actual);
 }
 
-TEST_F(TensorTest, tensorPlusTensor
-) {
-tensorPlusTensor<float>();
-
-tensorPlusTensor<double>();
-
+TEST_F(TensorTest, tensorPlusTensor) {
+    tensorPlusTensor<float>();
+    tensorPlusTensor<double>();
 }
 
 /* ---------------------------------------
@@ -740,12 +674,9 @@ void tensorMinusTensor() {
     EXPECT_EQ(expected, actual);
 }
 
-TEST_F(TensorTest, tensorMinusTensor
-) {
-tensorMinusTensor<float>();
-
-tensorMinusTensor<double>();
-
+TEST_F(TensorTest, tensorMinusTensor) {
+    tensorMinusTensor<float>();
+    tensorMinusTensor<double>();
 }
 
 /* ---------------------------------------
@@ -770,12 +701,9 @@ void tensorAddAB() {
     EXPECT_EQ(expected, actual);
 }
 
-TEST_F(TensorTest, tensorAddAB
-) {
-tensorAddAB<double>();
-
-tensorAddAB<float>();
-
+TEST_F(TensorTest, tensorAddAB) {
+    tensorAddAB<double>();
+    tensorAddAB<float>();
 }
 
 /* ---------------------------------------
@@ -804,12 +732,9 @@ void tensorGetRows() {
     EXPECT_EQ(expected1, actual1);
 }
 
-TEST_F(TensorTest, tensorGetRows
-) {
-tensorGetRows<float>();
-
-tensorGetRows<double>();
-
+TEST_F(TensorTest, tensorGetRows) {
+    tensorGetRows<float>();
+    tensorGetRows<double>();
 }
 
 
@@ -832,12 +757,9 @@ void tensorTranspose() {
 
 }
 
-TEST_F(TensorTest, tensorTranspose
-) {
-tensorTranspose<float>();
-
-tensorTranspose<double>();
-
+TEST_F(TensorTest, tensorTranspose) {
+    tensorTranspose<float>();
+    tensorTranspose<double>();
 }
 
 /* ================================================================================================
@@ -876,10 +798,9 @@ void tensorLeastSquares1(T epsilon) {
     EXPECT_LT(nrmErr, epsilon);
 }
 
-TEST_F(LeastSquaresTest, tensorLS1
-) {
-tensorLeastSquares1<float>(PRECISION_LOW);
-tensorLeastSquares1<double>(PRECISION_HIGH);
+TEST_F(LeastSquaresTest, tensorLS1) {
+    tensorLeastSquares1<float>(PRECISION_LOW);
+    tensorLeastSquares1<double>(PRECISION_HIGH);
 }
 
 
@@ -914,10 +835,9 @@ void singularValuesComputation(float epsilon) {
     EXPECT_TRUE(U.has_value());
 }
 
-TEST_F(SvdTest, singularValuesComputation
-) {
-singularValuesComputation<float>(PRECISION_LOW);
-singularValuesComputation<double>(PRECISION_HIGH);
+TEST_F(SvdTest, singularValuesComputation) {
+    singularValuesComputation<float>(PRECISION_LOW);
+    singularValuesComputation<double>(PRECISION_HIGH);
 }
 
 
@@ -947,10 +867,9 @@ void singularValuesMemory(float epsilon) {
     EXPECT_EQ(u1->raw(), u2->raw());
 }
 
-TEST_F(SvdTest, singularValuesMemory
-) {
-singularValuesMemory<float>(PRECISION_LOW);
-singularValuesMemory<double>(PRECISION_HIGH);
+TEST_F(SvdTest, singularValuesMemory) {
+    singularValuesMemory<float>(PRECISION_LOW);
+    singularValuesMemory<double>(PRECISION_HIGH);
 }
 
 
@@ -994,10 +913,9 @@ void singularValuesMultipleMatrices(float epsilon) {
 
 }
 
-TEST_F(SvdTest, singularValuesMultipleMatrices
-) {
-singularValuesMultipleMatrices<float>(10 * PRECISION_LOW); // SVD with float performs quite poorly
-singularValuesMultipleMatrices<double>(PRECISION_HIGH);
+TEST_F(SvdTest, singularValuesMultipleMatrices) {
+    singularValuesMultipleMatrices<float>(10 * PRECISION_LOW); // SVD with float performs quite poorly
+    singularValuesMultipleMatrices<double>(PRECISION_HIGH);
 }
 
 
@@ -1020,10 +938,9 @@ void singularValuesRankMultipleMatrices(float epsilon) {
     EXPECT_EQ(1, rank(0, 0, 2));
 }
 
-TEST_F(SvdTest, singularValuesRankMultipleMatrices
-) {
-singularValuesRankMultipleMatrices<float>(PRECISION_LOW); // SVD with float performs quite poorly
-singularValuesRankMultipleMatrices<double>(PRECISION_HIGH);
+TEST_F(SvdTest, singularValuesRankMultipleMatrices) {
+    singularValuesRankMultipleMatrices<float>(PRECISION_LOW); // SVD with float performs quite poorly
+    singularValuesRankMultipleMatrices<double>(PRECISION_HIGH);
 }
 
 /* ================================================================================================
@@ -1054,10 +971,9 @@ void choleskyFactorisation(T epsilon) {
     EXPECT_NEAR(5.382321781081287, A(2, 2), epsilon);
 }
 
-TEST_F(CholeskyTest, choleskyFactorisation
-) {
-choleskyFactorisation<float>(PRECISION_LOW);
-choleskyFactorisation<double>(PRECISION_HIGH);
+TEST_F(CholeskyTest, choleskyFactorisation) {
+    choleskyFactorisation<float>(PRECISION_LOW);
+    choleskyFactorisation<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1090,10 +1006,9 @@ void choleskyFactorisationSolution(T epsilon) {
 
 }
 
-TEST_F(CholeskyTest, choleskyFactorisationSolution
-) {
-choleskyFactorisationSolution<float>(PRECISION_LOW);
-choleskyFactorisationSolution<double>(PRECISION_HIGH);
+TEST_F(CholeskyTest, choleskyFactorisationSolution) {
+    choleskyFactorisationSolution<float>(PRECISION_LOW);
+    choleskyFactorisationSolution<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1122,10 +1037,9 @@ void choleskyBatchFactorisation(T epsilon) {
     EXPECT_NEAR(5.382321781081287, A(2, 2, 1), epsilon);
 }
 
-TEST_F(CholeskyTest, choleskyBatchFactorisation
-) {
-choleskyBatchFactorisation<float>(PRECISION_LOW);
-choleskyBatchFactorisation<double>(PRECISION_HIGH);
+TEST_F(CholeskyTest, choleskyBatchFactorisation) {
+    choleskyBatchFactorisation<float>(PRECISION_LOW);
+    choleskyBatchFactorisation<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1163,10 +1077,9 @@ void choleskyBatchFactorSolve(T epsilon) {
     EXPECT_TRUE(error.normF() < epsilon);
 }
 
-TEST_F(CholeskyTest, choleskyBatchFactorSolve
-) {
-choleskyBatchFactorSolve<float>(PRECISION_LOW);
-choleskyBatchFactorSolve<double>(PRECISION_HIGH);
+TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
+    choleskyBatchFactorSolve<float>(PRECISION_LOW);
+    choleskyBatchFactorSolve<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1211,10 +1124,9 @@ void choleskyBatchSolve(T epsilon) {
     EXPECT_TRUE(error.normF() < epsilon);
 }
 
-TEST_F(CholeskyTest, choleskyBatchSolve
-) {
-choleskyBatchSolve<float>(PRECISION_LOW);
-choleskyBatchSolve<double>(PRECISION_HIGH);
+TEST_F(CholeskyTest, choleskyBatchSolve) {
+    choleskyBatchSolve<float>(PRECISION_LOW);
+    choleskyBatchSolve<double>(PRECISION_HIGH);
 }
 
 
@@ -1254,10 +1166,9 @@ void qrFactorisation(T epsilon) {
     EXPECT_NEAR(nrm, 0., epsilon);
 }
 
-TEST_F(QRTest, qrFactorisation
-) {
-qrFactorisation<float>(PRECISION_LOW);
-qrFactorisation<double>(PRECISION_HIGH);
+TEST_F(QRTest, qrFactorisation) {
+    qrFactorisation<float>(PRECISION_LOW);
+    qrFactorisation<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1286,10 +1197,9 @@ void qrFactorisationTall(T epsilon) {
     EXPECT_NEAR(nrm, 0., epsilon);
 }
 
-TEST_F(QRTest, qrFactorisationTall
-) {
-qrFactorisationTall<float>(PRECISION_LOW);
-qrFactorisationTall<double>(PRECISION_HIGH);
+TEST_F(QRTest, qrFactorisationTall) {
+    qrFactorisationTall<float>(PRECISION_LOW);
+    qrFactorisationTall<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1327,10 +1237,9 @@ void qrLeastSquares(T epsilon) {
     EXPECT_NEAR(nrm, 80.003169364198072, epsilon);  // From MatLab
 }
 
-TEST_F(QRTest, qrLeastSquares
-) {
-qrLeastSquares<float>(PRECISION_LOW);
-qrLeastSquares<double>(PRECISION_HIGH);
+TEST_F(QRTest, qrLeastSquares) {
+    qrLeastSquares<float>(PRECISION_LOW);
+    qrLeastSquares<double>(PRECISION_HIGH);
 }
 
 
@@ -1380,10 +1289,9 @@ void computeNullspaceTensor(T epsilon) {
     }
 }
 
-TEST_F(NullspaceTest, computeNullspaceTensor
-) {
-computeNullspaceTensor<float>(PRECISION_LOW);
-computeNullspaceTensor<double>(PRECISION_HIGH);
+TEST_F(NullspaceTest, computeNullspaceTensor) {
+    computeNullspaceTensor<float>(PRECISION_LOW);
+    computeNullspaceTensor<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1404,10 +1312,9 @@ void computeNullspaceTrivial(T epsilon) {
     EXPECT_EQ(N.normF(), 0);
 }
 
-TEST_F(NullspaceTest, computeNullspaceTrivial
-) {
-computeNullspaceTrivial<float>(PRECISION_LOW);
-computeNullspaceTrivial<double>(PRECISION_HIGH);
+TEST_F(NullspaceTest, computeNullspaceTrivial) {
+    computeNullspaceTrivial<float>(PRECISION_LOW);
+    computeNullspaceTrivial<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -1447,10 +1354,9 @@ void projectOnNullspaceTensor(T epsilon) {
     EXPECT_LT(delta1.dotF(delta2), epsilon);
 }
 
-TEST_F(NullspaceTest, projectOnNullspaceTensor
-) {
-projectOnNullspaceTensor<float>(PRECISION_LOW);
-projectOnNullspaceTensor<double>(PRECISION_HIGH);
+TEST_F(NullspaceTest, projectOnNullspaceTensor) {
+    projectOnNullspaceTensor<float>(PRECISION_LOW);
+    projectOnNullspaceTensor<double>(PRECISION_HIGH);
 }
 
 
@@ -1488,10 +1394,9 @@ void givensAnnihilateElement(T epsilon) {
     }
 }
 
-TEST_F(GivensAnnihilatorTest, givensAnnihilateElement
-) {
-givensAnnihilateElement<float>(PRECISION_LOW);
-givensAnnihilateElement<double>(PRECISION_HIGH);
+TEST_F(GivensAnnihilatorTest, givensAnnihilateElement) {
+    givensAnnihilateElement<float>(PRECISION_LOW);
+    givensAnnihilateElement<double>(PRECISION_HIGH);
 }
 
 
@@ -1518,10 +1423,9 @@ void givensAnnihilateCorrectness(T epsilon) {
 
 }
 
-TEST_F(GivensAnnihilatorTest, givensAnnihilateCorrectness
-) {
-givensAnnihilateCorrectness<double>(1e-14);
-givensAnnihilateCorrectness<float>(1e-12);
+TEST_F(GivensAnnihilatorTest, givensAnnihilateCorrectness) {
+    givensAnnihilateCorrectness<double>(1e-14);
+    givensAnnihilateCorrectness<float>(1e-12);
 }
 
 
