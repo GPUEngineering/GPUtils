@@ -471,6 +471,21 @@ public:
      */
     void addAB(const DTensor<T> &A, const DTensor<T> &B, T alpha = 1, T beta = 0);
 
+    /**
+     * Reshapes the tensor
+     *
+     * If the new number of tensors is larger than the current one,
+     * this method will allocate a device array of type T* and length
+     * equal to the new number of matrices.
+     *
+     * No new memory is allocated if newNumMats = 1
+     *
+     * @param newNumRows new number of rows
+     * @param newNumCols new number of columns
+     * @param newNumMats new number of matrices
+     *
+     * @throws std::invalid_argument if the provided dimensions are incompatible
+     */
     void reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats = 1);
 
     /* ------------- OPERATORS ------------- */
