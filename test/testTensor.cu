@@ -123,7 +123,7 @@ TEMPLATE_WITH_TYPE_T
 void tensorMoveConstructor() {
     DTensor<T> zero(2, 3, 4, true);
     DTensor<T> x(std::move(zero));
-    DTensor<T> y(DTensor<T>{100, 10, 1000});
+    DTensor<T> y(DTensor<T> {100, 10, 1000});
 }
 
 TEST_F(TensorTest, tensorMoveConstructor) {
@@ -297,6 +297,82 @@ TEST_F(TensorTest, tensorDeviceCopyTo) {
     tensorDeviceCopyTo<float>();
     tensorDeviceCopyTo<double>();
     tensorDeviceCopyTo<int>();
+}
+
+
+/* ---------------------------------------
+ * Tensor: Reshape
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorReshape() {
+    size_t m = 5, n = 10, k = 3;
+    DTensor<T> a = DTensor<T>::createRandomTensor(m, n, k, -1, 1); // dim = (m, n, k)
+    T lastElement = a(m - 1, n - 1, k - 1); // last element
+    T firstElement = a(0, 0, 0);
+    ASSERT_EQ(m, a.numRows());
+    ASSERT_EQ(n, a.numCols());
+    ASSERT_EQ(k, a.numMats());
+    a.reshape(m, k, n); // dim = (m, k, n)
+    ASSERT_EQ(m, a.numRows());
+    ASSERT_EQ(k, a.numCols());
+    ASSERT_EQ(n, a.numMats());
+    a.reshape(k, n, m); // dim = (k, n, m)
+    ASSERT_EQ(k, a.numRows());
+    ASSERT_EQ(n, a.numCols());
+    ASSERT_EQ(m, a.numMats());
+    a.reshape(k * n, m, 1); // dim = (k*n, m, 1)
+    ASSERT_EQ(k * n, a.numRows());
+    ASSERT_EQ(m, a.numCols());
+    ASSERT_EQ(1, a.numMats());
+    a.reshape(m, k * n, 1); // dim = (m, k*n, 1)
+    ASSERT_EQ(m, a.numRows());
+    ASSERT_EQ(k * n, a.numCols());
+    ASSERT_EQ(1, a.numMats());
+    a.reshape(m * k * n, 1, 1); // dim = (m*k*n, 1, 1)
+    ASSERT_EQ(m * k * n, a.numRows());
+    ASSERT_EQ(1, a.numCols());
+    ASSERT_EQ(1, a.numMats());
+    ASSERT_EQ(lastElement, a(m * n * k - 1, 0, 0));
+    ASSERT_EQ(firstElement, a(0, 0, 0));
+}
+
+TEST_F(TensorTest, tensorReshape) {
+    tensorReshape<float>();
+    tensorReshape<double>();
+    tensorReshape<int>();
+}
+
+/* ---------------------------------------
+ * Tensor: Slice, reshape and add/multiply
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorSliceAndReshape(T epsilon) {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    std::vector<T> dataB = TENSOR_DATA_234B;
+    DTensor<T> a(dataA, 2, 3, 4);
+    DTensor<T> b(dataB, 2, 3, 4);
+
+    /* ---- Slicing axis = 2 ---- */
+    DTensor<T> aSlice(a, 2, 1, 3);
+    DTensor<T> bSlice(b, 2, 1, 3);
+    aSlice.reshape(2, 9, 1);
+    bSlice.reshape(2, 9, 1);
+    aSlice += bSlice;
+
+    std::vector<T> dataAExpected = {1, 2, 3, 4, 5, 6, 41, 7, 5, 5,
+                                    19, 17, 14, 13, 5, 11, -8, -4,
+                                    6, 8, 8, -2, 8, 13};
+    DTensor<T> aExpected(dataAExpected, 2, 3, 4);
+
+    DTensor<T> err = aExpected - a;
+    ASSERT_LT(err.normF(), epsilon);
+}
+
+TEST_F(TensorTest, tensorSliceAndReshape) {
+    tensorSliceAndReshape<float>(PRECISION_LOW);
+    tensorSliceAndReshape<double>(PRECISION_HIGH);
 }
 
 /* ---------------------------------------
@@ -633,30 +709,6 @@ void tensorMinusTensor() {
 TEST_F(TensorTest, tensorMinusTensor) {
     tensorMinusTensor<float>();
     tensorMinusTensor<double>();
-}
-
-/* ---------------------------------------
- * Tensor: pointers to matrices (on device)
- * --------------------------------------- */
-
-TEMPLATE_WITH_TYPE_T
-void tensorPointersToMatrices() {
-    std::vector<T> dataA = TENSOR_DATA_234A;
-    DTensor<T> A(dataA, 2, 3, 4);
-    DTensor<T *> pointers = A.pointersToMatrices();
-    EXPECT_EQ(4, pointers.numRows());
-    EXPECT_EQ(1, pointers.numCols());
-    EXPECT_EQ(1, pointers.numMats());
-    T *p1 = pointers(1, 0, 0); // pointer to matrix #1
-    T hostDst; // let's see what's there...
-    cudaMemcpy(&hostDst, p1, sizeof(T), cudaMemcpyDeviceToHost);
-    EXPECT_EQ(dataA[6], hostDst);
-}
-
-TEST_F(TensorTest, tensorPointersToMatrices) {
-    tensorPointersToMatrices<float>();
-    tensorPointersToMatrices<double>();
-    tensorPointersToMatrices<int>();
 }
 
 /* ---------------------------------------

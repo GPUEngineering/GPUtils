@@ -42,8 +42,7 @@ static std::random_device RND_DEVICE;
  * @param hi
  * @return
  */
-TEMPLATE_WITH_TYPE_T
-TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
 std::vector<T> generateRealRandomVector(size_t n, T low, T hi) {
     std::mt19937_64 mersenne_engine(RND_DEVICE());
     std::uniform_real_distribution<T> dist(low, hi);
@@ -181,25 +180,30 @@ class DTensor {
 
 private:
     T *m_d_data = nullptr;  ///< Pointer to device data
+    T **m_d_ptrMatrices = nullptr; ///< Pointer to matrices in tensor
     size_t m_numRows = 0;  ///< Number of rows
     size_t m_numCols = 0;  ///< Number of columns
     size_t m_numMats = 0;  ///< Number of matrices
-    bool m_doDestroy = false;  ///< Whether to destroy memory
+    bool m_doDestroyData = false;  ///< Whether to destroy memory
+    bool m_doDestroyPtrMatrices = false;  ///< Whether to destroy memory
 
-    bool destroy() {
-        if (!m_doDestroy) return false;
-        if (m_d_data) cudaFree(m_d_data);
-        m_d_data = nullptr;
-        return true;
+    void destroy() {
+        if (m_doDestroyData) {
+            if (m_d_data) gpuErrChk(cudaFree(m_d_data));
+            m_d_data = nullptr;
+        }
+        if (m_doDestroyPtrMatrices) {
+            if (m_d_ptrMatrices) gpuErrChk(cudaFree(m_d_ptrMatrices));
+            m_d_ptrMatrices = nullptr;
+        }
     }
 
     /**
      * Allocate `size` number of `T` data on the device.
      * @param size number of data elements to allocate
      * @param zero sets allocated data to `0`
-     * @return
      */
-    bool allocateOnDevice(size_t size, bool zero = false);
+    void allocateOnDevice(size_t size, bool zero = false);
 
     /**
      * Create column-major `std::vector` from a row-major one.
@@ -225,15 +229,24 @@ private:
      */
     std::ostream &print(std::ostream &out) const;
 
+    /**
+     * Initialises an array of pointers to the sub-matrices of the
+     * tensor (on the device). No allocation takes place if the tensor
+     * has only one matrix.
+     */
+    void initialisePointersToMatricesData();
+
 public:
 
     /**
      * Create a tensor with random elements
-     * @param numRows
-     * @param numCols
-     * @param numMats
-     * @param low
-     * @param hi
+     * @param numRows number of rows
+     * @param numCols number of columns
+     * @param numMats number of matrices
+     * @param low minimum value of random elements
+     * @param hi maximum value of random elements
+     *
+     * @throws std::invalid_argument if T is other than double, float, or int
      */
     static DTensor<T> createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi);
 
@@ -295,6 +308,12 @@ public:
     T *raw() const;
 
     /**
+     * Pointers to matrices (on device)
+     * @return
+     */
+    T **ptrMatrices() const;
+
+    /**
      * @return number of rows
      */
     size_t numRows() const;
@@ -332,13 +351,6 @@ public:
      * @param other target tensor
      */
     void deviceCopyTo(DTensor<T> &other) const;
-
-    /**
-     * Creates a vector of pointers to the matrices of this tensor.
-     * The vector is an (n,1,1)-tensor, where n is the number of matrices in this tensor.
-     * @return vector of pointers to the first element of each matrix
-     */
-    DTensor<T *> pointersToMatrices() const;
 
     /**
      * Slices rows from specified matrix.
@@ -458,6 +470,21 @@ public:
      */
     void addAB(const DTensor<T> &A, const DTensor<T> &B, T alpha = 1, T beta = 0);
 
+    /**
+     * Reshapes the tensor
+     *
+     * If the new number of tensors is larger than the current one,
+     * this method will allocate a device array of type T* and length
+     * equal to the new number of matrices.
+     *
+     * No new memory is allocated if newNumMats = 1
+     *
+     * @param newNumRows new number of rows
+     * @param newNumCols new number of columns
+     * @param newNumMats new number of matrices
+     *
+     * @throws std::invalid_argument if the provided dimensions are incompatible
+     */
     void reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats = 1);
 
     /* ------------- OPERATORS ------------- */
@@ -506,6 +533,24 @@ public:
 }; /* END OF DTENSOR */
 
 template<typename T>
+void DTensor<T>::initialisePointersToMatricesData() {
+    /* Make sure m_d_ptrMatrices has been allocated */
+    if (m_numMats <= 1 || !m_d_ptrMatrices || !m_doDestroyPtrMatrices) {
+        return;
+    }
+    /* Host-based vector of pointers */
+    std::vector<T *> h_pointers(m_numMats);
+    size_t numelMat = m_numRows * m_numCols;
+    h_pointers[0] = m_d_data;
+    for (size_t i = 1; i < m_numMats; i++) {
+        h_pointers[i] = m_d_data + i * numelMat;
+    }
+    /* Upload data to m_d_ptrMatrices */
+    size_t buffer_size = m_numMats * sizeof(T *);
+    gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers.data(), buffer_size, cudaMemcpyHostToDevice));
+}
+
+template<typename T>
 DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi) {
     if constexpr (std::is_floating_point<T>::value) {
         auto randVec = generateRealRandomVector(numRows * numCols * numMats, low, hi);
@@ -522,7 +567,9 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
 
 template<typename T>
 void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats) {
+    if (m_numRows == newNumRows && m_numCols == newNumCols && m_numMats == newNumMats) return;
     size_t newNumElements = newNumRows * newNumCols * newNumMats;
+    /* Check whether dimensions are compatible */
     if (numEl() != newNumElements) {
         char errMessage[256];
         sprintf(errMessage,
@@ -530,9 +577,27 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
                 numRows(), numRows(), numMats(), numEl(), newNumRows, newNumCols, newNumMats, newNumElements);
         throw std::invalid_argument(errMessage);
     }
+
+    /* Only free/reallocate if newNumMats > m_numMats
+     * otherwise, reuse the already allocated memory space */
+    if (newNumMats > m_numMats) {
+        /* Free the memory for m_d_ptrMatrices */
+        if (m_d_ptrMatrices && m_doDestroyPtrMatrices) {
+            gpuErrChk(cudaFree(m_d_ptrMatrices));
+            m_d_ptrMatrices = nullptr;
+            m_doDestroyPtrMatrices = false;
+        }
+        /* Reallocate memory for m_d_ptrMatrices, if necessary */
+        if (newNumMats > 1) {
+            gpuErrChk(cudaMalloc(&m_d_ptrMatrices, newNumMats * sizeof(T *)));
+            m_doDestroyPtrMatrices = true;
+        }
+    }
+
     m_numRows = newNumRows;
     m_numCols = newNumCols;
     m_numMats = newNumMats;
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
@@ -542,6 +607,8 @@ DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
     m_numMats = k;
     size_t size = m * n * k;
     allocateOnDevice(size, zero);
+    /* Initialise m_d_ptrMatrices */
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
@@ -552,6 +619,8 @@ DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k, St
     size_t size = m * n * k;
     allocateOnDevice(size);
     upload(data, mode);
+    /* Initialise m_d_ptrMatrices */
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
@@ -563,6 +632,8 @@ DTensor<T>::DTensor(const DTensor<T> &other) {
     allocateOnDevice(m_numRows * m_numCols * m_numMats);
     gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
                          cudaMemcpyDeviceToDevice));
+    /* Initialise m_d_ptrMatrices */
+    initialisePointersToMatricesData();
 }
 
 template<typename T>
@@ -586,17 +657,28 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numMats = 1;
     }
     m_d_data = other.m_d_data + offset;
-    m_doDestroy = false;
+    m_doDestroyData = false;
+    m_doDestroyPtrMatrices = false;
+    if (axis != 2) {
+        // m_d_ptrMatrices is not needed for vectors and matrices
+        m_d_ptrMatrices = nullptr;
+    }
 }
 
 template<typename T>
 DTensor<T>::DTensor(DTensor<T> &&other) {
+    /* Steal everything from other */
     m_numCols = other.m_numCols;
     m_numRows = other.m_numRows;
     m_numMats = other.m_numMats;
     m_d_data = other.m_d_data;
-    m_doDestroy = true;
-    other.m_doDestroy = false;
+    m_doDestroyData = other.m_doDestroyData;
+    m_doDestroyPtrMatrices = other.m_doDestroyPtrMatrices;
+    m_d_ptrMatrices = other.m_d_ptrMatrices;
+    /* Invalidate other */
+    other.m_doDestroyPtrMatrices = false;
+    other.m_doDestroyData = false;
+    other.m_d_ptrMatrices = nullptr;
     other.m_d_data = nullptr;
     other.m_numCols = 0;
     other.m_numRows = 0;
@@ -754,15 +836,25 @@ void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, const T *c, const T
 }
 
 template<typename T>
-inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
-    if (size <= 0) return false;
+inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
+    cudaError_t cudaStatus;
+    if (size <= 0) return;
     destroy();
-    m_doDestroy = true;
+    m_doDestroyData = true;
     size_t buffer_size = size * sizeof(T);
-    bool cudaStatus = cudaMalloc(&m_d_data, buffer_size);
-    if (cudaStatus != cudaSuccess) return false;
+    gpuErrChk(cudaMalloc(&m_d_data, buffer_size));
     if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
-    return true;
+
+    if (numMats() > 1) {
+        m_doDestroyPtrMatrices = true;
+        cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T *));
+        if (cudaStatus != cudaSuccess) {
+            gpuErrChk(cudaFree(m_d_data)); // ... free previously allocated memory
+            gpuErrChk(cudaStatus); // ... and memento mori
+        }
+    } else {
+        m_doDestroyPtrMatrices = false;
+    }
 }
 
 template<typename T>
@@ -797,6 +889,12 @@ template<typename T>
 inline T *DTensor<T>::raw() const {
     return m_d_data;
 }
+
+template<typename T>
+inline T **DTensor<T>::ptrMatrices() const {
+    return m_d_ptrMatrices;
+}
+
 
 template<>
 inline DTensor<float> DTensor<float>::tr() const {
@@ -854,7 +952,7 @@ DTensor<T> &DTensor<T>::operator=(const DTensor<T> &other) {
     m_numMats = other.m_numMats;
     m_numRows = other.m_numRows;
     m_numCols = other.m_numCols;
-    m_doDestroy = false;
+    m_doDestroyData = false;
     m_d_data = other.m_d_data;
     return *this;
 }
@@ -910,36 +1008,31 @@ inline T DTensor<T>::operator()(size_t i, size_t j, size_t k) const {
     return hostDst;
 }
 
-template<typename T>
-inline DTensor<T *> DTensor<T>::pointersToMatrices() const {
-    std::vector<T *> h_pointers(m_numMats);
-    size_t numelMat = m_numRows * m_numCols;
-    h_pointers[0] = m_d_data;
-    for (size_t i = 1; i < m_numMats; i++) {
-        h_pointers[i] = m_d_data + i * numelMat;
-    }
-    DTensor<T *> t(h_pointers, m_numMats, 1, 1);
-    return t;
-}
-
 template<>
 inline void DTensor<double>::addAB(const DTensor<double> &A, const DTensor<double> &B, double alpha, double beta) {
     size_t nMat = A.numMats();
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    DTensor<double *> ptrA = A.pointersToMatrices();
-    DTensor<double *> ptrB = B.pointersToMatrices();
-    DTensor<double *> ptr = pointersToMatrices();
     double _alpha = alpha, _beta = beta;
-    gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
-                                 CUBLAS_OP_N, CUBLAS_OP_N,
-                                 nRA, nCB, nCA, &_alpha,
-                                 ptrA.raw(), nRA,
-                                 ptrB.raw(), nCA,
-                                 &_beta,
-                                 ptr.raw(), nRA,
-                                 nMat));
+    if (nMat > 1) {
+        gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
+                                     CUBLAS_OP_N, CUBLAS_OP_N,
+                                     nRA, nCB, nCA, &_alpha,
+                                     A.m_d_ptrMatrices, nRA,
+                                     B.m_d_ptrMatrices, nCA,
+                                     &_beta,
+                                     m_d_ptrMatrices, nRA,
+                                     nMat));
+    } else {
+        gpuErrChk(cublasDgemm(Session::getInstance().cuBlasHandle(),
+                              CUBLAS_OP_N, CUBLAS_OP_N,
+                              nRA, nCB, nCA, &_alpha,
+                              A.raw(), nRA,
+                              B.raw(), nCA,
+                              &_beta,
+                              raw(), nRA));
+    }
 }
 
 template<>
@@ -948,18 +1041,25 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
     size_t nRA = A.numRows();
     size_t nCA = A.numCols();
     size_t nCB = B.numCols();
-    DTensor<float *> ptrA = A.pointersToMatrices();
-    DTensor<float *> ptrB = B.pointersToMatrices();
-    DTensor<float *> ptr = pointersToMatrices();
     float _alpha = alpha, _beta = beta;
-    gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
-                                 CUBLAS_OP_N, CUBLAS_OP_N,
-                                 nRA, nCB, nCA, &_alpha,
-                                 ptrA.raw(), nRA,
-                                 ptrB.raw(), nCA,
-                                 &_beta,
-                                 ptr.raw(), nRA,
-                                 nMat));
+    if (nMat > 1) {
+        gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
+                                     CUBLAS_OP_N, CUBLAS_OP_N,
+                                     nRA, nCB, nCA, &_alpha,
+                                     A.m_d_ptrMatrices, nRA,
+                                     B.m_d_ptrMatrices, nCA,
+                                     &_beta,
+                                     m_d_ptrMatrices, nRA,
+                                     nMat));
+    } else {
+        gpuErrChk(cublasSgemm(Session::getInstance().cuBlasHandle(),
+                              CUBLAS_OP_N, CUBLAS_OP_N,
+                              nRA, nCB, nCA, &_alpha,
+                              A.raw(), nRA,
+                              B.raw(), nCA,
+                              &_beta,
+                              raw(), nRA));
+    }
 }
 
 template<>
@@ -975,17 +1075,15 @@ inline void DTensor<double>::leastSquaresBatched(DTensor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
-    DTensor<int> infoArray(batchSize);
-    DTensor<double *> As = pointersToMatrices();
-    DTensor<double *> Bs = B.pointersToMatrices();
+    DTensor<int> infoArray(batchSize); // TODO consider preallocating?
     gpuErrChk(cublasDgelsBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N,
                                  m_numRows,
                                  m_numCols,
                                  nColsB,
-                                 As.raw(),
+                                 m_d_ptrMatrices,
                                  m_numRows,
-                                 Bs.raw(),
+                                 B.m_d_ptrMatrices,
                                  m_numRows,
                                  &info,
                                  infoArray.raw(),
@@ -1005,17 +1103,15 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
-    DTensor<int> infoArray(batchSize);
-    DTensor<float *> As = pointersToMatrices();
-    DTensor<float *> Bs = B.pointersToMatrices();
+    DTensor<int> infoArray(batchSize); // TODO consider preallocating?
     gpuErrChk(cublasSgelsBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N,
                                  m_numRows,
                                  m_numCols,
                                  nColsB,
-                                 As.raw(),
+                                 m_d_ptrMatrices,
                                  m_numRows,
-                                 Bs.raw(),
+                                 B.m_d_ptrMatrices,
                                  m_numRows,
                                  &info,
                                  infoArray.raw(),
@@ -1775,11 +1871,10 @@ public:
 template<>
 inline void CholeskyBatchFactoriser<double>::factorise() {
     if (m_factorisationDone) return;
-    DTensor<double *> ptrA = m_matrix->pointersToMatrices();
     gpuErrChk(cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
@@ -1789,11 +1884,10 @@ inline void CholeskyBatchFactoriser<double>::factorise() {
 template<>
 inline void CholeskyBatchFactoriser<float>::factorise() {
     if (m_factorisationDone) return;
-    DTensor<float *> ptrA = m_matrix->pointersToMatrices();
     gpuErrChk(cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
@@ -1807,15 +1901,13 @@ inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
-    DTensor<double *> ptrA = m_matrix->pointersToMatrices();
-    DTensor<double *> ptrB = b.pointersToMatrices();
     gpuErrChk(cusolverDnDpotrsBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
                                       1,  ///< only supports rhs = 1
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      ptrB.raw(),
+                                      b.ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
@@ -1828,15 +1920,13 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
-    DTensor<float *> ptrA = m_matrix->pointersToMatrices();
-    DTensor<float *> ptrB = b.pointersToMatrices();
     gpuErrChk(cusolverDnSpotrsBatched(Session::getInstance().cuSolverHandle(),
                                       CUBLAS_FILL_MODE_LOWER,
                                       m_numRows,
                                       1,  ///< only supports rhs = 1
-                                      ptrA.raw(),
+                                      m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      ptrB.raw(),
+                                      b.ptrMatrices(),
                                       m_numRows,
                                       m_deviceInfo->raw(),
                                       m_numMats));
