@@ -359,6 +359,7 @@ public:
      * Creates a vector of pointers to the matrices of this tensor.
      * The vector is an (n,1,1)-tensor, where n is the number of matrices in this tensor.
      * @return vector of pointers to the first element of each matrix
+     * @deprecated
      */
     DTensor<T *> pointersToMatrices() const;
 
@@ -1032,17 +1033,15 @@ inline void DTensor<double>::leastSquaresBatched(DTensor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
-    DTensor<int> infoArray(batchSize);
-    DTensor<double *> As = pointersToMatrices();
-    DTensor<double *> Bs = B.pointersToMatrices();
+    DTensor<int> infoArray(batchSize); // TODO consider preallocating?
     gpuErrChk(cublasDgelsBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N,
                                  m_numRows,
                                  m_numCols,
                                  nColsB,
-                                 As.raw(),
+                                 m_d_ptrMatrices,
                                  m_numRows,
-                                 Bs.raw(),
+                                 B.m_d_ptrMatrices,
                                  m_numRows,
                                  &info,
                                  infoArray.raw(),
@@ -1062,17 +1061,15 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
-    DTensor<int> infoArray(batchSize);
-    DTensor<float *> As = pointersToMatrices();
-    DTensor<float *> Bs = B.pointersToMatrices();
+    DTensor<int> infoArray(batchSize); // TODO consider preallocating?
     gpuErrChk(cublasSgelsBatched(Session::getInstance().cuBlasHandle(),
                                  CUBLAS_OP_N,
                                  m_numRows,
                                  m_numCols,
                                  nColsB,
-                                 As.raw(),
+                                 m_d_ptrMatrices,
                                  m_numRows,
-                                 Bs.raw(),
+                                 B.m_d_ptrMatrices,
                                  m_numRows,
                                  &info,
                                  infoArray.raw(),
