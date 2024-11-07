@@ -202,9 +202,8 @@ private:
      * Allocate `size` number of `T` data on the device.
      * @param size number of data elements to allocate
      * @param zero sets allocated data to `0`
-     * @return
      */
-    bool allocateOnDevice(size_t size, bool zero = false);
+    void allocateOnDevice(size_t size, bool zero = false);
 
     /**
      * Create column-major `std::vector` from a row-major one.
@@ -837,23 +836,24 @@ void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, const T *c, const T
 }
 
 template<typename T>
-inline bool DTensor<T>::allocateOnDevice(size_t size, bool zero) {
-    if (size <= 0) return false;
+inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
+    cudaError_t cudaStatus;
+    if (size <= 0) return;
     destroy();
     m_doDestroyData = true;
     size_t buffer_size = size * sizeof(T);
-    bool cudaStatus = cudaMalloc(&m_d_data, buffer_size);
-    if (cudaStatus != cudaSuccess) return false;
+    gpuErrChk(cudaMalloc(&m_d_data, buffer_size));
     if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
 
     if (numMats() > 1) {
         m_doDestroyPtrMatrices = true;
         cudaStatus = cudaMalloc(&m_d_ptrMatrices, numMats() * sizeof(T *));
+        if (cudaStatus != cudaSuccess) {
+            gpuErrChk(cudaFree(m_d_data));
+        }
     } else {
         m_doDestroyPtrMatrices = false;
     }
-
-    return (cudaStatus != cudaSuccess);
 }
 
 template<typename T>

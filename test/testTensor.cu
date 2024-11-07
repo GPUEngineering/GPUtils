@@ -123,7 +123,7 @@ TEMPLATE_WITH_TYPE_T
 void tensorMoveConstructor() {
     DTensor<T> zero(2, 3, 4, true);
     DTensor<T> x(std::move(zero));
-    DTensor<T> y(DTensor < T > {100, 10, 1000});
+    DTensor<T> y(DTensor<T> {100, 10, 1000});
 }
 
 TEST_F(TensorTest, tensorMoveConstructor) {
