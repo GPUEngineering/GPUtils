@@ -657,6 +657,7 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numMats = 1;
     }
     m_d_data = other.m_d_data + offset;
+    m_d_ptrMatrices = other.m_d_ptrMatrices + from;
     m_doDestroyData = false;
     m_doDestroyPtrMatrices = false;
     if (axis != 2) {
