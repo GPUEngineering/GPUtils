@@ -33,10 +33,10 @@ tests() {
     if [ -z "${hwInfoOrin}" ]; then
 
       # -- run compute sanitizer
-      cd ./build/test
+      pushd ./build/test
       mem=$(/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check=full ./device_test)
       grep "0 errors" <<< "$mem"
-      cd ../..
+      popd
 
       # ------------------------------------
       # Run example executable

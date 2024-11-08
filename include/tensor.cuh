@@ -560,9 +560,8 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
         auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
         DTensor<T> a(randVec, numRows, numCols, numMats);
         return a;
-    } else {
-        throw std::invalid_argument("[createRandomTensor] unsupported type T");
     }
+    throw std::invalid_argument("[createRandomTensor] unsupported type T");
 }
 
 template<typename T>
