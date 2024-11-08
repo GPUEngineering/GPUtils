@@ -747,16 +747,38 @@ TEST_F(TensorTest, tensorAddAB) {
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
-void tensorSlicePtrMatrices() {
+void tensorSliceAxis2PtrMatrices() {
     std::vector<T> dataA = TENSOR_DATA_234A;
     DTensor<T> d_A(dataA, 2, 3, 4);
     DTensor<T> d_ASlice(d_A, 2, 2, 3);
     EXPECT_TRUE(d_ASlice.ptrMatrices() == d_A.ptrMatrices() + 2);
 }
 
-TEST_F(TensorTest, tensorSlicePtrMatrices) {
-    tensorSlicePtrMatrices<float>();
-    tensorSlicePtrMatrices<double>();
+TEST_F(TensorTest, tensorSliceAxis2PtrMatrices) {
+    tensorSliceAxis2PtrMatrices<float>();
+    tensorSliceAxis2PtrMatrices<double>();
+    tensorSliceAxis2PtrMatrices<int>();
+}
+
+/* ---------------------------------------
+ * Tensor: slice ptrMatrices
+ * axis = 0 and 1
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorSliceAxis01PtrMatrices() {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    DTensor<T> d_A(dataA, 2, 3, 4);
+    DTensor<T> d_ASlice0(d_A, 0, 0, 1);
+    EXPECT_TRUE(!d_ASlice0.ptrMatrices());
+    DTensor<T> d_ASlice1(d_A, 1, 0, 2);
+    EXPECT_TRUE(!d_ASlice0.ptrMatrices());
+}
+
+TEST_F(TensorTest, tensorSliceAxis01PtrMatrices) {
+    tensorSliceAxis01PtrMatrices<float>();
+    tensorSliceAxis01PtrMatrices<double>();
+    tensorSliceAxis01PtrMatrices<int>();
 }
 
 /* ---------------------------------------
