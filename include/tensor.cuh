@@ -640,11 +640,13 @@ template<typename T>
 DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to) {
     if (from > to) throw std::invalid_argument("from > to");
     size_t offset = 0, len = to - from + 1;
+    m_d_ptrMatrices = nullptr;
     if (axis == 2) {
         offset = other.m_numRows * other.m_numCols * from;
         m_numRows = other.m_numRows;
         m_numCols = other.m_numCols;
         m_numMats = len;
+        m_d_ptrMatrices = other.m_d_ptrMatrices + from;
     } else if (axis == 1) {
         offset = other.m_numRows * from;
         m_numRows = other.m_numRows;
@@ -657,13 +659,8 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numMats = 1;
     }
     m_d_data = other.m_d_data + offset;
-    m_d_ptrMatrices = other.m_d_ptrMatrices + from;
     m_doDestroyData = false;
     m_doDestroyPtrMatrices = false;
-    if (axis != 2) {
-        // m_d_ptrMatrices is not needed for vectors and matrices
-        m_d_ptrMatrices = nullptr;
-    }
 }
 
 template<typename T>
