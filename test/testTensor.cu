@@ -1002,6 +1002,7 @@ void choleskyFactorisation(T epsilon) {
     EXPECT_NEAR(3.162277660168380, A(0, 0), epsilon);
     EXPECT_NEAR(-0.361403161162101, A(2, 1), epsilon);
     EXPECT_NEAR(5.382321781081287, A(2, 2), epsilon);
+    EXPECT_EQ(0, chol.statusCode());
 }
 
 TEST_F(CholeskyTest, choleskyFactorisation) {

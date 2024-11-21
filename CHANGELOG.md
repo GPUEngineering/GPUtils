@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- ---------------------
       v1.3.1
      --------------------- -->
+## v1.4.0 - 22-11-2024
+
+### Changed
+
+- (Breaking change) The methods `CholeskyFactoriser::factorise`, `CholeskyFactoriser::solve`, `QRFactoriser::factorise`,
+  `QRFactoriser::leastSquares`, and `QRFactoriser::getQR` are now `void` and do not 
+  return a status code. Instead, a status code is returned by called `statusCode`.
+  This change leads to a reduction in data being downloaded from the GPU.
+- In `Svd` a status code (`bool`) is returned from `Svd<double>::factorise` only if the 
+  `#GPUTILS_DEBUG_MODE` is defined, otherwise, the method returns always `true`.
+- New base class `IStatus` used for a universal implementation of `statusCode()`
+
+<!-- ---------------------
+      v1.3.1
+     --------------------- -->
 ## v1.3.1 - 8-11-2024
 
 ### Fixed

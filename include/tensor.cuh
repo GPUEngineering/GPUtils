@@ -560,9 +560,8 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
         auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
         DTensor<T> a(randVec, numRows, numCols, numMats);
         return a;
-    } else {
-        throw std::invalid_argument("[createRandomTensor] unsupported type T");
     }
+    throw std::invalid_argument("[createRandomTensor] unsupported type T");
 }
 
 template<typename T>
@@ -1169,6 +1168,29 @@ std::ostream &DTensor<T>::print(std::ostream &out) const {
 }
 
 
+
+/* ================================================================================================
+ *  STATUS INTERFACE
+ * ================================================================================================ */
+/**
+ * A class that holds a device pointer to a status code
+ */
+class IStatus {
+protected:
+    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
+public:
+    /**
+     * If the status code is 0, everything went OK. Note that this method
+     * will download an integer from the GPU.
+     *
+     * @return status code of last call
+     */
+    virtual int statusCode(){
+        return (*m_info)(0);
+    }
+};
+
+
 /* ================================================================================================
  *  SINGULAR VALUE DECOMPOSITION (SVD)
  * ================================================================================================ */
@@ -1189,6 +1211,7 @@ __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigne
     }
 }
 
+
 /**
  * Singular value decomposition (SVD) needs a workspace to be setup for cuSolver before factorisation.
  * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
@@ -1196,7 +1219,7 @@ __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigne
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class Svd {
+class Svd : public IStatus {
 
 private:
 
@@ -1206,7 +1229,6 @@ private:
     std::shared_ptr<DTensor<T>> m_S;  ///< Diagonal matrix S or singular values
     std::shared_ptr<DTensor<T>> m_U;  ///< Matrix U or left singular vectors
     std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for SVD
-    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
     std::shared_ptr<DTensor<unsigned int>> m_rank;  ///< Rank of original matrix
     bool m_computeU = false;  ///< Whether to compute U
     bool m_destroyMatrix = true; ///< Whether to sacrifice original matrix
@@ -1259,7 +1281,9 @@ public:
     /**
      * Perform factorisation.
      * Warning: the original matrix is destroyed by default!
-     * @return true if factorisation is successful
+     * @return if the macro GPUTILS_DEBUG_MODE is defined, then this method checks whether all computations are
+     *         successful and returns true or false, accordingly. If GPUTILS_DEBUG_MODE is not defined, this method
+     *         will return true.
      */
     bool factorise();
 
@@ -1311,15 +1335,7 @@ public:
         return *m_rank;
     }
 
-    /**
-     * If the status code is 0, everything went OK. Note that this method
-     * will download an integer from the GPU.
-     *
-     * @return status code of last call
-     */
-    int statusCode(){
-        return (*m_info)(0);
-    }
+
 
 };
 
@@ -1411,11 +1427,10 @@ inline bool Svd<float>::factorise() {
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class CholeskyFactoriser {
+class CholeskyFactoriser : public IStatus {
 
 private:
     int m_workspaceSize = 0;  ///< Size of workspace needed for CF
-    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
     std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for CF
     DTensor<T> *m_matrix;  ///< Matrix to factorise. Do not destroy!
 
@@ -1449,15 +1464,6 @@ public:
      */
     void solve(DTensor<T> &b);
 
-    /**
-     * If the status code is 0, everything went OK. Note that this method
-     * will download an integer from the GPU.
-     *
-     * @return status code of last call
-     */
-    int statusCode(){
-        return (*m_info)(0);
-    }
 
 };
 
@@ -1532,11 +1538,10 @@ inline void CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class QRFactoriser {
+class QRFactoriser : public IStatus {
 
 private:
     int m_workspaceSize = 0;  ///< Size of workspace needed for LS
-    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
     std::unique_ptr<DTensor<T>> m_householder;  ///< For storing householder reflectors
     std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for LS
     DTensor<T> *m_matrix;  ///< Lhs matrix template. Do not destroy!
@@ -1583,15 +1588,6 @@ public:
      */
     void getQR(DTensor<T> &Q, DTensor<T> &R);
 
-    /**
-     * If the status code is 0, everything went OK. Note that this method
-     * will download an integer from the GPU.
-     *
-     * @return status code of last call
-     */
-    int statusCode(){
-        return (*m_info)(0);
-    }
 
 };
 
@@ -1849,13 +1845,12 @@ inline void Nullspace<T>::project(DTensor<T> &b) {
  * @tparam T data type of tensor (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class CholeskyBatchFactoriser {
+class CholeskyBatchFactoriser : public IStatus {
 
 private:
     DTensor<T> *m_matrix;  ///< Matrix to factorise or lower-triangular decomposed matrix
     size_t m_numRows = 0;  ///< Number of rows in `m_matrix`
     size_t m_numMats = 0;  ///< Number of matrices in `m_matrix`
-    std::unique_ptr<DTensor<int>> m_deviceInfo;  ///< Info from cusolver functions
     bool m_factorisationDone = false;  ///< Whether `m_matrix` holds original or lower-triangular matrix
 
 public:
@@ -1871,7 +1866,7 @@ public:
         m_matrix = &A;
         m_numRows = A.numRows();
         m_numMats = A.numMats();
-        m_deviceInfo = std::make_unique<DTensor<int>>(m_numMats, 1, 1, true);
+        m_info = std::make_unique<DTensor<int>>(m_numMats, 1, 1, true);
     }
 
     /**
@@ -1885,15 +1880,6 @@ public:
      */
     void solve(DTensor<T> &b);
 
-    /**
-     * If the status code is 0, everything went OK. Note that this method
-     * will download an integer from the GPU.
-     *
-     * @return status code of last call
-     */
-    int statusCode(){
-        return (*m_deviceInfo)(0);
-    }
 
 };
 
@@ -1905,7 +1891,7 @@ inline void CholeskyBatchFactoriser<double>::factorise() {
                                       m_numRows,
                                       m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
     m_factorisationDone = true;
 }
@@ -1918,7 +1904,7 @@ inline void CholeskyBatchFactoriser<float>::factorise() {
                                       m_numRows,
                                       m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
     m_factorisationDone = true;
 }
@@ -1938,7 +1924,7 @@ inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
                                       m_numRows,
                                       b.ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
 }
 
@@ -1957,7 +1943,7 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
                                       m_numRows,
                                       b.ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
 }
 
