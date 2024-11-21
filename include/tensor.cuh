@@ -1178,6 +1178,11 @@ std::ostream &DTensor<T>::print(std::ostream &out) const {
 class IStatus {
 protected:
     std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
+
+    IStatus() {
+        m_info = std::make_unique<DTensor<int>>(1);
+    }
+
 public:
     /**
      * If the status code is 0, everything went OK. Note that this method
@@ -1232,6 +1237,7 @@ private:
     std::shared_ptr<DTensor<unsigned int>> m_rank;  ///< Rank of original matrix
     bool m_computeU = false;  ///< Whether to compute U
     bool m_destroyMatrix = true; ///< Whether to sacrifice original matrix
+    int m_svdStatus = 0;
 
     /**
      * Ensures tensor to factorise contains exactly one matrix, and that matrix is tall.
@@ -1250,7 +1256,13 @@ private:
      */
     void computeWorkspaceSize(size_t m, size_t n);
 
+
 public:
+
+    int getStatus() {
+        // redefinition of getStatus
+        return m_svdStatus;
+    }
 
     /**
      * Constructor.
@@ -1260,7 +1272,7 @@ public:
      */
     Svd(DTensor<T> &mat,
         bool computeU = false,
-        bool destroyMatrix = true) {
+        bool destroyMatrix = true) : IStatus() {
         checkMatrix(mat);
         m_destroyMatrix = destroyMatrix;
         m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
@@ -1273,7 +1285,6 @@ public:
         m_workspace = std::make_unique<DTensor<T>>(m_lwork, 1, 1);  ///< Allocates required workspace memory
         m_Vtr = std::make_shared<DTensor<T>>(n, n, nMats);
         m_S = std::make_shared<DTensor<T>>(minMN, 1, nMats);
-        m_info = std::make_unique<DTensor<int>>(1, 1, nMats);
         m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, nMats, true);
         if (computeU) m_U = std::make_shared<DTensor<T>>(m, m, nMats);
     }
@@ -1281,11 +1292,8 @@ public:
     /**
      * Perform factorisation.
      * Warning: the original matrix is destroyed by default!
-     * @return if the macro GPUTILS_DEBUG_MODE is defined, then this method checks whether all computations are
-     *         successful and returns true or false, accordingly. If GPUTILS_DEBUG_MODE is not defined, this method
-     *         will return true.
      */
-    bool factorise();
+    void factorise();
 
     /**
      * @return diagonal matrix S, or singular values
@@ -1352,11 +1360,10 @@ inline void Svd<double>::computeWorkspaceSize(size_t m, size_t n) {
 
 
 template<>
-inline bool Svd<double>::factorise() {
+inline void Svd<double>::factorise() {
     size_t m = m_tensor->numRows();
     size_t n = m_tensor->numCols();
     size_t nMats = m_tensor->numMats();
-    bool info = true;
     std::unique_ptr<DTensor<double>> Ui;
     for (size_t i = 0; i < nMats; i++) {
         DTensor<double> Ai(*m_tensor, 2, i, i); // tensor A[:, :, i]
@@ -1377,18 +1384,16 @@ inline bool Svd<double>::factorise() {
                                  nullptr,  // rwork (used only if SVD fails)
                                  m_info->raw()));
 #ifdef GPUTILS_DEBUG_MODE
-        info = info && ((*m_info)(0, 0, 0) == 0);
+        m_svdStatus = std::max(m_svdStatus, (*m_info)(0, 0, 0));
 #endif
     }
-    return info;
 }
 
 template<>
-inline bool Svd<float>::factorise() {
+inline void Svd<float>::factorise() {
     size_t m = m_tensor->numRows();
     size_t n = m_tensor->numCols();
     size_t nMats = m_tensor->numMats();
-    bool info = true;
     std::unique_ptr<DTensor<float>> Ui;
     for (size_t i = 0; i < nMats; i++) {
         DTensor<float> Ai(*m_tensor, 2, i, i); // tensor A[:, :, i]
@@ -1409,10 +1414,9 @@ inline bool Svd<float>::factorise() {
                                  nullptr,  // rwork (used only if SVD fails)
                                  m_info->raw()));
 #ifdef GPUTILS_DEBUG_MODE
-        info = info && ((*m_info)(0, 0, 0) == 0);
+        m_svdStatus = std::max(m_svdStatus, (*m_info)(0, 0, 0));
 #endif
     }
-    return info;
 }
 
 
@@ -1441,13 +1445,12 @@ private:
 
 public:
 
-    CholeskyFactoriser(DTensor<T> &A) {
+    CholeskyFactoriser(DTensor<T> &A) : IStatus() {
         if (A.numMats() > 1) throw std::invalid_argument("[Cholesky] 3D tensors require `CholeskyBatchFactoriser`");
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be square");
         m_matrix = &A;
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
-        m_info = std::make_unique<DTensor<int>>(1);
     }
 
     /**
@@ -1553,14 +1556,13 @@ private:
 
 public:
 
-    QRFactoriser(DTensor<T> &A) {
+    QRFactoriser(DTensor<T> &A) : IStatus() {
         if (A.numMats() > 1) throw std::invalid_argument("[QR] 3D tensors require `leastSquaresBatched`");
         if (A.numRows() < A.numCols()) throw std::invalid_argument("[QR] Matrix A must be tall or square");
         m_matrix = &A;
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
         m_householder = std::make_unique<DTensor<T>>(m_matrix->numCols());
-        m_info = std::make_unique<DTensor<int>>(1);
     }
 
     /**
@@ -1861,12 +1863,11 @@ public:
      * @param A either matrices to be factorised or lower-triangular Cholesky decomposition matrices
      * @param factorised whether A is the original matrices or the factorised ones (default=original matrices)
      */
-    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : m_factorisationDone(factorised) {
+    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : IStatus(), m_factorisationDone(factorised) {
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be square");
         m_matrix = &A;
         m_numRows = A.numRows();
         m_numMats = A.numMats();
-        m_info = std::make_unique<DTensor<int>>(m_numMats, 1, 1, true);
     }
 
     /**

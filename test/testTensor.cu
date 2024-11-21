@@ -858,7 +858,8 @@ void singularValuesComputation(float epsilon) {
                             3, 8, 8, 8, 8, 8, 8, 8,};
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
-    EXPECT_EQ(true, svd.factorise());
+    svd.factorise();
+    EXPECT_EQ(0, svd.getStatus());
     auto S = svd.singularValues();
     EXPECT_NEAR(32.496241123753592, S(0), epsilon); // value from MATLAB
     EXPECT_NEAR(0.997152358903242, S(1), epsilon); // value from MATLAB
@@ -885,7 +886,8 @@ void singularValuesMemory(float epsilon) {
                             3, 8, 8, 8, 8, 8, 8, 8,};
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
-    EXPECT_EQ(true, svd.factorise());
+    svd.factorise();
+    EXPECT_EQ(0, svd.getStatus());
     DTensor<T> const &v1 = svd.rightSingularVectors();
     DTensor<T> const &v2 = svd.rightSingularVectors();
     EXPECT_EQ(&v1, &v2);
