@@ -865,6 +865,7 @@ void singularValuesComputation(float epsilon) {
 
     auto U = svd.leftSingularVectors();
     EXPECT_TRUE(U.has_value());
+    EXPECT_EQ(0, svd.statusCode());
 }
 
 TEST_F(SvdTest, singularValuesComputation) {
@@ -1067,6 +1068,8 @@ void choleskyBatchFactorisation(T epsilon) {
     EXPECT_NEAR(3.162277660168380, A(0, 0, 1), epsilon);
     EXPECT_NEAR(-0.361403161162101, A(2, 1, 1), epsilon);
     EXPECT_NEAR(5.382321781081287, A(2, 2, 1), epsilon);
+
+    EXPECT_EQ(0, chol.statusCode());
 }
 
 TEST_F(CholeskyTest, choleskyBatchFactorisation) {
@@ -1107,6 +1110,7 @@ void choleskyBatchFactorSolve(T epsilon) {
     DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
+    EXPECT_EQ(0, chol.statusCode());
 }
 
 TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
@@ -1154,6 +1158,7 @@ void choleskyBatchSolve(T epsilon) {
     DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
+    EXPECT_EQ(0, chol.statusCode());
 }
 
 TEST_F(CholeskyTest, choleskyBatchSolve) {
@@ -1185,13 +1190,13 @@ void qrFactorisation(T epsilon) {
     DTensor<T> A = DTensor<T>::createRandomTensor(nR, nC, 1, -100, 100);
     QRFactoriser<T> qr(temp);
     A.deviceCopyTo(temp);
-    int status = qr.factorise();
-    EXPECT_EQ(status, 0);
+    qr.factorise();
+    EXPECT_EQ(0, qr.statusCode());
     DTensor<T> Q(nR, nC);
     DTensor<T> R(nC, nC, 1, true);
     DTensor<T> QR(nR, nC);
-    status = qr.getQR(Q, R);
-    EXPECT_EQ(status, 0);
+    qr.getQR(Q, R);
+    EXPECT_EQ(0, qr.statusCode());
     QR.addAB(Q, R);
     QR -= A;
     T nrm = QR.normF();
@@ -1216,13 +1221,13 @@ void qrFactorisationTall(T epsilon) {
     DTensor<T> A = DTensor<T>::createRandomTensor(nR, nC, 1, -100, 100);
     QRFactoriser<T> qr(temp);
     A.deviceCopyTo(temp);
-    int status = qr.factorise();
-    EXPECT_EQ(status, 0);
+    qr.factorise();
+    EXPECT_EQ(0, qr.statusCode());
     DTensor<T> Q(nR, nC);
     DTensor<T> R(nC, nC, 1, true);
     DTensor<T> QR(nR, nC);
-    status = qr.getQR(Q, R);
-    EXPECT_EQ(status, 0);
+    qr.getQR(Q, R);
+    EXPECT_EQ(0, qr.statusCode());
     QR.addAB(Q, R);
     QR -= A;
     T nrm = QR.normF();
@@ -1258,11 +1263,11 @@ void qrLeastSquares(T epsilon) {
     DTensor<T> Ax(nR);
     QRFactoriser<T> qr(temp);
     A.deviceCopyTo(temp);
-    int status = qr.factorise();
-    EXPECT_EQ(status, 0);
+    qr.factorise();
+    EXPECT_EQ(0, qr.statusCode());
     b.deviceCopyTo(xFull);
-    status = qr.leastSquares(xFull);
-    EXPECT_EQ(status, 0);
+    qr.leastSquares(xFull);
+    EXPECT_EQ(0, qr.statusCode());
     Ax.addAB(A, x);
     Ax -= b;
     T nrm = Ax.normF();

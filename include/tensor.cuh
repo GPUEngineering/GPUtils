@@ -1311,6 +1311,16 @@ public:
         return *m_rank;
     }
 
+    /**
+     * If the status code is 0, everything went OK. Note that this method
+     * will download an integer from the GPU.
+     *
+     * @return status code of last call
+     */
+    int statusCode(){
+        return (*m_info)(0);
+    }
+
 };
 
 
@@ -1350,7 +1360,9 @@ inline bool Svd<double>::factorise() {
                                  m_lwork,
                                  nullptr,  // rwork (used only if SVD fails)
                                  m_info->raw()));
+#ifdef GPUTILS_DEBUG_MODE
         info = info && ((*m_info)(0, 0, 0) == 0);
+#endif
     }
     return info;
 }
@@ -1380,7 +1392,9 @@ inline bool Svd<float>::factorise() {
                                  m_lwork,
                                  nullptr,  // rwork (used only if SVD fails)
                                  m_info->raw()));
+#ifdef GPUTILS_DEBUG_MODE
         info = info && ((*m_info)(0, 0, 0) == 0);
+#endif
     }
     return info;
 }
@@ -1423,9 +1437,8 @@ public:
 
     /**
      * Factorise matrix.
-     * @return status code of computation
      */
-    int factorise();
+    void factorise();
 
     /**
      * Solves for the solution of A \ b using the CF of A.
@@ -1433,9 +1446,18 @@ public:
      * A and b must have compatible dimensions (same number of rows and matrices=1).
      * A must be square (m=n).
      * @param b provided matrix
-     * @return status code of computation
      */
-    int solve(DTensor<T> &b);
+    void solve(DTensor<T> &b);
+
+    /**
+     * If the status code is 0, everything went OK. Note that this method
+     * will download an integer from the GPU.
+     *
+     * @return status code of last call
+     */
+    int statusCode(){
+        return (*m_info)(0);
+    }
 
 };
 
@@ -1456,30 +1478,28 @@ inline void CholeskyFactoriser<float>::computeWorkspaceSize() {
 }
 
 template<>
-inline int CholeskyFactoriser<double>::factorise() {
+inline void CholeskyFactoriser<double>::factorise() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
                                m_matrix->raw(), n,
                                m_workspace->raw(),
                                m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 
 template<>
-inline int CholeskyFactoriser<float>::factorise() {
+inline void CholeskyFactoriser<float>::factorise() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
                                m_matrix->raw(), n,
                                m_workspace->raw(),
                                m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 template<>
-inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
+inline void CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
@@ -1487,11 +1507,10 @@ inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
                                m_matrix->raw(), n,
                                rhs.raw(), n,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 template<>
-inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
+inline void CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
@@ -1499,7 +1518,6 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
                                m_matrix->raw(), n,
                                rhs.raw(), n,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 
@@ -1542,9 +1560,8 @@ public:
 
     /**
      * Factorise matrix.
-     * @return status code of computation
      */
-    int factorise();
+    void factorise();
 
     /**
      * Solves A \ b using the QR of A.
@@ -1552,9 +1569,8 @@ public:
      * A and b must have compatible dimensions (same number of rows and matrices=1).
      * A must be tall or square (m>=n).
      * @param b provided matrix
-     * @return status code of computation
      */
-    int leastSquares(DTensor<T> &b);
+    void leastSquares(DTensor<T> &b);
 
     /**
      * Populate the given tensors with Q and R.
@@ -1562,11 +1578,20 @@ public:
      *
      * @param Q matrix Q (preallocated)
      * @param R matrix R (preallocated)
-     * @return status code
      *
      * @throws std::invalid_argument if Q or R have invalid dimensions
      */
-    int getQR(DTensor<T> &Q, DTensor<T> &R);
+    void getQR(DTensor<T> &Q, DTensor<T> &R);
+
+    /**
+     * If the status code is 0, everything went OK. Note that this method
+     * will download an integer from the GPU.
+     *
+     * @return status code of last call
+     */
+    int statusCode(){
+        return (*m_info)(0);
+    }
 
 };
 
@@ -1591,7 +1616,7 @@ inline void QRFactoriser<float>::computeWorkspaceSize() {
 }
 
 template<>
-inline int QRFactoriser<double>::factorise() {
+inline void QRFactoriser<double>::factorise() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     gpuErrChk(cusolverDnDgeqrf(Session::getInstance().cuSolverHandle(),
@@ -1600,12 +1625,11 @@ inline int QRFactoriser<double>::factorise() {
                                m_householder->raw(),
                                m_workspace->raw(), m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 
 template<>
-inline int QRFactoriser<float>::factorise() {
+inline void QRFactoriser<float>::factorise() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     gpuErrChk(cusolverDnSgeqrf(Session::getInstance().cuSolverHandle(),
@@ -1614,11 +1638,10 @@ inline int QRFactoriser<float>::factorise() {
                                m_householder->raw(),
                                m_workspace->raw(), m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
+inline void QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     double alpha = 1.;
@@ -1634,11 +1657,10 @@ inline int QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
                           &alpha,
                           m_matrix->raw(), m,
                           rhs.raw(), m));
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
+inline void QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     float alpha = 1.;
@@ -1654,11 +1676,10 @@ inline int QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
                           &alpha,
                           m_matrix->raw(), m,
                           rhs.raw(), m));
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
+inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     if (Q.numRows() != m || Q.numCols() != n)
@@ -1689,11 +1710,10 @@ inline int QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
         }
     }
     R.upload(vecR, rowMajor);
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
+inline void QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     if (Q.numRows() != m || Q.numCols() != n)
@@ -1724,7 +1744,6 @@ inline int QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
         }
     }
     R.upload(vecR, rowMajor);
-    return (*m_info)(0);
 }
 
 
@@ -1865,6 +1884,16 @@ public:
      * @param b vector in system Ax=b to be solved where x is the solution
      */
     void solve(DTensor<T> &b);
+
+    /**
+     * If the status code is 0, everything went OK. Note that this method
+     * will download an integer from the GPU.
+     *
+     * @return status code of last call
+     */
+    int statusCode(){
+        return (*m_deviceInfo)(0);
+    }
 
 };
 
