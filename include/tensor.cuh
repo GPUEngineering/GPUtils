@@ -1270,7 +1270,7 @@ public:
      */
     Svd(DTensor<T> &mat,
         bool computeU = false,
-        bool destroyMatrix = true) : IStatus(mat.numMats()) {
+        bool destroyMatrix = true) : IStatus() {
         checkMatrix(mat);
         m_destroyMatrix = destroyMatrix;
         m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
