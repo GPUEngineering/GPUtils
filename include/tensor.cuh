@@ -1177,8 +1177,8 @@ class IStatus {
 protected:
     std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
 
-    IStatus() {
-        m_info = std::make_unique<DTensor<int>>(1, 1, 1024);
+    IStatus(size_t n = 1) {
+        m_info = std::make_unique<DTensor<int>>(1, 1, n);
     }
 
 public:
@@ -1257,7 +1257,7 @@ private:
 
 public:
 
-    int getStatus() {
+    int statusCode() {
         // redefinition of getStatus
         return m_svdStatus;
     }
@@ -1270,7 +1270,7 @@ public:
      */
     Svd(DTensor<T> &mat,
         bool computeU = false,
-        bool destroyMatrix = true) : IStatus() {
+        bool destroyMatrix = true) : IStatus(mat.numMats()) {
         checkMatrix(mat);
         m_destroyMatrix = destroyMatrix;
         m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
@@ -1861,7 +1861,7 @@ public:
      * @param A either matrices to be factorised or lower-triangular Cholesky decomposition matrices
      * @param factorised whether A is the original matrices or the factorised ones (default=original matrices)
      */
-    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : IStatus(), m_factorisationDone(factorised) {
+    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : IStatus(A.numMats()), m_factorisationDone(factorised) {
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be square");
         m_matrix = &A;
         m_numRows = A.numRows();
