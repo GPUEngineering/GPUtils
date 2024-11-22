@@ -1178,7 +1178,7 @@ protected:
     std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
 
     IStatus() {
-        m_info = std::make_unique<DTensor<int>>(1);
+        m_info = std::make_unique<DTensor<int>>(1, 1, 1);
     }
 
 public:
