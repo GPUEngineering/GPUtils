@@ -2032,7 +2032,8 @@ __global__ void k_givensAnnihilateRHypot(const T *data,
     res[2] = xkj * (*res); // -sin
 }
 
-template<typename T>
+
+template<typename T> TEMPLATE_CONSTRAINT_REQUIRES_FPX
 inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
     /* A few checks */
     size_t nR = m_matrix->numRows(), nC = m_matrix->numCols();
