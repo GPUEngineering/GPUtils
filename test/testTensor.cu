@@ -194,6 +194,7 @@ void tensorSlicingConstructorAxis2() {
     EXPECT_EQ(3, tensSlice.numCols());
     EXPECT_EQ(2, tensSlice.numMats());
     EXPECT_EQ(tens.raw(), tensSlice.raw()); // it is indeed a slice
+    EXPECT_TRUE(tensSlice.ptrMatrices() != nullptr);
 }
 
 TEST_F(TensorTest, tensorSlicingConstructorAxis2) {
@@ -215,6 +216,7 @@ void tensorSlicingConstructorAxis1() {
     EXPECT_EQ(2, tenzSlice.numRows());
     EXPECT_EQ(2, tenzSlice.numCols());
     EXPECT_EQ(1, tenzSlice.numMats());
+    EXPECT_TRUE(tenzSlice.ptrMatrices() == nullptr);
     std::vector<T> expected = {3, 4, 5, 6};
     std::vector<T> tenzSliceDown(4);
     tenzSlice.download(tenzSliceDown);
@@ -229,7 +231,7 @@ TEST_F(TensorTest, tensorSlicingConstructorAxis1) {
 
 /* ---------------------------------------
  * Tensor: Slicing constructor
- * axis = 0 (columns)
+ * axis = 0 (rows)
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
@@ -240,6 +242,7 @@ void tensorSlicingConstructorAxis0() {
     EXPECT_EQ(2, tenzSlice.numRows());
     EXPECT_EQ(1, tenzSlice.numCols());
     EXPECT_EQ(1, tenzSlice.numMats());
+    EXPECT_TRUE(tenzSlice.ptrMatrices() == nullptr);
     std::vector<T> expected = {3, 4};
     std::vector<T> tenzSliceDown(2);
     tenzSlice.download(tenzSliceDown);
@@ -736,6 +739,46 @@ void tensorAddAB() {
 TEST_F(TensorTest, tensorAddAB) {
     tensorAddAB<double>();
     tensorAddAB<float>();
+}
+
+/* ---------------------------------------
+ * Tensor: slice ptrMatrices
+ * axis = 2 (matrices)
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorSliceAxis2PtrMatrices() {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    DTensor<T> d_A(dataA, 2, 3, 4);
+    DTensor<T> d_ASlice(d_A, 2, 2, 3);
+    EXPECT_TRUE(d_ASlice.ptrMatrices() == d_A.ptrMatrices() + 2);
+}
+
+TEST_F(TensorTest, tensorSliceAxis2PtrMatrices) {
+    tensorSliceAxis2PtrMatrices<float>();
+    tensorSliceAxis2PtrMatrices<double>();
+    tensorSliceAxis2PtrMatrices<int>();
+}
+
+/* ---------------------------------------
+ * Tensor: slice ptrMatrices
+ * axis = 0 and 1
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void tensorSliceAxis01PtrMatrices() {
+    std::vector<T> dataA = TENSOR_DATA_234A;
+    DTensor<T> d_A(dataA, 2, 3, 4);
+    DTensor<T> d_ASlice0(d_A, 0, 0, 1);
+    EXPECT_TRUE(!d_ASlice0.ptrMatrices());
+    DTensor<T> d_ASlice1(d_A, 1, 0, 2);
+    EXPECT_TRUE(!d_ASlice0.ptrMatrices());
+}
+
+TEST_F(TensorTest, tensorSliceAxis01PtrMatrices) {
+    tensorSliceAxis01PtrMatrices<float>();
+    tensorSliceAxis01PtrMatrices<double>();
+    tensorSliceAxis01PtrMatrices<int>();
 }
 
 /* ---------------------------------------
