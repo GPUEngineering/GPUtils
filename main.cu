@@ -21,7 +21,7 @@ int main() {
     A1.upload(aData);
     CholeskyBatchFactoriser<real_t> chol(A);
     chol.factorise();
-    std::cout << chol.status()(0);
+    std::cout << chol.info()(0);
 
     return 0;
 }
