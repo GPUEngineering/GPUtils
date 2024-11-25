@@ -1182,14 +1182,13 @@ protected:
     }
 
 public:
+
     /**
-     * If the status code is 0, everything went OK. Note that this method
-     * will download an integer from the GPU.
-     *
-     * @return status code of last call
+     * Provides access to the info stored in this class
+     * @return tensor of shape (1, 1, n)
      */
-    virtual int statusCode(){
-        return (*m_info)(0);
+    virtual DTensor<int>& info() {
+        return *m_info;
     }
 };
 

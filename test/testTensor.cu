@@ -902,14 +902,14 @@ void singularValuesComputation(float epsilon) {
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
     svd.factorise();
-    EXPECT_EQ(0, svd.statusCode());
+    EXPECT_EQ(0, svd.info()(0));
     auto S = svd.singularValues();
     EXPECT_NEAR(32.496241123753592, S(0), epsilon); // value from MATLAB
     EXPECT_NEAR(0.997152358903242, S(1), epsilon); // value from MATLAB
 
     auto U = svd.leftSingularVectors();
     EXPECT_TRUE(U.has_value());
-    EXPECT_EQ(0, svd.statusCode());
+    EXPECT_EQ(0, svd.info()(0));
 }
 
 TEST_F(SvdTest, singularValuesComputation) {
@@ -930,7 +930,7 @@ void singularValuesMemory(float epsilon) {
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
     svd.factorise();
-    EXPECT_EQ(0, svd.statusCode());
+    EXPECT_EQ(0, svd.info()(0));
     DTensor<T> const &v1 = svd.rightSingularVectors();
     DTensor<T> const &v2 = svd.rightSingularVectors();
     EXPECT_EQ(&v1, &v2);
@@ -1047,7 +1047,7 @@ void choleskyFactorisation(T epsilon) {
     EXPECT_NEAR(3.162277660168380, A(0, 0), epsilon);
     EXPECT_NEAR(-0.361403161162101, A(2, 1), epsilon);
     EXPECT_NEAR(5.382321781081287, A(2, 2), epsilon);
-    EXPECT_EQ(0, chol.statusCode());
+    EXPECT_EQ(0, chol.info()(0));
 }
 
 TEST_F(CholeskyTest, choleskyFactorisation) {
@@ -1115,7 +1115,7 @@ void choleskyBatchFactorisation(T epsilon) {
     EXPECT_NEAR(-0.361403161162101, A(2, 1, 1), epsilon);
     EXPECT_NEAR(5.382321781081287, A(2, 2, 1), epsilon);
 
-    EXPECT_EQ(0, chol.statusCode());
+    EXPECT_EQ(0, chol.info()(0));
 }
 
 TEST_F(CholeskyTest, choleskyBatchFactorisation) {
@@ -1156,7 +1156,7 @@ void choleskyBatchFactorSolve(T epsilon) {
     DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
-    EXPECT_EQ(0, chol.statusCode());
+    EXPECT_EQ(0, chol.info()(0));
 }
 
 TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
@@ -1204,7 +1204,7 @@ void choleskyBatchSolve(T epsilon) {
     DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
-    EXPECT_EQ(0, chol.statusCode());
+    EXPECT_EQ(0, chol.info()(0));
 }
 
 TEST_F(CholeskyTest, choleskyBatchSolve) {
@@ -1237,12 +1237,12 @@ void qrFactorisation(T epsilon) {
     QRFactoriser<T> qr(temp);
     A.deviceCopyTo(temp);
     qr.factorise();
-    EXPECT_EQ(0, qr.statusCode());
+    EXPECT_EQ(0, qr.info()(0));
     DTensor<T> Q(nR, nC);
     DTensor<T> R(nC, nC, 1, true);
     DTensor<T> QR(nR, nC);
     qr.getQR(Q, R);
-    EXPECT_EQ(0, qr.statusCode());
+    EXPECT_EQ(0, qr.info()(0));
     QR.addAB(Q, R);
     QR -= A;
     T nrm = QR.normF();
@@ -1268,12 +1268,12 @@ void qrFactorisationTall(T epsilon) {
     QRFactoriser<T> qr(temp);
     A.deviceCopyTo(temp);
     qr.factorise();
-    EXPECT_EQ(0, qr.statusCode());
+    EXPECT_EQ(0, qr.info()(0));
     DTensor<T> Q(nR, nC);
     DTensor<T> R(nC, nC, 1, true);
     DTensor<T> QR(nR, nC);
     qr.getQR(Q, R);
-    EXPECT_EQ(0, qr.statusCode());
+    EXPECT_EQ(0, qr.info()(0));
     QR.addAB(Q, R);
     QR -= A;
     T nrm = QR.normF();
@@ -1310,10 +1310,10 @@ void qrLeastSquares(T epsilon) {
     QRFactoriser<T> qr(temp);
     A.deviceCopyTo(temp);
     qr.factorise();
-    EXPECT_EQ(0, qr.statusCode());
+    EXPECT_EQ(0, qr.info()(0));
     b.deviceCopyTo(xFull);
     qr.leastSquares(xFull);
-    EXPECT_EQ(0, qr.statusCode());
+    EXPECT_EQ(0, qr.info()(0));
     Ax.addAB(A, x);
     Ax -= b;
     T nrm = Ax.normF();
