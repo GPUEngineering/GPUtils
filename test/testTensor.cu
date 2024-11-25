@@ -902,14 +902,15 @@ void singularValuesComputation(float epsilon) {
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
     svd.factorise();
-    EXPECT_EQ(0, svd.info()(0));
+    for (size_t i = 0; i < B.numMats(); i++) {
+        EXPECT_EQ(0, svd.info()(i));
+    }
     auto S = svd.singularValues();
     EXPECT_NEAR(32.496241123753592, S(0), epsilon); // value from MATLAB
     EXPECT_NEAR(0.997152358903242, S(1), epsilon); // value from MATLAB
 
     auto U = svd.leftSingularVectors();
     EXPECT_TRUE(U.has_value());
-    EXPECT_EQ(0, svd.info()(0));
 }
 
 TEST_F(SvdTest, singularValuesComputation) {

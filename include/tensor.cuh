@@ -1234,7 +1234,6 @@ private:
     std::shared_ptr<DTensor<unsigned int>> m_rank;  ///< Rank of original matrix
     bool m_computeU = false;  ///< Whether to compute U
     bool m_destroyMatrix = true; ///< Whether to sacrifice original matrix
-    int m_svdStatus = 0;
 
     /**
      * Ensures tensor to factorise contains exactly one matrix, and that matrix is tall.
@@ -1256,10 +1255,6 @@ private:
 
 public:
 
-    int statusCode() {
-        // redefinition of getStatus
-        return m_svdStatus;
-    }
 
     /**
      * Constructor.
@@ -1269,7 +1264,7 @@ public:
      */
     Svd(DTensor<T> &mat,
         bool computeU = false,
-        bool destroyMatrix = true) : IStatus() {
+        bool destroyMatrix = true) : IStatus(mat.numMats()) {
         checkMatrix(mat);
         m_destroyMatrix = destroyMatrix;
         m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
@@ -1379,10 +1374,7 @@ inline void Svd<double>::factorise() {
                                  m_workspace->raw(),
                                  m_lwork,
                                  nullptr,  // rwork (used only if SVD fails)
-                                 m_info->raw()));
-#ifdef GPUTILS_DEBUG_MODE
-        m_svdStatus = std::max(m_svdStatus, (*m_info)(0, 0, 0));
-#endif
+                                 m_info->raw() + i));
     }
 }
 
@@ -1409,10 +1401,7 @@ inline void Svd<float>::factorise() {
                                  m_workspace->raw(),
                                  m_lwork,
                                  nullptr,  // rwork (used only if SVD fails)
-                                 m_info->raw()));
-#ifdef GPUTILS_DEBUG_MODE
-        m_svdStatus = std::max(m_svdStatus, (*m_info)(0, 0, 0));
-#endif
+                                 m_info->raw() + i));
     }
 }
 
