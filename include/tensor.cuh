@@ -1166,6 +1166,33 @@ std::ostream &DTensor<T>::print(std::ostream &out) const {
 }
 
 
+
+/* ================================================================================================
+ *  STATUS INTERFACE
+ * ================================================================================================ */
+/**
+ * A class that holds a device pointer to a status code
+ */
+class IStatus {
+protected:
+    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
+
+    IStatus(size_t n = 1) {
+        m_info = std::make_unique<DTensor<int>>(1, 1, n);
+    }
+
+public:
+
+    /**
+     * Provides access to the info stored in this class
+     * @return tensor of shape (1, 1, n)
+     */
+    virtual DTensor<int>& info() {
+        return *m_info;
+    }
+};
+
+
 /* ================================================================================================
  *  SINGULAR VALUE DECOMPOSITION (SVD)
  * ================================================================================================ */
@@ -1186,6 +1213,7 @@ __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigne
     }
 }
 
+
 /**
  * Singular value decomposition (SVD) needs a workspace to be setup for cuSolver before factorisation.
  * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
@@ -1193,7 +1221,7 @@ __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigne
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class Svd {
+class Svd : public IStatus {
 
 private:
 
@@ -1203,7 +1231,6 @@ private:
     std::shared_ptr<DTensor<T>> m_S;  ///< Diagonal matrix S or singular values
     std::shared_ptr<DTensor<T>> m_U;  ///< Matrix U or left singular vectors
     std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for SVD
-    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
     std::shared_ptr<DTensor<unsigned int>> m_rank;  ///< Rank of original matrix
     bool m_computeU = false;  ///< Whether to compute U
     bool m_destroyMatrix = true; ///< Whether to sacrifice original matrix
@@ -1225,7 +1252,9 @@ private:
      */
     void computeWorkspaceSize(size_t m, size_t n);
 
+
 public:
+
 
     /**
      * Constructor.
@@ -1235,7 +1264,7 @@ public:
      */
     Svd(DTensor<T> &mat,
         bool computeU = false,
-        bool destroyMatrix = true) {
+        bool destroyMatrix = true) : IStatus(mat.numMats()) {
         checkMatrix(mat);
         m_destroyMatrix = destroyMatrix;
         m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
@@ -1248,7 +1277,6 @@ public:
         m_workspace = std::make_unique<DTensor<T>>(m_lwork, 1, 1);  ///< Allocates required workspace memory
         m_Vtr = std::make_shared<DTensor<T>>(n, n, nMats);
         m_S = std::make_shared<DTensor<T>>(minMN, 1, nMats);
-        m_info = std::make_unique<DTensor<int>>(1, 1, nMats);
         m_rank = std::make_unique<DTensor<unsigned int>>(1, 1, nMats, true);
         if (computeU) m_U = std::make_shared<DTensor<T>>(m, m, nMats);
     }
@@ -1256,9 +1284,8 @@ public:
     /**
      * Perform factorisation.
      * Warning: the original matrix is destroyed by default!
-     * @return true if factorisation is successful
      */
-    bool factorise();
+    void factorise();
 
     /**
      * @return diagonal matrix S, or singular values
@@ -1308,6 +1335,8 @@ public:
         return *m_rank;
     }
 
+
+
 };
 
 
@@ -1323,11 +1352,10 @@ inline void Svd<double>::computeWorkspaceSize(size_t m, size_t n) {
 
 
 template<>
-inline bool Svd<double>::factorise() {
+inline void Svd<double>::factorise() {
     size_t m = m_tensor->numRows();
     size_t n = m_tensor->numCols();
     size_t nMats = m_tensor->numMats();
-    bool info = true;
     std::unique_ptr<DTensor<double>> Ui;
     for (size_t i = 0; i < nMats; i++) {
         DTensor<double> Ai(*m_tensor, 2, i, i); // tensor A[:, :, i]
@@ -1346,18 +1374,15 @@ inline bool Svd<double>::factorise() {
                                  m_workspace->raw(),
                                  m_lwork,
                                  nullptr,  // rwork (used only if SVD fails)
-                                 m_info->raw()));
-        info = info && ((*m_info)(0, 0, 0) == 0);
+                                 m_info->raw() + i));
     }
-    return info;
 }
 
 template<>
-inline bool Svd<float>::factorise() {
+inline void Svd<float>::factorise() {
     size_t m = m_tensor->numRows();
     size_t n = m_tensor->numCols();
     size_t nMats = m_tensor->numMats();
-    bool info = true;
     std::unique_ptr<DTensor<float>> Ui;
     for (size_t i = 0; i < nMats; i++) {
         DTensor<float> Ai(*m_tensor, 2, i, i); // tensor A[:, :, i]
@@ -1376,10 +1401,8 @@ inline bool Svd<float>::factorise() {
                                  m_workspace->raw(),
                                  m_lwork,
                                  nullptr,  // rwork (used only if SVD fails)
-                                 m_info->raw()));
-        info = info && ((*m_info)(0, 0, 0) == 0);
+                                 m_info->raw() + i));
     }
-    return info;
 }
 
 
@@ -1394,11 +1417,10 @@ inline bool Svd<float>::factorise() {
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class CholeskyFactoriser {
+class CholeskyFactoriser : public IStatus {
 
 private:
     int m_workspaceSize = 0;  ///< Size of workspace needed for CF
-    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
     std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for CF
     DTensor<T> *m_matrix;  ///< Matrix to factorise. Do not destroy!
 
@@ -1409,20 +1431,18 @@ private:
 
 public:
 
-    CholeskyFactoriser(DTensor<T> &A) {
+    CholeskyFactoriser(DTensor<T> &A) : IStatus() {
         if (A.numMats() > 1) throw std::invalid_argument("[Cholesky] 3D tensors require `CholeskyBatchFactoriser`");
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be square");
         m_matrix = &A;
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
-        m_info = std::make_unique<DTensor<int>>(1);
     }
 
     /**
      * Factorise matrix.
-     * @return status code of computation
      */
-    int factorise();
+    void factorise();
 
     /**
      * Solves for the solution of A \ b using the CF of A.
@@ -1430,9 +1450,9 @@ public:
      * A and b must have compatible dimensions (same number of rows and matrices=1).
      * A must be square (m=n).
      * @param b provided matrix
-     * @return status code of computation
      */
-    int solve(DTensor<T> &b);
+    void solve(DTensor<T> &b);
+
 
 };
 
@@ -1453,30 +1473,28 @@ inline void CholeskyFactoriser<float>::computeWorkspaceSize() {
 }
 
 template<>
-inline int CholeskyFactoriser<double>::factorise() {
+inline void CholeskyFactoriser<double>::factorise() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
                                m_matrix->raw(), n,
                                m_workspace->raw(),
                                m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 
 template<>
-inline int CholeskyFactoriser<float>::factorise() {
+inline void CholeskyFactoriser<float>::factorise() {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
                                m_matrix->raw(), n,
                                m_workspace->raw(),
                                m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 template<>
-inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
+inline void CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnDpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
@@ -1484,11 +1502,10 @@ inline int CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
                                m_matrix->raw(), n,
                                rhs.raw(), n,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 template<>
-inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
+inline void CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
     size_t n = m_matrix->numRows();
     gpuErrChk(cusolverDnSpotrs(Session::getInstance().cuSolverHandle(),
                                CUBLAS_FILL_MODE_LOWER,
@@ -1496,7 +1513,6 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
                                m_matrix->raw(), n,
                                rhs.raw(), n,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 
@@ -1511,11 +1527,10 @@ inline int CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
  * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class QRFactoriser {
+class QRFactoriser : public IStatus {
 
 private:
     int m_workspaceSize = 0;  ///< Size of workspace needed for LS
-    std::unique_ptr<DTensor<int>> m_info;  ///< Status code of computation
     std::unique_ptr<DTensor<T>> m_householder;  ///< For storing householder reflectors
     std::unique_ptr<DTensor<T>> m_workspace;  ///< Workspace for LS
     DTensor<T> *m_matrix;  ///< Lhs matrix template. Do not destroy!
@@ -1527,21 +1542,19 @@ private:
 
 public:
 
-    QRFactoriser(DTensor<T> &A) {
+    QRFactoriser(DTensor<T> &A) : IStatus() {
         if (A.numMats() > 1) throw std::invalid_argument("[QR] 3D tensors require `leastSquaresBatched`");
         if (A.numRows() < A.numCols()) throw std::invalid_argument("[QR] Matrix A must be tall or square");
         m_matrix = &A;
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T>>(m_workspaceSize);
         m_householder = std::make_unique<DTensor<T>>(m_matrix->numCols());
-        m_info = std::make_unique<DTensor<int>>(1);
     }
 
     /**
      * Factorise matrix.
-     * @return status code of computation
      */
-    int factorise();
+    void factorise();
 
     /**
      * Solves A \ b using the QR of A.
@@ -1549,9 +1562,8 @@ public:
      * A and b must have compatible dimensions (same number of rows and matrices=1).
      * A must be tall or square (m>=n).
      * @param b provided matrix
-     * @return status code of computation
      */
-    int leastSquares(DTensor<T> &b);
+    void leastSquares(DTensor<T> &b);
 
     /**
      * Populate the given tensors with Q and R.
@@ -1559,11 +1571,11 @@ public:
      *
      * @param Q matrix Q (preallocated)
      * @param R matrix R (preallocated)
-     * @return status code
      *
      * @throws std::invalid_argument if Q or R have invalid dimensions
      */
-    int getQR(DTensor<T> &Q, DTensor<T> &R);
+    void getQR(DTensor<T> &Q, DTensor<T> &R);
+
 
 };
 
@@ -1588,7 +1600,7 @@ inline void QRFactoriser<float>::computeWorkspaceSize() {
 }
 
 template<>
-inline int QRFactoriser<double>::factorise() {
+inline void QRFactoriser<double>::factorise() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     gpuErrChk(cusolverDnDgeqrf(Session::getInstance().cuSolverHandle(),
@@ -1597,12 +1609,11 @@ inline int QRFactoriser<double>::factorise() {
                                m_householder->raw(),
                                m_workspace->raw(), m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 
 template<>
-inline int QRFactoriser<float>::factorise() {
+inline void QRFactoriser<float>::factorise() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     gpuErrChk(cusolverDnSgeqrf(Session::getInstance().cuSolverHandle(),
@@ -1611,11 +1622,10 @@ inline int QRFactoriser<float>::factorise() {
                                m_householder->raw(),
                                m_workspace->raw(), m_workspaceSize,
                                m_info->raw()));
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
+inline void QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     double alpha = 1.;
@@ -1631,11 +1641,10 @@ inline int QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
                           &alpha,
                           m_matrix->raw(), m,
                           rhs.raw(), m));
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
+inline void QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     float alpha = 1.;
@@ -1651,11 +1660,10 @@ inline int QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
                           &alpha,
                           m_matrix->raw(), m,
                           rhs.raw(), m));
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
+inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     if (Q.numRows() != m || Q.numCols() != n)
@@ -1686,11 +1694,10 @@ inline int QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
         }
     }
     R.upload(vecR, rowMajor);
-    return (*m_info)(0);
 }
 
 template<>
-inline int QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
+inline void QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     if (Q.numRows() != m || Q.numCols() != n)
@@ -1721,7 +1728,6 @@ inline int QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
         }
     }
     R.upload(vecR, rowMajor);
-    return (*m_info)(0);
 }
 
 
@@ -1827,13 +1833,12 @@ inline void Nullspace<T>::project(DTensor<T> &b) {
  * @tparam T data type of tensor (must be float or double)
  */
 TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
-class CholeskyBatchFactoriser {
+class CholeskyBatchFactoriser : public IStatus {
 
 private:
     DTensor<T> *m_matrix;  ///< Matrix to factorise or lower-triangular decomposed matrix
     size_t m_numRows = 0;  ///< Number of rows in `m_matrix`
     size_t m_numMats = 0;  ///< Number of matrices in `m_matrix`
-    std::unique_ptr<DTensor<int>> m_deviceInfo;  ///< Info from cusolver functions
     bool m_factorisationDone = false;  ///< Whether `m_matrix` holds original or lower-triangular matrix
 
 public:
@@ -1844,12 +1849,11 @@ public:
      * @param A either matrices to be factorised or lower-triangular Cholesky decomposition matrices
      * @param factorised whether A is the original matrices or the factorised ones (default=original matrices)
      */
-    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : m_factorisationDone(factorised) {
+    CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : IStatus(A.numMats()), m_factorisationDone(factorised) {
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be square");
         m_matrix = &A;
         m_numRows = A.numRows();
         m_numMats = A.numMats();
-        m_deviceInfo = std::make_unique<DTensor<int>>(m_numMats, 1, 1, true);
     }
 
     /**
@@ -1863,6 +1867,7 @@ public:
      */
     void solve(DTensor<T> &b);
 
+
 };
 
 template<>
@@ -1873,7 +1878,7 @@ inline void CholeskyBatchFactoriser<double>::factorise() {
                                       m_numRows,
                                       m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
     m_factorisationDone = true;
 }
@@ -1886,7 +1891,7 @@ inline void CholeskyBatchFactoriser<float>::factorise() {
                                       m_numRows,
                                       m_matrix->ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
     m_factorisationDone = true;
 }
@@ -1906,7 +1911,7 @@ inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
                                       m_numRows,
                                       b.ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
 }
 
@@ -1925,7 +1930,7 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
                                       m_numRows,
                                       b.ptrMatrices(),
                                       m_numRows,
-                                      m_deviceInfo->raw(),
+                                      m_info->raw(),
                                       m_numMats));
 }
 
@@ -2015,7 +2020,8 @@ __global__ void k_givensAnnihilateRHypot(const T *data,
     res[2] = xkj * (*res); // -sin
 }
 
-template<typename T>
+
+template<typename T> TEMPLATE_CONSTRAINT_REQUIRES_FPX
 inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
     /* A few checks */
     size_t nR = m_matrix->numRows(), nC = m_matrix->numCols();
