@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This change leads to a reduction in data being downloaded from the GPU.
 - In `Svd` a status code (`bool`) is returned from `Svd<double>::factorise` only if the
   `#GPUTILS_DEBUG_MODE` is defined, otherwise, the method returns always `true`.
-- New base class `IStatus` used for a universal implementation of `statusCode()`
+- New base class `IStatus` used for a universal implementation of `info()`
 
 
 <!-- ---------------------
