@@ -251,7 +251,18 @@ public:
      */
     static DTensor<T> createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi);
 
-    static DTensor<T> parseFromTextFile(std::string path_to_file);
+    /**
+     * Parse data from text file and create an instance of DTensor
+     *
+     * This static function reads data from a text file, creates a DTensor and uploads the data to the device.
+     *
+     * @param path_to_file path to file as string
+     * @param mode storage mode (default: StorageMode::defaultMajor)
+     * @return instance of DTensor
+     *
+     * @throws std::invalid_argument if the file is not found
+     */
+    static DTensor<T> parseFromTextFile(std::string path_to_file, StorageMode mode = StorageMode::defaultMajor);
 
     /**
     * Constructs a DTensor object.
@@ -581,7 +592,7 @@ data_t<T> vectorFromFile(std::string path_to_file) {
     data_t<T> dataStruct;
     std::ifstream file;
     file.open(path_to_file, std::ios::in);
-    if (!file.is_open()) { throw std::exception(); };
+    if (!file.is_open()) { throw std::invalid_argument("the file you provided does not exist"); };
 
     std::string line;
     getline(file, line); dataStruct.numRows = atoi(line.c_str());
@@ -609,7 +620,9 @@ data_t<T> vectorFromFile(std::string path_to_file) {
     return dataStruct;
 }
 
-template<typename T> DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file) {
+template<typename T>
+DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
+                                                              StorageMode mode) {
     auto parsedData = vectorFromFile<T>(path_to_file);
     DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats);
     return tensorFromData;

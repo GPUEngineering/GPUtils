@@ -6,7 +6,9 @@
 
 
 int main() {
-    auto z = DTensor<double>::parseFromTextFile("../test/data/my.dtensor");
+    auto z = DTensor<double>::parseFromTextFile("../test/data/my.dtensor",
+                                                StorageMode::rowMajor);
     std::cout << z;
+    std::cout << " -- ";
     return 0;
 }
