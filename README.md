@@ -265,7 +265,7 @@ To load a tensor from a file, the static function `DTensor<T>::parseFromTextFile
 auto z = DTensor<double>::parseFromTextFile("path/to/my.dtensor")
 ```
 
-If necessar, you can provide a second argument to `parseFromTextFile` to specify the order in which the data are stored (the `StorageMode`). 
+If necessary, you can provide a second argument to `parseFromTextFile` to specify the order in which the data are stored (the `StorageMode`). 
 
 ## 2. Cholesky factorisation and system solution
 

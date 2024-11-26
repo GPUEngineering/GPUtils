@@ -617,9 +617,21 @@ data_t<T> vectorFromFile(std::string path_to_file) {
             vecDataFromFile[i] = std::stod(line.c_str());
         } else if constexpr (std::is_same_v<T, float>) {
             vecDataFromFile[i] = std::stof(line.c_str());
+        } else if constexpr (std::is_same_v<T, long double>) {
+            vecDataFromFile[i] = std::stold(line.c_str());
+        } else if constexpr (std::is_same_v<T, long>) {
+            vecDataFromFile[i] = std::stol(line.c_str());
+        } else if constexpr (std::is_same_v<T, long long>) {
+            vecDataFromFile[i] = std::stoll(line.c_str());
+        } else if constexpr (std::is_same_v<T, unsigned long>) {
+            vecDataFromFile[i] = std::stoul(line.c_str());
+        } else if constexpr (std::is_same_v<T, unsigned long long>) {
+            vecDataFromFile[i] = std::stoull(line.c_str());
+        } else if constexpr (std::is_same_v<T, size_t>) {
+            sscanf(line.c_str(), "%zu", &vecDataFromFile[i]);
         }
-        if (i == numElements - 1) break;
-        i++;
+
+        if (++i == numElements) break;
     }
     dataStruct.data = vecDataFromFile;
     file.close();
@@ -628,7 +640,7 @@ data_t<T> vectorFromFile(std::string path_to_file) {
 
 template<typename T>
 DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
-                                                              StorageMode mode) {
+                                         StorageMode mode) {
     auto parsedData = vectorFromFile<T>(path_to_file);
     DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats);
     return tensorFromData;
@@ -638,10 +650,10 @@ template<typename T>
 void DTensor<T>::saveToFile(std::string pathToFile) {
     std::ofstream file(pathToFile);
     file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
-    std::vector<T> myData(numEl());
-    download(myData);
+    std::vector<T> myData(numEl()); download(myData);
     if constexpr (std::is_floating_point<T>::value) {
-        file << std::setprecision(15);
+        int prec = std::numeric_limits<T>::max_digits10 - 1;
+        file << std::setprecision(prec);
     }
     for(const T& el : myData) file << el << std::endl;
 }
