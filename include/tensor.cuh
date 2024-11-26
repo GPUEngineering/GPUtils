@@ -502,7 +502,7 @@ public:
     void reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats = 1);
 
     /**
-     * @todo
+     * Saves the current instance of DTensor to a (text) file
      *
      * @param pathToFile
      */
@@ -630,6 +630,7 @@ data_t<T> vectorFromFile(std::string path_to_file) {
         } else if constexpr (std::is_same_v<T, size_t>) {
             sscanf(line.c_str(), "%zu", &vecDataFromFile[i]);
         }
+        // todo
 
         if (++i == numElements) break;
     }

@@ -132,7 +132,7 @@ void parseTensorFromFile() {
     EXPECT_EQ(nM, a.numMats());
     auto diff = a - r;
     T err = diff.maxAbs();
-    EXPECT_LT(err, 1e-15);
+    EXPECT_LT(err, 2*std::numeric_limits<T>::epsilon());
 }
 
 TEST_F(TensorTest, parseTensorFromFile) {
