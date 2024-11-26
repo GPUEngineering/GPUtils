@@ -501,6 +501,13 @@ public:
      */
     void reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats = 1);
 
+    /**
+     * @todo
+     *
+     * @param pathToFile
+     */
+    void saveToFile(std::string pathToFile);
+
     /* ------------- OPERATORS ------------- */
 
     DTensor &operator=(const DTensor &other);
@@ -614,7 +621,6 @@ data_t<T> vectorFromFile(std::string path_to_file) {
         if (i == numElements - 1) break;
         i++;
     }
-
     dataStruct.data = vecDataFromFile;
     file.close();
     return dataStruct;
@@ -626,6 +632,18 @@ DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
     auto parsedData = vectorFromFile<T>(path_to_file);
     DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats);
     return tensorFromData;
+}
+
+template<typename T>
+void DTensor<T>::saveToFile(std::string pathToFile) {
+    std::ofstream file(pathToFile);
+    file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
+    std::vector<T> myData(numEl());
+    download(myData);
+    if constexpr (std::is_floating_point<T>::value) {
+        file << std::setprecision(15);
+    }
+    for(const T& el : myData) file << el << std::endl;
 }
 
 template<typename T>
