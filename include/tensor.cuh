@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <cassert>
+#include <fstream>
 
 #ifndef TENSOR_CUH
 #define TENSOR_CUH
@@ -251,6 +252,19 @@ public:
     static DTensor<T> createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi);
 
     /**
+     * Parse data from text file and create an instance of DTensor
+     *
+     * This static function reads data from a text file, creates a DTensor and uploads the data to the device.
+     *
+     * @param path_to_file path to file as string
+     * @param mode storage mode (default: StorageMode::defaultMajor)
+     * @return instance of DTensor
+     *
+     * @throws std::invalid_argument if the file is not found
+     */
+    static DTensor<T> parseFromTextFile(std::string path_to_file, StorageMode mode = StorageMode::defaultMajor);
+
+    /**
     * Constructs a DTensor object.
     */
     DTensor() = default;
@@ -487,6 +501,13 @@ public:
      */
     void reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats = 1);
 
+    /**
+     * Saves the current instance of DTensor to a (text) file
+     *
+     * @param pathToFile
+     */
+    void saveToFile(std::string pathToFile);
+
     /* ------------- OPERATORS ------------- */
 
     DTensor &operator=(const DTensor &other);
@@ -562,6 +583,80 @@ DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t
         return a;
     }
     throw std::invalid_argument("[createRandomTensor] unsupported type T");
+}
+
+
+template<typename T>
+struct data_t {
+    size_t numRows;
+    size_t numCols;
+    size_t numMats;
+    std::vector<T> data;
+};
+
+template<typename T>
+data_t<T> vectorFromFile(std::string path_to_file) {
+    data_t<T> dataStruct;
+    std::ifstream file;
+    file.open(path_to_file, std::ios::in);
+    if (!file.is_open()) { throw std::invalid_argument("the file you provided does not exist"); };
+
+    std::string line;
+    getline(file, line); dataStruct.numRows = atoi(line.c_str());
+    getline(file, line); dataStruct.numCols = atoi(line.c_str());
+    getline(file, line); dataStruct.numMats = atoi(line.c_str());
+
+    size_t numElements = dataStruct.numRows * dataStruct.numCols * dataStruct.numMats;
+    std::vector<T> vecDataFromFile(numElements);
+
+    size_t i = 0;
+    while (getline(file, line)) {
+        if constexpr (std::is_same_v<T, int>) {
+            vecDataFromFile[i] = atoi(line.c_str());
+        } else if constexpr (std::is_same_v<T, double>) {
+            vecDataFromFile[i] = std::stod(line.c_str());
+        } else if constexpr (std::is_same_v<T, float>) {
+            vecDataFromFile[i] = std::stof(line.c_str());
+        } else if constexpr (std::is_same_v<T, long double>) {
+            vecDataFromFile[i] = std::stold(line.c_str());
+        } else if constexpr (std::is_same_v<T, long>) {
+            vecDataFromFile[i] = std::stol(line.c_str());
+        } else if constexpr (std::is_same_v<T, long long>) {
+            vecDataFromFile[i] = std::stoll(line.c_str());
+        } else if constexpr (std::is_same_v<T, unsigned long>) {
+            vecDataFromFile[i] = std::stoul(line.c_str());
+        } else if constexpr (std::is_same_v<T, unsigned long long>) {
+            vecDataFromFile[i] = std::stoull(line.c_str());
+        } else if constexpr (std::is_same_v<T, size_t>) {
+            sscanf(line.c_str(), "%zu", &vecDataFromFile[i]);
+        }
+        // todo
+
+        if (++i == numElements) break;
+    }
+    dataStruct.data = vecDataFromFile;
+    file.close();
+    return dataStruct;
+}
+
+template<typename T>
+DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
+                                         StorageMode mode) {
+    auto parsedData = vectorFromFile<T>(path_to_file);
+    DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats);
+    return tensorFromData;
+}
+
+template<typename T>
+void DTensor<T>::saveToFile(std::string pathToFile) {
+    std::ofstream file(pathToFile);
+    file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
+    std::vector<T> myData(numEl()); download(myData);
+    if constexpr (std::is_floating_point<T>::value) {
+        int prec = std::numeric_limits<T>::max_digits10 - 1;
+        file << std::setprecision(prec);
+    }
+    for(const T& el : myData) file << el << std::endl;
 }
 
 template<typename T>

@@ -246,6 +246,27 @@ The `DTensor` `B` will be overwritten with the solution.
 > overwrite only part of the given `B`, as `B` is a
 > (4,1,1)-tensor and the solution is a (3,1,1)-tensor.
 
+### 1.8. Saving and loading tensors
+
+Tensor data can be stored in simple text files which have the following structure
+
+```text
+number_of_rows
+number_of_columns
+number_of_matrices
+data (one entry per line)
+```
+
+To save a tensor in a file, simply call `DTensor::saveToFile(filename)`.
+
+To load a tensor from a file, the static function `DTensor<T>::parseFromTextFile(filename)` can be used. For example:
+
+```c++
+auto z = DTensor<double>::parseFromTextFile("path/to/my.dtensor")
+```
+
+If necessary, you can provide a second argument to `parseFromTextFile` to specify the order in which the data are stored (the `StorageMode`). 
+
 ## 2. Cholesky factorisation and system solution
 
 > [!WARNING]

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v1.5.0
+     --------------------- -->
+## v1.5.0 - 27-11-2024
+
+### Added
+
+- Created methods for serialising and deserialising `DTensor` objects
+
+
+<!-- ---------------------
       v1.4.0
      --------------------- -->
 ## v1.4.0 - 25-11-2024

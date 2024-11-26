@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "../include/tensor.cuh"
+#include <filesystem>
 
 #define PRECISION_LOW 1e-4
 #define PRECISION_HIGH 1e-10
@@ -113,6 +114,30 @@ TEST_F(TensorTest, randomTensorCreation) {
     randomTensorCreation<float>();
     randomTensorCreation<double>();
     randomTensorCreation<int>();
+}
+
+/* ---------------------------------------
+ * Save to file and parse
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void parseTensorFromFile() {
+    size_t nR = 20, nC = 40, nM = 60;
+    auto r = DTensor<T>::createRandomTensor(nR, nC, nM, -1, 1);
+    std::string fName = "myTest.dtensor";
+    r.saveToFile(fName);
+    auto a = DTensor<T>::parseFromTextFile(fName);
+    EXPECT_EQ(nR, a.numRows());
+    EXPECT_EQ(nC, a.numCols());
+    EXPECT_EQ(nM, a.numMats());
+    auto diff = a - r;
+    T err = diff.maxAbs();
+    EXPECT_LT(err, 2*std::numeric_limits<T>::epsilon());
+}
+
+TEST_F(TensorTest, parseTensorFromFile) {
+    parseTensorFromFile<float>();
+    parseTensorFromFile<double>();
 }
 
 /* ---------------------------------------
