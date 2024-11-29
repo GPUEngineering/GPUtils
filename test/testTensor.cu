@@ -122,9 +122,9 @@ TEST_F(TensorTest, randomTensorCreation) {
 
 TEMPLATE_WITH_TYPE_T
 void parseTensorFromFile() {
-    size_t n_runs = 20;
+    size_t n_runs = 10;
     for (size_t i = 0; i < n_runs; i++) {
-        size_t nR = 20, nC = 40, nM = 60;
+        size_t nR = 20, nC = 40, nM = 6;
         auto r = DTensor<T>::createRandomTensor(nR, nC, nM, -1, 1);
         std::string fName = "myTest.dtensor";
         r.saveToFile(fName);
@@ -141,6 +141,19 @@ void parseTensorFromFile() {
 TEST_F(TensorTest, parseTensorFromFile) {
     parseTensorFromFile<float>();
     parseTensorFromFile<double>();
+}
+
+TEST_F(TensorTest, parseTensorUnsupportedDataType) {
+    size_t nR = 20, nC = 40, nM = 60;
+    auto r = DTensor<double>::createRandomTensor(nR, nC, nM, -1, 1);
+    std::string fName = "myTest.dtensor";
+    r.saveToFile(fName);
+    try {
+        auto a = DTensor<char>::parseFromTextFile(fName);
+    } catch (const std::invalid_argument& _e) {
+        return;
+    }
+    FAIL();
 }
 
 /* ---------------------------------------

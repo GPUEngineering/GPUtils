@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Set precision in `DTensor::saveToFile` properly
-
+- `DTensor<T>::parseFromTextFile` throws `std::invalid_argument` if `T` is unsupported
 
 <!-- ---------------------
       v1.5.0
