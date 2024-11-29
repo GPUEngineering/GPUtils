@@ -629,8 +629,9 @@ data_t<T> vectorFromFile(std::string path_to_file) {
             vecDataFromFile[i] = std::stoull(line.c_str());
         } else if constexpr (std::is_same_v<T, size_t>) {
             sscanf(line.c_str(), "%zu", &vecDataFromFile[i]);
+        }  else {
+            throw std::invalid_argument("data type not supported");
         }
-        // todo
 
         if (++i == numElements) break;
     }
@@ -653,8 +654,7 @@ void DTensor<T>::saveToFile(std::string pathToFile) {
     file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
     std::vector<T> myData(numEl()); download(myData);
     if constexpr (std::is_floating_point<T>::value) {
-        int prec = std::numeric_limits<T>::max_digits10 - 1;
-        file << std::setprecision(prec);
+        file << std::setprecision(std::numeric_limits<T>::max_digits10);
     }
     for(const T& el : myData) file << el << std::endl;
 }

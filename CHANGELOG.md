@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v1.5.1
+     --------------------- -->
+## v1.5.1 - 29-11-2024
+
+### Fixed
+
+- Set precision in `DTensor::saveToFile` properly
+- `DTensor<T>::parseFromTextFile` throws `std::invalid_argument` if `T` is unsupported
+
+<!-- ---------------------
       v1.5.0
      --------------------- -->
 ## v1.5.0 - 27-11-2024
