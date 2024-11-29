@@ -629,8 +629,9 @@ data_t<T> vectorFromFile(std::string path_to_file) {
             vecDataFromFile[i] = std::stoull(line.c_str());
         } else if constexpr (std::is_same_v<T, size_t>) {
             sscanf(line.c_str(), "%zu", &vecDataFromFile[i]);
+        }  else {
+            throw std::invalid_argument("data type not supported");
         }
-        // todo
 
         if (++i == numElements) break;
     }
