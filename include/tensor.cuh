@@ -653,8 +653,7 @@ void DTensor<T>::saveToFile(std::string pathToFile) {
     file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
     std::vector<T> myData(numEl()); download(myData);
     if constexpr (std::is_floating_point<T>::value) {
-        int prec = std::numeric_limits<T>::max_digits10 - 1;
-        file << std::setprecision(prec);
+        file << std::setprecision(std::numeric_limits<T>::max_digits10);
     }
     for(const T& el : myData) file << el << std::endl;
 }

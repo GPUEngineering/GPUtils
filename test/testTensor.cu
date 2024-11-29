@@ -122,17 +122,20 @@ TEST_F(TensorTest, randomTensorCreation) {
 
 TEMPLATE_WITH_TYPE_T
 void parseTensorFromFile() {
-    size_t nR = 20, nC = 40, nM = 60;
-    auto r = DTensor<T>::createRandomTensor(nR, nC, nM, -1, 1);
-    std::string fName = "myTest.dtensor";
-    r.saveToFile(fName);
-    auto a = DTensor<T>::parseFromTextFile(fName);
-    EXPECT_EQ(nR, a.numRows());
-    EXPECT_EQ(nC, a.numCols());
-    EXPECT_EQ(nM, a.numMats());
-    auto diff = a - r;
-    T err = diff.maxAbs();
-    EXPECT_LT(err, 2*std::numeric_limits<T>::epsilon());
+    size_t n_runs = 20;
+    for (size_t i = 0; i < n_runs; i++) {
+        size_t nR = 20, nC = 40, nM = 60;
+        auto r = DTensor<T>::createRandomTensor(nR, nC, nM, -1, 1);
+        std::string fName = "myTest.dtensor";
+        r.saveToFile(fName);
+        auto a = DTensor<T>::parseFromTextFile(fName);
+        EXPECT_EQ(nR, a.numRows());
+        EXPECT_EQ(nC, a.numCols());
+        EXPECT_EQ(nM, a.numMats());
+        auto diff = a - r;
+        T err = diff.maxAbs();
+        EXPECT_LT(err, 2 * std::numeric_limits<T>::epsilon());
+    }
 }
 
 TEST_F(TensorTest, parseTensorFromFile) {
