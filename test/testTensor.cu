@@ -148,12 +148,7 @@ TEST_F(TensorTest, parseTensorUnsupportedDataType) {
     auto r = DTensor<double>::createRandomTensor(nR, nC, nM, -1, 1);
     std::string fName = "myTest.dtensor";
     r.saveToFile(fName);
-    try {
-        auto a = DTensor<char>::parseFromTextFile(fName);
-    } catch (const std::invalid_argument& _e) {
-        return;
-    }
-    FAIL();
+    EXPECT_THROW(DTensor<char>::parseFromTextFile(fName), std::invalid_argument);
 }
 
 /* ---------------------------------------
