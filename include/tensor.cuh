@@ -644,7 +644,7 @@ template<typename T>
 DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
                                          StorageMode mode) {
     auto parsedData = vectorFromFile<T>(path_to_file);
-    DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats);
+    DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats, mode);
     return tensorFromData;
 }
 
