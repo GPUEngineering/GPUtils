@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v1.5.2
+     --------------------- -->
+## v1.5.2 - 1-12-2024
+
+### Fixed
+
+- Quick bug bix in `DTensor::parseFromTextFile` (passing storage mode to `vectorFromFile`)
+
+
+<!-- ---------------------
       v1.5.1
      --------------------- -->
 ## v1.5.1 - 29-11-2024
