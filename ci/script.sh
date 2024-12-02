@@ -17,6 +17,18 @@ tests() {
       cpp_version=20
     fi
 
+
+    # ------------------------------------
+    # Run Python tests first
+    # ------------------------------------
+    pushd python
+    export PYTHONPATH=.
+    python -m venv venv
+    source venv/bin/activate
+    pip install --upgrade pip
+    pip install .
+    popd
+
     # ------------------------------------
     # Run tensor gtests
     # ------------------------------------
