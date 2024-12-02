@@ -6,13 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v1.6.0
+     --------------------- -->
+## v1.6.0 - 2-12-2024
+
+### Added
+
+- Method `saveToFile` becomes `DTensor<T>::saveToFile(std::string pathToFile, Serialisation ser)`, i.e., the user can 
+  choose whether to save the file as a text (ASCII) file, or a binary one
+
+### Changed
+
+ - Method `parseFromTextFile` renamed to `parseFromFile` (supports text and binary formats)
+
+
+<!-- ---------------------
       v1.5.2
      --------------------- -->
 ## v1.5.2 - 1-12-2024
 
 ### Fixed
 
-- Quick bug bix in `DTensor::parseFromTextFile` (passing storage mode to `vectorFromFile`)
+- Quick bug bix in `DTensor::parseFromTextFile` (passing storage mode to `vectorFromTextFile`)
 
 
 <!-- ---------------------
@@ -23,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Set precision in `DTensor::saveToFile` properly
-- `DTensor<T>::parseFromTextFile` throws `std::invalid_argument` if `T` is unsupported
+- `DTensor<T>::parseFromFile` throws `std::invalid_argument` if `T` is unsupported
 
 <!-- ---------------------
       v1.5.0

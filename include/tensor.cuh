@@ -169,6 +169,7 @@ enum StorageMode {
     defaultMajor = columnMajor
 };
 
+
 /**
  * This library uses tensors to store and manipulate data on a GPU device.
  * A tensor has three axes: [rows (m) x columns (n) x matrices (k)].
@@ -256,13 +257,16 @@ public:
      *
      * This static function reads data from a text file, creates a DTensor and uploads the data to the device.
      *
+     * The data may be stored in a text file or a binary file. Binary files must have the extension .bt.
+     *
      * @param path_to_file path to file as string
      * @param mode storage mode (default: StorageMode::defaultMajor)
      * @return instance of DTensor
      *
      * @throws std::invalid_argument if the file is not found
      */
-    static DTensor<T> parseFromTextFile(std::string path_to_file, StorageMode mode = StorageMode::defaultMajor);
+    static DTensor<T> parseFromFile(std::string path_to_file,
+                                    StorageMode mode = StorageMode::defaultMajor);
 
     /**
     * Constructs a DTensor object.
@@ -504,7 +508,12 @@ public:
     /**
      * Saves the current instance of DTensor to a (text) file
      *
-     * @param pathToFile
+     * If the file extension is .bt, the data will be stored in a binary file.
+     * Writing to and reading from a binary file is significantly faster and
+     * the generated binary files tend to have a smaller size (about 40% of the
+     * size of text files for data of type double and float).
+     *
+     * @param pathToFile path to file
      */
     void saveToFile(std::string pathToFile);
 
@@ -595,7 +604,7 @@ struct data_t {
 };
 
 template<typename T>
-data_t<T> vectorFromFile(std::string path_to_file) {
+data_t<T> vectorFromTextFile(std::string path_to_file) {
     data_t<T> dataStruct;
     std::ifstream file;
     file.open(path_to_file, std::ios::in);
@@ -641,23 +650,69 @@ data_t<T> vectorFromFile(std::string path_to_file) {
 }
 
 template<typename T>
-DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
-                                         StorageMode mode) {
-    auto parsedData = vectorFromFile<T>(path_to_file);
+data_t<T> vectorFromBinaryFile(std::string path_to_file) {
+    data_t<T> dataStruct;
+    /* Read from binary file */
+    std::ifstream inFile;
+    inFile.open(path_to_file, std::ios::binary);
+    inFile.read(reinterpret_cast<char *>(&(dataStruct.numRows)), sizeof(uint64_t));
+    inFile.read(reinterpret_cast<char *>(&(dataStruct.numCols)), sizeof(uint64_t));
+    inFile.read(reinterpret_cast<char *>(&(dataStruct.numMats)), sizeof(uint64_t));
+    uint64_t numElements = dataStruct.numRows * dataStruct.numCols * dataStruct.numMats;
+    std::vector<T> vecDataFromFile(numElements);
+    for (size_t i = 0; i < numElements; i++) {
+        T el;
+        inFile.read(reinterpret_cast<char *>(&el), sizeof(T));
+        vecDataFromFile[i] = el;
+    }
+    inFile.close();
+    dataStruct.data = vecDataFromFile;
+    return dataStruct;
+}
+
+template<typename T>
+DTensor<T> DTensor<T>::parseFromFile(std::string path_to_file,
+                                     StorageMode mode) {
+    // Figure out file extension
+    size_t pathToFileLength = path_to_file.length() ;
+    std::string fileNameExtension = path_to_file.substr(pathToFileLength-3);
+    typedef data_t<T> (*PARSER)(std::string);
+    PARSER parser = (fileNameExtension == ".bt")  ? vectorFromBinaryFile<T> : vectorFromTextFile<T>;
+    auto parsedData = parser(path_to_file);
     DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats, mode);
     return tensorFromData;
 }
 
 template<typename T>
 void DTensor<T>::saveToFile(std::string pathToFile) {
-    std::ofstream file(pathToFile);
-    file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
-    std::vector<T> myData(numEl()); download(myData);
-    if constexpr (std::is_floating_point<T>::value) {
-        file << std::setprecision(std::numeric_limits<T>::max_digits10);
-    }
-    for(const T& el : myData) file << el << std::endl;
+    std::vector<T> myData(numEl());
+    download(myData);
+
+    // Figure out file extension
+    size_t pathToFileLength = pathToFile.length() ;
+    std::string fileNameExtension = pathToFile.substr(pathToFileLength-3);
+    // If the extension is .bt...
+     if (fileNameExtension == ".bt") {
+        uint64_t nr = (uint64_t) numRows(),
+                nc = (uint64_t) numCols(),
+                nm = (uint64_t) numMats();
+        std::ofstream outFile;
+        outFile.open(pathToFile, std::ios::binary);
+        outFile.write(reinterpret_cast<const char *>(&nr), sizeof(uint64_t));
+        outFile.write(reinterpret_cast<const char *>(&nc), sizeof(uint64_t));
+        outFile.write(reinterpret_cast<const char *>(&nm), sizeof(uint64_t));
+        for (const T &el: myData) outFile.write(reinterpret_cast<const char *>(&el), sizeof(T));
+        outFile.close();
+    } else {
+         std::ofstream file(pathToFile);
+         file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
+         if constexpr (std::is_floating_point<T>::value) {
+             file << std::setprecision(std::numeric_limits<T>::max_digits10);
+         }
+         for (const T &el: myData) file << el << std::endl;
+     }
 }
+
 
 template<typename T>
 void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats) {
