@@ -170,6 +170,15 @@ enum StorageMode {
 };
 
 /**
+ * Serialisation format (when using saveToFile)
+ */
+enum Serialisation {
+    text_ascii,  ///< store in ASCII format
+    binary,  ///< store in binary format
+    defaultSerialisation = text_ascii
+};
+
+/**
  * This library uses tensors to store and manipulate data on a GPU device.
  * A tensor has three axes: [rows (m) x columns (n) x matrices (k)].
  * An (m,n,1)-tensor is a matrix, and an (m,1,1)-tensor is a vector.
@@ -506,7 +515,7 @@ public:
      *
      * @param pathToFile
      */
-    void saveToFile(std::string pathToFile);
+    void saveToFile(std::string pathToFile, Serialisation ser = Serialisation::defaultSerialisation);
 
     /* ------------- OPERATORS ------------- */
 
@@ -649,15 +658,30 @@ DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
 }
 
 template<typename T>
-void DTensor<T>::saveToFile(std::string pathToFile) {
-    std::ofstream file(pathToFile);
-    file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
-    std::vector<T> myData(numEl()); download(myData);
-    if constexpr (std::is_floating_point<T>::value) {
-        file << std::setprecision(std::numeric_limits<T>::max_digits10);
+void DTensor<T>::saveToFile(std::string pathToFile, Serialisation ser) {
+    std::vector<T> myData(numEl());
+    download(myData);
+    if (ser == Serialisation::text_ascii) {
+        std::ofstream file(pathToFile);
+        file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
+        if constexpr (std::is_floating_point<T>::value) {
+            file << std::setprecision(std::numeric_limits<T>::max_digits10);
+        }
+        for (const T &el: myData) file << el << std::endl;
+    } else if (ser == Serialisation::binary) {
+        uint64_t nr = (uint64_t) numRows(),
+                nc = (uint64_t) numCols(),
+                nm = (uint64_t) numMats();
+        std::ofstream outFile;
+        outFile.open(pathToFile, std::ios::binary);
+        outFile.write(reinterpret_cast<const char *>(&nr), sizeof(uint64_t));
+        outFile.write(reinterpret_cast<const char *>(&nc), sizeof(uint64_t));
+        outFile.write(reinterpret_cast<const char *>(&nm), sizeof(uint64_t));
+        for (const T &el: myData) outFile.write(reinterpret_cast<const char *>(&el), sizeof(T));
+        outFile.close();
     }
-    for(const T& el : myData) file << el << std::endl;
 }
+
 
 template<typename T>
 void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats) {
