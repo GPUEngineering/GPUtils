@@ -169,14 +169,6 @@ enum StorageMode {
     defaultMajor = columnMajor
 };
 
-/**
- * Serialisation format (when using saveToFile)
- */
-enum Serialisation {
-    text_ascii,  ///< store in ASCII format
-    binary,  ///< store in binary format
-    defaultSerialisation = text_ascii
-};
 
 /**
  * This library uses tensors to store and manipulate data on a GPU device.
@@ -271,7 +263,8 @@ public:
      *
      * @throws std::invalid_argument if the file is not found
      */
-    static DTensor<T> parseFromTextFile(std::string path_to_file, StorageMode mode = StorageMode::defaultMajor);
+    static DTensor<T> parseFromFile(std::string path_to_file,
+                                    StorageMode mode = StorageMode::defaultMajor);
 
     /**
     * Constructs a DTensor object.
@@ -515,7 +508,7 @@ public:
      *
      * @param pathToFile
      */
-    void saveToFile(std::string pathToFile, Serialisation ser = Serialisation::defaultSerialisation);
+    void saveToFile(std::string pathToFile);
 
     /* ------------- OPERATORS ------------- */
 
@@ -604,7 +597,7 @@ struct data_t {
 };
 
 template<typename T>
-data_t<T> vectorFromFile(std::string path_to_file) {
+data_t<T> vectorFromTextFile(std::string path_to_file) {
     data_t<T> dataStruct;
     std::ifstream file;
     file.open(path_to_file, std::ios::in);
@@ -650,25 +643,49 @@ data_t<T> vectorFromFile(std::string path_to_file) {
 }
 
 template<typename T>
-DTensor<T> DTensor<T>::parseFromTextFile(std::string path_to_file,
-                                         StorageMode mode) {
-    auto parsedData = vectorFromFile<T>(path_to_file);
+data_t<T> vectorFromBinaryFile(std::string path_to_file) {
+    data_t<T> dataStruct;
+    /* Read from binary file */
+    std::ifstream inFile;
+    inFile.open(path_to_file, std::ios::binary);
+    inFile.read(reinterpret_cast<char *>(&(dataStruct.numRows)), sizeof(uint64_t));
+    inFile.read(reinterpret_cast<char *>(&(dataStruct.numCols)), sizeof(uint64_t));
+    inFile.read(reinterpret_cast<char *>(&(dataStruct.numMats)), sizeof(uint64_t));
+    uint64_t numElements = dataStruct.numRows * dataStruct.numCols * dataStruct.numMats;
+    std::vector<T> vecDataFromFile(numElements);
+    for (size_t i = 0; i < numElements; i++) {
+        T el;
+        inFile.read(reinterpret_cast<char *>(&el), sizeof(T));
+        vecDataFromFile[i] = el;
+    }
+    inFile.close();
+    dataStruct.data = vecDataFromFile;
+    return dataStruct;
+}
+
+template<typename T>
+DTensor<T> DTensor<T>::parseFromFile(std::string path_to_file,
+                                     StorageMode mode) {
+    // Figure out file extension
+    size_t pathToFileLength = path_to_file.length() ;
+    std::string fileNameExtension = path_to_file.substr(pathToFileLength-3);
+    typedef data_t<T> (*PARSER)(std::string);
+    PARSER parser = (fileNameExtension == ".bt")  ? vectorFromBinaryFile<T> : vectorFromTextFile<T>;
+    auto parsedData = parser(path_to_file);
     DTensor<T> tensorFromData(parsedData.data, parsedData.numRows, parsedData.numCols, parsedData.numMats, mode);
     return tensorFromData;
 }
 
 template<typename T>
-void DTensor<T>::saveToFile(std::string pathToFile, Serialisation ser) {
+void DTensor<T>::saveToFile(std::string pathToFile) {
     std::vector<T> myData(numEl());
     download(myData);
-    if (ser == Serialisation::text_ascii) {
-        std::ofstream file(pathToFile);
-        file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
-        if constexpr (std::is_floating_point<T>::value) {
-            file << std::setprecision(std::numeric_limits<T>::max_digits10);
-        }
-        for (const T &el: myData) file << el << std::endl;
-    } else if (ser == Serialisation::binary) {
+
+    // Figure out file extension
+    size_t pathToFileLength = pathToFile.length() ;
+    std::string fileNameExtension = pathToFile.substr(pathToFileLength-3);
+    // If the extension is .bt...
+     if (fileNameExtension == ".bt") {
         uint64_t nr = (uint64_t) numRows(),
                 nc = (uint64_t) numCols(),
                 nm = (uint64_t) numMats();
@@ -679,7 +696,14 @@ void DTensor<T>::saveToFile(std::string pathToFile, Serialisation ser) {
         outFile.write(reinterpret_cast<const char *>(&nm), sizeof(uint64_t));
         for (const T &el: myData) outFile.write(reinterpret_cast<const char *>(&el), sizeof(T));
         outFile.close();
-    }
+    } else {
+         std::ofstream file(pathToFile);
+         file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
+         if constexpr (std::is_floating_point<T>::value) {
+             file << std::setprecision(std::numeric_limits<T>::max_digits10);
+         }
+         for (const T &el: myData) file << el << std::endl;
+     }
 }
 
 

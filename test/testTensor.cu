@@ -117,7 +117,7 @@ TEST_F(TensorTest, randomTensorCreation) {
 }
 
 /* ---------------------------------------
- * Save to file and parse
+ * Save to file and parse (text)
  * --------------------------------------- */
 
 TEMPLATE_WITH_TYPE_T
@@ -128,7 +128,7 @@ void parseTensorFromFile() {
         auto r = DTensor<T>::createRandomTensor(nR, nC, nM, -1, 1);
         std::string fName = "myTest.dtensor";
         r.saveToFile(fName);
-        auto a = DTensor<T>::parseFromTextFile(fName);
+        auto a = DTensor<T>::parseFromFile(fName);
         EXPECT_EQ(nR, a.numRows());
         EXPECT_EQ(nC, a.numCols());
         EXPECT_EQ(nM, a.numMats());
@@ -148,7 +148,31 @@ TEST_F(TensorTest, parseTensorUnsupportedDataType) {
     auto r = DTensor<double>::createRandomTensor(nR, nC, nM, -1, 1);
     std::string fName = "myTest.dtensor";
     r.saveToFile(fName);
-    EXPECT_THROW(DTensor<char>::parseFromTextFile(fName), std::invalid_argument);
+    EXPECT_THROW(DTensor<char>::parseFromFile(fName), std::invalid_argument);
+}
+
+/* ---------------------------------------
+ * Save to file and parse (binary)
+ * --------------------------------------- */
+
+TEMPLATE_WITH_TYPE_T
+void parseTensorFromFileBinary() {
+    size_t nR = 20, nC = 40, nM = 6;
+    auto r = DTensor<T>::createRandomTensor(nR, nC, nM, -1, 1);
+    std::string fName = "myTest.bt";
+    r.saveToFile(fName);
+    auto a = DTensor<T>::parseFromFile(fName);
+    EXPECT_EQ(nR, a.numRows());
+    EXPECT_EQ(nC, a.numCols());
+    EXPECT_EQ(nM, a.numMats());
+    auto diff = a - r;
+    T err = diff.maxAbs();
+    EXPECT_LT(err, 2 * std::numeric_limits<T>::epsilon());
+}
+
+TEST_F(TensorTest, parseTensorFromFileBinary) {
+    parseTensorFromFileBinary<float>();
+    parseTensorFromFileBinary<double>();
 }
 
 /* ---------------------------------------
