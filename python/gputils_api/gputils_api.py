@@ -2,6 +2,7 @@ import numpy as np
 
 def read_array_from_gputils_binary_file(path, dt=np.dtype('d')):
     """
+    Reads an array from a bt file
     :param path: path to file
     :param dt: numpy-compatible data type
     :raises ValueError: if the file name specified `path` does not have the .bt extension
@@ -19,6 +20,7 @@ def read_array_from_gputils_binary_file(path, dt=np.dtype('d')):
 
 def write_array_to_gputils_binary_file(x, path):
     """
+    Writes a numpy array into a bt file
 
     :param x: numpy array to save to file
     :param path: path to file
