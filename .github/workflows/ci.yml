@@ -17,7 +17,7 @@ jobs:
       - name: setup python3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.4'
           architecture: 'x64'
       - name: run test script
         run: bash ./ci/script.sh
