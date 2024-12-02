@@ -27,6 +27,7 @@ tests() {
     source venv/bin/activate
     pip install --upgrade pip
     pip install .
+    python -W ignore test/test.py -v
     popd
 
     # ------------------------------------
