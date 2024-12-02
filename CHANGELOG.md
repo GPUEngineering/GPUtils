@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
- - Method `parseFromFile` renamed to `parseFromFile` (supports text and binary formats)
+ - Method `parseFromTextFile` renamed to `parseFromFile` (supports text and binary formats)
 
 
 <!-- ---------------------
@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Quick bug bix in `DTensor::parseFromFile` (passing storage mode to `vectorFromTextFile`)
+- Quick bug bix in `DTensor::parseFromTextFile` (passing storage mode to `vectorFromTextFile`)
 
 
 <!-- ---------------------
