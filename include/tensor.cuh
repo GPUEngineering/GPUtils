@@ -257,6 +257,8 @@ public:
      *
      * This static function reads data from a text file, creates a DTensor and uploads the data to the device.
      *
+     * The data may be stored in a text file or a binary file. Binary files must have the extension .bt.
+     *
      * @param path_to_file path to file as string
      * @param mode storage mode (default: StorageMode::defaultMajor)
      * @return instance of DTensor
@@ -506,7 +508,12 @@ public:
     /**
      * Saves the current instance of DTensor to a (text) file
      *
-     * @param pathToFile
+     * If the file extension is .bt, the data will be stored in a binary file.
+     * Writing to and reading from a binary file is significantly faster and
+     * the generated binary files tend to have a smaller size (about 40% of the
+     * size of text files for data of type double and float).
+     *
+     * @param pathToFile path to file
      */
     void saveToFile(std::string pathToFile);
 
