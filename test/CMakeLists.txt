@@ -9,24 +9,23 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 # ----
 enable_testing()
-add_executable(device_test)
-
-target_sources(device_test  # add files
+add_executable(gputils_test)
+target_sources(gputils_test  # add files
         PRIVATE
         testTensor.cu
 )
-target_link_libraries(device_test
+target_link_libraries(gputils_test
     PRIVATE
-    device_compiler_flags
+    gputils_compiler_flags
     cublas
     cusolver
     cudadevrt
     GTest::gtest_main)
-target_include_directories(device_test
+target_include_directories(gputils_test
     PRIVATE
     "${PROJECT_BINARY_DIR}"
     "${PROJECT_SOURCE_DIR}/include"
 )
 include(GoogleTest)
-gtest_discover_tests(device_test)
+gtest_discover_tests(gputils_test)
 # ----
