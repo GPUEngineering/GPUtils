@@ -182,7 +182,7 @@ TEST_F(TensorTest, parseTensorFromFileBinary) {
 
 
 TEST_F(TensorTest, parseTensorFromBinaryPython) {
-    std::string fName = "../../rand_246_d.bt";
+    std::string fName = "../../python/rand_246_d.bt";
     auto a = DTensor<double>::parseFromFile(fName);
     EXPECT_EQ(2, a.numRows());
     EXPECT_EQ(4, a.numCols());
