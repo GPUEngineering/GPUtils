@@ -69,6 +69,14 @@ class GputilApiTestCase(unittest.TestCase):
     def test_read_rand_f(self):
         self.__test_read_rand('f')
 
+    def test_read_a_tensor_3d(self):
+        self.__test_read_rand('f')
+        base_dir = GputilApiTestCase.local_abs_path()
+        path = os.path.join(base_dir, 'b_d.bt')
+        b = gpuapi.read_array_from_gputils_binary_file(path)
+        self.assertEqual(b.shape, (2, 3, 2))
+        self.assertAlmostEqual(11., b[1, 2, 0])
+
 
 if __name__ == '__main__':
     unittest.main()
