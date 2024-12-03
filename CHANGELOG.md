@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v1.7.0
+     --------------------- -->
+## v1.7.0 - 3-12-2024
+
+### Added
+
+- The project now uses the GNU General Public License (GPL) v3; license file added
+- Introduces new Python package for storing and loading numpy arrays; in can be installed with `pip install gputils-api`; 
+  unit tests and documentation
+
+### Fixed
+
+- When compiling with `cmake`, the unit tests will not be compiled by default unless the flag `GPUTILS_BUILD_TEST` is set
+- Clang clippy recommendations applied
+- Proper error handling when binary tensor file is not found  
+
+
+<!-- ---------------------
       v1.6.0
      --------------------- -->
 ## v1.6.0 - 2-12-2024

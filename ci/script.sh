@@ -7,7 +7,7 @@ tests() {
     cpp_version=17 # default
     sm_arch=86 # default
     hwInfoOrin=`lshw | grep Orin` ||
-    if [ ! -z "${hwInfoOrin}" ]; then
+    if [ -n "${hwInfoOrin}" ]; then
       echo "Running on Orin";
       sm_arch=87
       cpp_version=17
@@ -17,12 +17,26 @@ tests() {
       cpp_version=20
     fi
 
+
+    # ------------------------------------
+    # Run Python tests first
+    # ------------------------------------
+    pushd python
+    export PYTHONPATH=.
+    python -m venv venv
+    source venv/bin/activate
+    pip install --upgrade pip
+    pip install .
+    python -W ignore test/test.py -v
+    deactivate
+    popd
+
     # ------------------------------------
     # Run tensor gtests
     # ------------------------------------
 
     # -- create build files
-    cmake -DCPPVERSION=${cpp_version} -DSM_ARCH=${sm_arch} -S . -B ./build -Wno-dev
+    cmake -DCPPVERSION=${cpp_version} -DSM_ARCH=${sm_arch} -DGPUTILS_BUILD_TEST=ON -S . -B ./build -Wno-dev
 
     # -- build files in build folder
     cmake --build ./build
@@ -34,7 +48,7 @@ tests() {
 
       # -- run compute sanitizer
       pushd ./build/test
-      mem=$(/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check=full ./device_test)
+      mem=$(/usr/local/cuda/bin/compute-sanitizer --tool memcheck --leak-check=full ./gputils_test)
       grep "0 errors" <<< "$mem"
       popd
 
@@ -44,7 +58,7 @@ tests() {
 
       # -- create build files
       cd example
-      cmake  -DCPPVERSION=${cpp_version} -DSM_ARCH=${sm_arch} -S . -B ./build -Wno-dev
+      cmake -DCPPVERSION=${cpp_version} -DSM_ARCH=${sm_arch} -S . -B ./build -Wno-dev
 
       # -- build files in build folder
       cmake --build ./build
