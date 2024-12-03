@@ -188,7 +188,7 @@ TEST_F(TensorTest, parseTensorFromBinaryPython) {
     EXPECT_EQ(4, a.numCols());
     EXPECT_EQ(6, a.numMats());
     auto err = a[1,2,3] + 12.3;
-    EXPECT_LT(err, 2 * std::numeric_limits<T>::epsilon());
+    EXPECT_LT(err, 2 * std::numeric_limits<double>::epsilon());
 }
 
 
