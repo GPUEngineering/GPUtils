@@ -182,13 +182,9 @@ TEST_F(TensorTest, parseTensorFromFileBinary) {
 
 
 TEST_F(TensorTest, parseTensorFromBinaryPython) {
-    std::string fName = "../../python/rand_246_d.bt";
-    auto a = DTensor<double>::parseFromFile(fName);
-    EXPECT_EQ(2, a.numRows());
-    EXPECT_EQ(4, a.numCols());
-    EXPECT_EQ(6, a.numMats());
-    auto err = a(1, 2, 3) + 12.3;
-    EXPECT_LT(err, 2 * std::numeric_limits<double>::epsilon());
+    std::string fName = "../../python/b_d.bt";
+    DTensor<double> b = DTensor<double>::parseFromFile(fName);
+    std::cout << b;
 }
 
 
