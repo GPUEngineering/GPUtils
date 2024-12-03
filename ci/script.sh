@@ -28,6 +28,7 @@ tests() {
     pip install --upgrade pip
     pip install .
     python -W ignore test/test.py -v
+    deactivate
     popd
 
     # ------------------------------------

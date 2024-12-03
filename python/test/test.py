@@ -6,6 +6,12 @@ import gputils_api as gpuapi
 
 class GputilApiTestCase(unittest.TestCase):
 
+    _B = np.array([
+        [[1, 2], [3, 4], [5, 6]],
+        [[7, 8], [9, 10], [11, 12]],
+        [[13, 14], [15, 16], [17, 18]]
+    ], dtype=np.dtype('d'))
+
     @staticmethod
     def local_abs_path():
         cwd = os.getcwd()
@@ -29,14 +35,9 @@ class GputilApiTestCase(unittest.TestCase):
         xf[1, 2, 3] = float(-12.3)
         gpuapi.write_array_to_gputils_binary_file(xf, os.path.join(base_dir, 'rand_246_f.bt'))
 
-        a = np.linspace(-100, 100, 4*5).reshape((4,5)).astype('d')
+        a = np.linspace(-100, 100, 4 * 5).reshape((4, 5)).astype('d')
         gpuapi.write_array_to_gputils_binary_file(a, os.path.join(base_dir, 'a_d.bt'))
-
-        b = np.array([
-            [[1, 2], [3, 4], [5, 6]],
-            [[7, 8], [9, 10], [11, 12]]
-        ], dtype=np.dtype('d'))
-        gpuapi.write_array_to_gputils_binary_file(b, os.path.join(base_dir, 'b_d.bt'))
+        gpuapi.write_array_to_gputils_binary_file(cls._B, os.path.join(base_dir, 'b_d.bt'))
 
     def __test_read_eye(self, dt):
         base_dir = GputilApiTestCase.local_abs_path()
@@ -60,7 +61,7 @@ class GputilApiTestCase(unittest.TestCase):
         self.assertEqual(2, r_shape[0])
         self.assertEqual(4, r_shape[1])
         self.assertEqual(6, r_shape[2])
-        e = np.abs(r[1, 2, 3]+12.3)
+        e = np.abs(r[1, 2, 3] + 12.3)
         self.assertTrue(e < 1e-6)
 
     def test_read_rand_d(self):
@@ -74,8 +75,8 @@ class GputilApiTestCase(unittest.TestCase):
         base_dir = GputilApiTestCase.local_abs_path()
         path = os.path.join(base_dir, 'b_d.bt')
         b = gpuapi.read_array_from_gputils_binary_file(path)
-        self.assertEqual(b.shape, (2, 3, 2))
-        self.assertAlmostEqual(11., b[1, 2, 0])
+        self.assertEqual(GputilApiTestCase._B.shape, b.shape)
+        self.assertLess(np.linalg.norm((b - GputilApiTestCase._B).reshape(-1, 1)), 1e-6)
 
 
 if __name__ == '__main__':

@@ -4,6 +4,9 @@ from setuptools import setup, find_packages
 import io
 import os
 
+# To publish to pypi, run:
+# rm -rf ./build ./dist opengen.egg-info ; pip install . ; python setup.py sdist bdist_wheel; twine upload dist/*
+
 here = os.path.abspath(os.path.dirname(__file__))
 
 NAME = 'gputils_api'
@@ -38,7 +41,7 @@ setup(name=NAME,
           'numpy', 'setuptools'
       ],
       classifiers=[
-          'Development Status :: 2 - Pre-Alpha ',
+          'Development Status :: 2 - Pre-Alpha',
           'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
           'Programming Language :: Python',
           'Environment :: GPU :: NVIDIA CUDA',
