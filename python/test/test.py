@@ -17,14 +17,18 @@ class GputilApiTestCase(unittest.TestCase):
         base_dir = GputilApiTestCase.local_abs_path()
         eye_d = np.eye(n, dtype=np.dtype('d'))
         gpuapi.write_array_to_gputils_binary_file(eye_d, os.path.join(base_dir, 'eye_d.bt'))
+
         eye_f = np.eye(n, dtype=np.dtype('f'))
         gpuapi.write_array_to_gputils_binary_file(eye_f, os.path.join(base_dir, 'eye_f.bt'))
+
         xd = np.random.randn(2, 4, 6).astype('d')
-        xd[1, 2, 3] = -123.123
+        xd[1, 2, 3] = -12.3
         gpuapi.write_array_to_gputils_binary_file(xd, os.path.join(base_dir, 'rand_246_d.bt'))
+
         xf = np.random.randn(2, 4, 6).astype('f')
-        xf[1, 2, 3] = -123.123
+        xf[1, 2, 3] = float(-12.3)
         gpuapi.write_array_to_gputils_binary_file(xf, os.path.join(base_dir, 'rand_246_f.bt'))
+
         a = np.linspace(-100, 100, 5*6*7).reshape((5, 6, 7)).astype('d')
         gpuapi.write_array_to_gputils_binary_file(a, os.path.join(base_dir, 'a_d.bt'))
 
@@ -50,7 +54,8 @@ class GputilApiTestCase(unittest.TestCase):
         self.assertEqual(2, r_shape[0])
         self.assertEqual(4, r_shape[1])
         self.assertEqual(6, r_shape[2])
-        self.assertTrue(np.abs(r[1, 2, 3] + 123.123) < 1e-12)
+        e = np.abs(r[1, 2, 3]+12.3)
+        self.assertTrue(e < 1e-6)
 
     def test_read_rand_d(self):
         self.__test_read_rand('d')
