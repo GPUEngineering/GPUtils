@@ -27,7 +27,11 @@ class GputilApiTestCase(unittest.TestCase):
         gpuapi.write_array_to_gputils_binary_file(a, os.path.join(base_dir, 'rand_357_f.bt'))
 
     def test_read_eye_d(self):
-        pass
+        base_dir = GputilApiTestCase.local_abs_path()
+        path = os.path.join(base_dir, 'eye_d.bt')
+        r = gpuapi.read_array_from_gputils_binary_file(path, dt=np.dtype('d'))
+        err = r[:, :, 1] - np.eye(5)
+        print(err)
 
 
 if __name__ == '__main__':
