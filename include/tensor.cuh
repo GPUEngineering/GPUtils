@@ -608,7 +608,7 @@ data_t<T> vectorFromTextFile(std::string path_to_file) {
     data_t<T> dataStruct;
     std::ifstream file;
     file.open(path_to_file, std::ios::in);
-    if (!file.is_open()) { throw std::invalid_argument("the file you provided does not exist"); };
+    if (!file.is_open()) { throw std::invalid_argument("[vectorFromTextFile] the file does not exist"); }
 
     std::string line;
     getline(file, line); dataStruct.numRows = atoi(line.c_str());
@@ -655,6 +655,7 @@ data_t<T> vectorFromBinaryFile(std::string path_to_file) {
     /* Read from binary file */
     std::ifstream inFile;
     inFile.open(path_to_file, std::ios::binary);
+    if (!inFile.is_open()) { throw std::invalid_argument("[vectorFromBinaryFile] the file does not exist"); }
     inFile.read(reinterpret_cast<char *>(&(dataStruct.numRows)), sizeof(uint64_t));
     inFile.read(reinterpret_cast<char *>(&(dataStruct.numCols)), sizeof(uint64_t));
     inFile.read(reinterpret_cast<char *>(&(dataStruct.numMats)), sizeof(uint64_t));
@@ -723,7 +724,7 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
         char errMessage[256];
         sprintf(errMessage,
                 "DTensor[%lu x %lu x %lu] with %lu elements cannot be reshaped into DTensor[%lu x %lu x %lu] (%lu elements)",
-                numRows(), numRows(), numMats(), numEl(), newNumRows, newNumCols, newNumMats, newNumElements);
+                numRows(), numCols(), numMats(), numEl(), newNumRows, newNumCols, newNumMats, newNumElements);
         throw std::invalid_argument(errMessage);
     }
 
