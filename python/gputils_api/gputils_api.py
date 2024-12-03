@@ -40,4 +40,4 @@ def write_array_to_gputils_binary_file(x, path):
         f.write(nr.to_bytes(8, 'little'))  # write number of rows
         f.write(nc.to_bytes(8, 'little'))  # write number of columns
         f.write(nm.to_bytes(8, 'little'))  # write number of matrices
-        x.tofile(f)  # write data
+        x.reshape(nr*nc*nm, 1).tofile(f)  # write data

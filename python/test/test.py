@@ -34,7 +34,7 @@ class GputilApiTestCase(unittest.TestCase):
 
         b = np.array([
             [[1, 2], [3, 4], [5, 6]],
-            [[7, 8], [9, 10], [-11, 12]]
+            [[7, 8], [9, 10], [11, 12]]
         ], dtype=np.dtype('d'))
         gpuapi.write_array_to_gputils_binary_file(b, os.path.join(base_dir, 'b_d.bt'))
 
