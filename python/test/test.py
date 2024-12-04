@@ -37,6 +37,7 @@ class GputilApiTestCase(unittest.TestCase):
 
         a = np.linspace(-100, 100, 4 * 5).reshape((4, 5)).astype('d')
         gpuapi.write_array_to_gputils_binary_file(a, os.path.join(base_dir, 'a_d.bt'))
+
         gpuapi.write_array_to_gputils_binary_file(cls._B, os.path.join(base_dir, 'b_d.bt'))
 
     def __test_read_eye(self, dt):

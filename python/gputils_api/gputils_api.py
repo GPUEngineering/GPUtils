@@ -15,6 +15,7 @@ def read_array_from_gputils_binary_file(path, dt=np.dtype('d')):
         nm = int.from_bytes(f.read(8), byteorder='little', signed=False)  # read number of matrices
         dat = np.fromfile(f, dtype=np.dtype(dt))  # read data
         dat = dat.reshape((nr, nc, nm))  # reshape
+        dat = np.dstack(np.split(dat.reshape(6, -1), 2))  # I'll explain this to you when you grow up
     return dat
 
 
@@ -36,8 +37,9 @@ def write_array_to_gputils_binary_file(x, path):
     nr = x_shape[0]
     nc = x_shape[1] if x_dims >= 2 else 1
     nm = x_shape[2] if x_dims == 3 else 1
+    x = np.vstack(np.dsplit(x, 2)).reshape(-1)
     with open(path, 'wb') as f:
         f.write(nr.to_bytes(8, 'little'))  # write number of rows
         f.write(nc.to_bytes(8, 'little'))  # write number of columns
         f.write(nm.to_bytes(8, 'little'))  # write number of matrices
-        x.reshape(nr*nc*nm, 1).tofile(f)  # write data
+        x.tofile(f)  # write data

@@ -182,10 +182,25 @@ TEST_F(TensorTest, parseTensorFromFileBinary) {
 
 TEST_F(TensorTest, parseTensorFromBinaryPython) {
     std::string fName = "../../python/b_d.bt";
-    DTensor<double> b = DTensor<double>::parseFromFile(fName);
-    std::vector<double> vb(12);
-    b.download(vb);
-    for (size_t i = 0; i < 12; i++) EXPECT_NEAR(i + 1., vb[i], PRECISION_HIGH);
+    DTensor<double> b = DTensor<double>::parseFromFile(fName, rowMajor);
+    for (size_t i=0; i<3; i++) {
+        for (size_t j=0; j<3; j++) {
+            EXPECT_NEAR(1 + 2*j + 6*i, b(i, j, 0), PRECISION_HIGH);
+            EXPECT_NEAR(2 + 2*j + 6*i, b(i, j, 1), PRECISION_HIGH);
+        }
+    }
+}
+
+
+/* ---------------------------------------
+ * Parse not existing file
+ * --------------------------------------- */
+
+TEST_F(TensorTest, parseTensorFromNonexistentFile) {
+    std::string fName = "../../python/whatever.bt";
+    EXPECT_THROW(DTensor<double> b = DTensor<double>::parseFromFile(fName, rowMajor), std::invalid_argument);
+    std::string fName2 = "../../python/whatever.txt";
+    EXPECT_THROW(DTensor<double> b = DTensor<double>::parseFromFile(fName2, rowMajor), std::invalid_argument);
 }
 
 
