@@ -182,7 +182,7 @@ TEST_F(TensorTest, parseTensorFromFileBinary) {
 
 TEST_F(TensorTest, parseTensorFromBinaryPython) {
     std::string fName = "../../python/b_d.bt";
-    DTensor<double> b = DTensor<double>::parseFromFile(fName, rowMajor);
+    DTensor<double> b = DTensor<double>::parseFromFile(fName);
     for (size_t i=0; i<3; i++) {
         for (size_t j=0; j<3; j++) {
             EXPECT_NEAR(1 + 2*j + 6*i, b(i, j, 0), PRECISION_HIGH);
