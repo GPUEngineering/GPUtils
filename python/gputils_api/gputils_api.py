@@ -14,8 +14,11 @@ def read_array_from_gputils_binary_file(path, dt=np.dtype('d')):
         nc = int.from_bytes(f.read(8), byteorder='little', signed=False)  # read number of columns
         nm = int.from_bytes(f.read(8), byteorder='little', signed=False)  # read number of matrices
         dat = np.fromfile(f, dtype=np.dtype(dt))  # read data
-        dat = dat.reshape((nr, nc, nm))  # reshape
-        dat = np.dstack(np.split(dat.reshape(6, -1), 2))  # I'll explain this to you when you grow up
+
+        if nm >= 2:  # if we actually have a 3D tensor (not a matrix or a vector)
+            dat = dat.reshape((nm, nc, nr)).swapaxes(0, 2)  # I'll explain this to you when you grow up
+        else:
+            dat = dat.reshape((nr, nc, nm))  # reshape
     return dat
 
 
@@ -28,6 +31,7 @@ def write_array_to_gputils_binary_file(x, path):
     :raises ValueError: if `x` has more than 3 dimensions
     :raises ValueError: if the file name specified `path` does not have the .bt extension
     """
+
     if not path.endswith(".bt"):
         raise ValueError("The file must have the .bt extension")
     x_shape = x.shape
@@ -37,7 +41,10 @@ def write_array_to_gputils_binary_file(x, path):
     nr = x_shape[0]
     nc = x_shape[1] if x_dims >= 2 else 1
     nm = x_shape[2] if x_dims == 3 else 1
-    x = np.vstack(np.dsplit(x, 2)).reshape(-1)
+    if x_dims == 3:
+        x = x.swapaxes(0, 2).reshape(-1)  # column-major storage; axis 2 last
+    else:
+        x = x.T.reshape(-1)  # column-major storage
     with open(path, 'wb') as f:
         f.write(nr.to_bytes(8, 'little'))  # write number of rows
         f.write(nc.to_bytes(8, 'little'))  # write number of columns
