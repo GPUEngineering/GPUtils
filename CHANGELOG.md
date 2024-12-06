@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v1.7.2
+     --------------------- -->
+## v1.7.2 - 6-12-2024
+
+### Fixed
+
+- Using alias instead of email in `setup.py`
+
+
+<!-- ---------------------
       v1.7.1
      --------------------- -->
 ## v1.7.1 - 4-12-2024
