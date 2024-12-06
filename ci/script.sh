@@ -23,7 +23,8 @@ tests() {
     # ------------------------------------
     pushd python
     export PYTHONPATH=.
-    python -m venv venv
+    which python
+    /usr/bin/python -m venv venv
     source venv/bin/activate
     pip install --upgrade pip
     pip install .
