@@ -15,6 +15,6 @@ int main() {
     auto recov = DTensor<double>::parseFromFile(fName);
     auto err = r - recov;
     std::cout << "max error : " << err.maxAbs();
-
+    std::cout << "Memory: " << Session::getInstance().totalAllocatedBytes() << " B" << std::endl;
     return 0;
 }
