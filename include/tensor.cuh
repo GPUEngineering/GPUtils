@@ -177,6 +177,8 @@ public:
      * @return Total allocated bytes
      */
     size_t totalAllocatedBytes() const { return bytesAllocated; }
+
+    void incrementAllocatedBytes(size_t s) { bytesAllocated += s; }
 };
 
 
@@ -216,10 +218,12 @@ private:
         if (m_doDestroyData) {
             if (m_d_data) gpuErrChk(cudaFree(m_d_data));
             m_d_data = nullptr;
+            Session::getInstance().incrementAllocatedBytes(-m_numRows * m_numCols * m_numMats * sizeof(T));
         }
         if (m_doDestroyPtrMatrices) {
             if (m_d_ptrMatrices) gpuErrChk(cudaFree(m_d_ptrMatrices));
             m_d_ptrMatrices = nullptr;
+            Session::getInstance().incrementAllocatedBytes(-m_numMats * sizeof(T *));
         }
     }
 

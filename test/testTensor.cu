@@ -950,16 +950,16 @@ TEST_F(TensorTest, tensorTranspose) {
 }
 
 /* ---------------------------------------
- * Tensor: transpose
+ * Tensor: total bytes allocated
  * --------------------------------------- */
 TEMPLATE_WITH_TYPE_T
 void tensorBytesAllocated() {
-    size_t previouslyAllocatedBytes = Session::getInstance().totalAllocatedBytes();
+    const size_t previouslyAllocatedBytes = Session::getInstance().totalAllocatedBytes();
     size_t m = 10, n = 10, k = 20;
     DTensor<T> A(m, n, k);
-    size_t allocatedBytes = Session::getInstance().totalAllocatedBytes();
-    size_t currentAllocatedBytes = m * n * k * sizeof(T) + k * sizeof(T *);
-    size_t expectedBytes = currentAllocatedBytes + previouslyAllocatedBytes;
+    const size_t allocatedBytes = Session::getInstance().totalAllocatedBytes();
+    const size_t currentAllocatedBytes = m * n * k * sizeof(T) + k * sizeof(T *);
+    const size_t expectedBytes = currentAllocatedBytes + previouslyAllocatedBytes;
     EXPECT_EQ(expectedBytes, allocatedBytes);
 }
 
@@ -968,6 +968,30 @@ TEST_F(TensorTest, tensorBytesAllocated) {
     tensorBytesAllocated<double>();
     tensorBytesAllocated<int>();
 }
+
+
+/* ---------------------------------------
+ * Tensor: total bytes allocated
+ * --------------------------------------- */
+TEMPLATE_WITH_TYPE_T
+void tensorBytesAllocatedDeallocated() {
+    const size_t previouslyAllocatedBytes = Session::getInstance().totalAllocatedBytes();
+    size_t m = 10, n = 10, k = 20;
+    auto *A = new DTensor<T>(m, n, k); // new allocation (increments session)
+    const size_t allocatedBytes = Session::getInstance().totalAllocatedBytes();
+    const size_t expectedBytes = previouslyAllocatedBytes + m * n * k * sizeof(T) + k * sizeof(T *);
+    EXPECT_EQ(expectedBytes, allocatedBytes);
+    delete A;
+    EXPECT_EQ(previouslyAllocatedBytes, Session::getInstance().totalAllocatedBytes());
+}
+
+TEST_F(TensorTest, tensorBytesAllocatedDeallocated) {
+    tensorBytesAllocatedDeallocated<float>();
+    tensorBytesAllocatedDeallocated<double>();
+    tensorBytesAllocatedDeallocated<int>();
+}
+
+
 
 /* ================================================================================================
  *  LEAST SQUARES TESTS
