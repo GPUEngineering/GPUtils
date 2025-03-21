@@ -1,3 +1,6 @@
+#ifndef TENSOR_CUH
+#define TENSOR_CUH
+
 #include <random>
 #include <algorithm>
 #include <iterator>
@@ -13,8 +16,6 @@
 #include <cassert>
 #include <fstream>
 
-#ifndef TENSOR_CUH
-#define TENSOR_CUH
 
 /**
  * Define defaults
