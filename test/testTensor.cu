@@ -11,9 +11,11 @@
  * ================================================================================================ */
 class TensorTest : public testing::Test {
 protected:
-    TensorTest() {}
+    TensorTest() {
+    }
 
-    virtual ~TensorTest() {}
+    virtual ~TensorTest() {
+    }
 };
 
 #define TENSOR_DATA_234A {1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 10, 5, 4, 3, 2, 1, -1, 4, 3, 4, 3, 4, 8}
@@ -52,17 +54,25 @@ void tensorConstructionStorageMode() {
     size_t rows = 3;
     size_t cols = 2;
     size_t mats = 2;
-    std::vector<T> aCm = {1, 3, 5,
-                          2, 4, 6};
-    std::vector<T> bCm = {7, 9, 11,
-                          8, 10, 12};
+    std::vector<T> aCm = {
+        1, 3, 5,
+        2, 4, 6
+    };
+    std::vector<T> bCm = {
+        7, 9, 11,
+        8, 10, 12
+    };
     const std::vector<T> Cm = {1, 3, 5, 2, 4, 6, 7, 9, 11, 8, 10, 12};
-    std::vector<T> aRm = {1, 2,
-                          3, 4,
-                          5, 6};
-    std::vector<T> bRm = {7, 8,
-                          9, 10,
-                          11, 12};
+    std::vector<T> aRm = {
+        1, 2,
+        3, 4,
+        5, 6
+    };
+    std::vector<T> bRm = {
+        7, 8,
+        9, 10,
+        11, 12
+    };
     std::vector<T> Rm = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     std::vector<T> hostData(rows * cols * mats);
     // test constructor
@@ -183,8 +193,8 @@ TEST_F(TensorTest, parseTensorFromFileBinary) {
 TEST_F(TensorTest, parseTensorFromBinaryPython) {
     std::string fName = "../../python/b_d.bt";
     DTensor<double> b = DTensor<double>::parseFromFile(fName);
-    for (size_t i=0; i<3; i++) {
-        for (size_t j=0; j<3; j++) {
+    for (size_t i = 0; i < 3; i++) {
+        for (size_t j = 0; j < 3; j++) {
             EXPECT_NEAR(1 + 2*j + 6*i, b(i, j, 0), PRECISION_HIGH);
             EXPECT_NEAR(2 + 2*j + 6*i, b(i, j, 1), PRECISION_HIGH);
         }
@@ -212,7 +222,7 @@ TEMPLATE_WITH_TYPE_T
 void tensorMoveConstructor() {
     DTensor<T> zero(2, 3, 4, true);
     DTensor<T> x(std::move(zero));
-    DTensor<T> y(DTensor<T> {100, 10, 1000});
+    DTensor<T> y(DTensor<T>{100, 10, 1000});
 }
 
 TEST_F(TensorTest, tensorMoveConstructor) {
@@ -378,8 +388,10 @@ void tensorDeviceCopyTo() {
     DTensor<T> other(2, 3, 5, true);
     DTensor<T> z(other, 2, 1, 4);
     tenz.deviceCopyTo(z);
-    std::vector<T> expected = {0, 0, 0, 0, 0, 0,
-                               1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 10, 5, 4, 3, 2, 1, -1, 4, 3, 4, 3, 4, 8};
+    std::vector<T> expected = {
+        0, 0, 0, 0, 0, 0,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 8, 7, 10, 5, 4, 3, 2, 1, -1, 4, 3, 4, 3, 4, 8
+    };
     std::vector<T> actual(2 * 3 * 5);
     other.download(actual);
     EXPECT_EQ(expected, actual);
@@ -453,9 +465,11 @@ void tensorSliceAndReshape(T epsilon) {
     bSlice.reshape(2, 9, 1);
     aSlice += bSlice;
 
-    std::vector<T> dataAExpected = {1, 2, 3, 4, 5, 6, 41, 7, 5, 5,
-                                    19, 17, 14, 13, 5, 11, -8, -4,
-                                    6, 8, 8, -2, 8, 13};
+    std::vector<T> dataAExpected = {
+        1, 2, 3, 4, 5, 6, 41, 7, 5, 5,
+        19, 17, 14, 13, 5, 11, -8, -4,
+        6, 8, 8, -2, 8, 13
+    };
     DTensor<T> aExpected(dataAExpected, 2, 3, 4);
 
     DTensor<T> err = aExpected - a;
@@ -479,12 +493,12 @@ void tensorDotF(T epsilon) {
     DTensor<T> vecA(dataA, dataA.size());
     DTensor<T> vecB(dataB, dataB.size());
     T dotVector = vecA.dotF(vecB);
-    EXPECT_EQ(604, dotVector);  // from MATLAB
+    EXPECT_EQ(604, dotVector); // from MATLAB
     // as matrices
     DTensor<T> tenA(dataA, 2, 3, 4);
     DTensor<T> tenB(dataB, 2, 3, 4);
     T dotTensor = tenA.dotF(tenB);
-    EXPECT_EQ(604, dotTensor);  // from MATLAB
+    EXPECT_EQ(604, dotTensor); // from MATLAB
 }
 
 TEST_F(TensorTest, tensorDotF) {
@@ -680,8 +694,10 @@ TEST_F(TensorTest, tensorAssignmentOperator) {
 TEMPLATE_WITH_TYPE_T
 void tensorTimesEqualsScalar() {
     std::vector<T> data = TENSOR_DATA_234A;
-    std::vector<T> dataTimes3 = {3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
-                                 24};
+    std::vector<T> dataTimes3 = {
+        3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
+        24
+    };
     DTensor<T> tenz(data, 2, 3, 4);
     tenz *= 3.0;
     std::vector<T> actual;
@@ -701,8 +717,10 @@ TEST_F(TensorTest, tensorTimesEqualsScalar) {
 TEMPLATE_WITH_TYPE_T
 void tensorTimesScalar() {
     std::vector<T> data = TENSOR_DATA_234A;
-    std::vector<T> dataTimes3 = {3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
-                                 24};
+    std::vector<T> dataTimes3 = {
+        3, 6, 9, 12, 15, 18, 21, 24, 27, 24, 21, 30, 15, 12, 9, 6, 3, -3, 12, 9, 12, 9, 12,
+        24
+    };
     DTensor<T> tenz(data, 2, 3, 4);
     auto tripleTensor = 3.0 * tenz;
     std::vector<T> actual;
@@ -809,12 +827,16 @@ TEST_F(TensorTest, tensorMinusTensor) {
 
 TEMPLATE_WITH_TYPE_T
 void tensorAddAB() {
-    std::vector<T> aData = {1, 2, 3, 4, 5, 6,
-                            7, 8, 9, 10, 11, 12,
-                            13, 14, 15, 16, 17, 18};
-    std::vector<T> bData = {6, 5, 4, 3, 2, 1,
-                            7, 6, 5, 4, 3, 2,
-                            1, 2, 1, 5, -6, 8};
+    std::vector<T> aData = {
+        1, 2, 3, 4, 5, 6,
+        7, 8, 9, 10, 11, 12,
+        13, 14, 15, 16, 17, 18
+    };
+    std::vector<T> bData = {
+        6, 5, 4, 3, 2, 1,
+        7, 6, 5, 4, 3, 2,
+        1, 2, 1, 5, -6, 8
+    };
     DTensor<T> A(aData, 2, 3, 3);
     DTensor<T> B(bData, 3, 2, 3);
     DTensor<T> C(2, 2, 3, true);
@@ -876,12 +898,14 @@ TEST_F(TensorTest, tensorSliceAxis01PtrMatrices) {
 
 TEMPLATE_WITH_TYPE_T
 void tensorGetRows() {
-    std::vector<T> aData = {10.5, 25.0, 60.0,
-                            -21.0, 720.0, -1.0,
-                            11.0, -1.0, 30.0,
-                            5., 6., 7.,
-                            8., 9., 10.,
-                            11., 12., 13};
+    std::vector<T> aData = {
+        10.5, 25.0, 60.0,
+        -21.0, 720.0, -1.0,
+        11.0, -1.0, 30.0,
+        5., 6., 7.,
+        8., 9., 10.,
+        11., 12., 13
+    };
     DTensor<T> A(aData, 3, 3, 2);
     DTensor<T> Ar0 = A.getRows(1, 1, 0);
     std::vector<T> expected0 = {25., 720., -1.};
@@ -918,7 +942,6 @@ void tensorTranspose() {
     std::vector<T> actual;
     Atranspose.download(actual);
     EXPECT_EQ(expected, actual);
-
 }
 
 TEST_F(TensorTest, tensorTranspose) {
@@ -926,14 +949,60 @@ TEST_F(TensorTest, tensorTranspose) {
     tensorTranspose<double>();
 }
 
+/* ---------------------------------------
+ * Tensor: total bytes allocated
+ * --------------------------------------- */
+TEMPLATE_WITH_TYPE_T
+void tensorBytesAllocated() {
+    const size_t previouslyAllocatedBytes = Session::getInstance().totalAllocatedBytes();
+    size_t m = 10, n = 10, k = 20;
+    DTensor<T> A(m, n, k);
+    const size_t allocatedBytes = Session::getInstance().totalAllocatedBytes();
+    const size_t currentAllocatedBytes = m * n * k * sizeof(T) + k * sizeof(T *);
+    const size_t expectedBytes = currentAllocatedBytes + previouslyAllocatedBytes;
+    EXPECT_EQ(expectedBytes, allocatedBytes);
+}
+
+TEST_F(TensorTest, tensorBytesAllocated) {
+    tensorBytesAllocated<float>();
+    tensorBytesAllocated<double>();
+    tensorBytesAllocated<int>();
+}
+
+
+/* ---------------------------------------
+ * Tensor: total bytes allocated
+ * --------------------------------------- */
+TEMPLATE_WITH_TYPE_T
+void tensorBytesAllocatedDeallocated() {
+    const size_t previouslyAllocatedBytes = Session::getInstance().totalAllocatedBytes();
+    size_t m = 10, n = 10, k = 20;
+    auto *A = new DTensor<T>(m, n, k); // new allocation (increments session)
+    const size_t allocatedBytes = Session::getInstance().totalAllocatedBytes();
+    const size_t expectedBytes = previouslyAllocatedBytes + m * n * k * sizeof(T) + k * sizeof(T *);
+    EXPECT_EQ(expectedBytes, allocatedBytes);
+    delete A;
+    EXPECT_EQ(previouslyAllocatedBytes, Session::getInstance().totalAllocatedBytes());
+}
+
+TEST_F(TensorTest, tensorBytesAllocatedDeallocated) {
+    tensorBytesAllocatedDeallocated<float>();
+    tensorBytesAllocatedDeallocated<double>();
+    tensorBytesAllocatedDeallocated<int>();
+}
+
+
+
 /* ================================================================================================
  *  LEAST SQUARES TESTS
  * ================================================================================================ */
 class LeastSquaresTest : public testing::Test {
 protected:
-    LeastSquaresTest() {}
+    LeastSquaresTest() {
+    }
 
-    virtual ~LeastSquaresTest() {}
+    virtual ~LeastSquaresTest() {
+    }
 };
 
 /* ---------------------------------------
@@ -943,12 +1012,14 @@ protected:
 TEMPLATE_WITH_TYPE_T
 void tensorLeastSquares1(T epsilon) {
     // TODO test with tall matrices too
-    std::vector<T> aData = {1, 2,
-                            3, 4,
-                            7, 8,
-                            9, 10,
-                            6, 8,
-                            -9, 20};
+    std::vector<T> aData = {
+        1, 2,
+        3, 4,
+        7, 8,
+        9, 10,
+        6, 8,
+        -9, 20
+    };
     std::vector<T> bData = {1, 1, -1, 2, 30, -80};
     DTensor<T> A0(aData, 2, 2, 3);
     DTensor<T> A(A0);
@@ -973,9 +1044,11 @@ TEST_F(LeastSquaresTest, tensorLS1) {
  * ================================================================================================ */
 class SvdTest : public testing::Test {
 protected:
-    SvdTest() {}
+    SvdTest() {
+    }
 
-    virtual ~SvdTest() {}
+    virtual ~SvdTest() {
+    }
 };
 
 /* ---------------------------------------
@@ -983,11 +1056,14 @@ protected:
  * and matrix rank
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesComputation(float epsilon) {
-    std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
-                            2, 7, 7, 7, 7, 7, 7, 7,
-                            3, 8, 8, 8, 8, 8, 8, 8,};
+    std::vector<T> bData = {
+        1, 6, 6, 6, 6, 6, 6, 6,
+        2, 7, 7, 7, 7, 7, 7, 7,
+        3, 8, 8, 8, 8, 8, 8, 8,
+    };
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
     svd.factorise();
@@ -1012,11 +1088,14 @@ TEST_F(SvdTest, singularValuesComputation) {
  * Singular values - memory mgmt
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesMemory(float epsilon) {
-    std::vector<T> bData = {1, 6, 6, 6, 6, 6, 6, 6,
-                            2, 7, 7, 7, 7, 7, 7, 7,
-                            3, 8, 8, 8, 8, 8, 8, 8,};
+    std::vector<T> bData = {
+        1, 6, 6, 6, 6, 6, 6, 6,
+        2, 7, 7, 7, 7, 7, 7, 7,
+        3, 8, 8, 8, 8, 8, 8, 8,
+    };
     DTensor<T> B(bData, 8, 3);
     Svd<T> svd(B, true, false);
     svd.factorise();
@@ -1044,7 +1123,8 @@ TEST_F(SvdTest, singularValuesMemory) {
 /* ---------------------------------------
  * SVD with multiple matrices
  * --------------------------------------- */
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesMultipleMatrices(float epsilon) {
     std::vector<T> aData = {1, 2, 3, 4, 5, 6, 1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 1};
     DTensor<T> A(aData, 3, 2, 3);
@@ -1054,31 +1134,35 @@ void singularValuesMultipleMatrices(float epsilon) {
     DTensor<T> const &V = svd.rightSingularVectors();
     auto Uopt = svd.leftSingularVectors();
     auto U = Uopt.value();
-    std::vector<T> expected_v = {-0.386317703118612, -0.922365780077058, -0.922365780077058, 0.386317703118612,
-                                 -0.447213595499958, -0.894427190999916, 0.894427190999916, -0.447213595499958,
-                                 0, -1, 1, 0};
+    std::vector<T> expected_v = {
+        -0.386317703118612, -0.922365780077058, -0.922365780077058, 0.386317703118612,
+        -0.447213595499958, -0.894427190999916, 0.894427190999916, -0.447213595499958,
+        0, -1, 1, 0
+    };
     std::vector<T> actual_v(12);
     V.download(actual_v);
-    for (size_t i = 0; i < 4; i++) EXPECT_NEAR(expected_v[i], actual_v[i], epsilon);
+    for (size_t i = 0; i < 4; i++)
+        EXPECT_NEAR(expected_v[i], actual_v[i], epsilon);
     std::vector<T> expected_s = {9.508032000695726, 0.772869635673484, 3.872983346207417, 0, 1, 0};
     std::vector<T> actual_s(6);
     S.download(actual_s);
-    for (size_t i = 0; i < 6; i++) EXPECT_NEAR(expected_s[i], actual_s[i], epsilon);
+    for (size_t i = 0; i < 6; i++)
+        EXPECT_NEAR(expected_s[i], actual_s[i], epsilon);
     std::vector<T> expected_u = {
-            -0.428667133548626, -0.566306918848035, -0.703946704147444,
-            0.805963908589298, 0.112382414096594, -0.581199080396110,
-            0.408248290463863, -0.816496580927726, 0.408248290463863,
-            -0.577350269189626, -0.577350269189626, -0.577350269189626,
-            0.816496580927726, -0.408248290463863, -0.408248290463863,
-            0.000000000000000, -0.707106781186548, 0.707106781186547,
-            0, 0, -1,
-            1, 0, 0,
-            0, -1, 0,
+        -0.428667133548626, -0.566306918848035, -0.703946704147444,
+        0.805963908589298, 0.112382414096594, -0.581199080396110,
+        0.408248290463863, -0.816496580927726, 0.408248290463863,
+        -0.577350269189626, -0.577350269189626, -0.577350269189626,
+        0.816496580927726, -0.408248290463863, -0.408248290463863,
+        0.000000000000000, -0.707106781186548, 0.707106781186547,
+        0, 0, -1,
+        1, 0, 0,
+        0, -1, 0,
     };
     std::vector<T> actual_u(27);
     U->download(actual_u);
-    for (size_t i = 0; i < 27; i++) EXPECT_NEAR(expected_u[i], actual_u[i], epsilon);
-
+    for (size_t i = 0; i < 27; i++)
+        EXPECT_NEAR(expected_u[i], actual_u[i], epsilon);
 }
 
 TEST_F(SvdTest, singularValuesMultipleMatrices) {
@@ -1091,11 +1175,14 @@ TEST_F(SvdTest, singularValuesMultipleMatrices) {
  * SVD for rank computation of multiple
  * matrices
  * --------------------------------------- */
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void singularValuesRankMultipleMatrices(float epsilon) {
-    std::vector<T> aData = {1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 0,
-                            1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12,
-                            1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12};
+    std::vector<T> aData = {
+        1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 0,
+        1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12,
+        1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12
+    };
     DTensor<T> A(aData, 4, 3, 3);
 
     Svd<T> svd(A);
@@ -1116,9 +1203,11 @@ TEST_F(SvdTest, singularValuesRankMultipleMatrices) {
  * ================================================================================================ */
 class CholeskyTest : public testing::Test {
 protected:
-    CholeskyTest() {}
+    CholeskyTest() {
+    }
 
-    virtual ~CholeskyTest() {}
+    virtual ~CholeskyTest() {
+    }
 };
 
 
@@ -1126,11 +1215,14 @@ protected:
  * Cholesky factorisation
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyFactorisation(T epsilon) {
-    std::vector<T> aData = {10.0, 2.0, 3.0,
-                            2.0, 20.0, -1.0,
-                            3.0, -1.0, 30.0};
+    std::vector<T> aData = {
+        10.0, 2.0, 3.0,
+        2.0, 20.0, -1.0,
+        3.0, -1.0, 30.0
+    };
     DTensor<T> A(aData, 3, 3, 1);
     CholeskyFactoriser<T> chol(A);
     chol.factorise();
@@ -1149,11 +1241,14 @@ TEST_F(CholeskyTest, choleskyFactorisation) {
  * Cholesky factorisation: solve system
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyFactorisationSolution(T epsilon) {
-    std::vector<T> aData = {10.0, 2.0, 3.0,
-                            2.0, 20.0, -1.0,
-                            3.0, -1.0, 30.0};
+    std::vector<T> aData = {
+        10.0, 2.0, 3.0,
+        2.0, 20.0, -1.0,
+        3.0, -1.0, 30.0
+    };
     DTensor<T> A(aData, 3, 3, 1);
     DTensor<T> L(A); // L = A
     CholeskyFactoriser<T> chol(L);
@@ -1167,12 +1262,12 @@ void choleskyFactorisationSolution(T epsilon) {
     std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
     std::vector<T> actual(3);
     sol.download(actual);
-    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);
+    for (size_t i = 0; i < 3; i++)
+        EXPECT_NEAR(expected[i], actual[i], epsilon);
 
     DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
-
 }
 
 TEST_F(CholeskyTest, choleskyFactorisationSolution) {
@@ -1184,11 +1279,14 @@ TEST_F(CholeskyTest, choleskyFactorisationSolution) {
  * Batched Cholesky factorisation
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchFactorisation(T epsilon) {
-    std::vector<T> aData = {10.0, 2.0, 3.0,
-                            2.0, 20.0, -1.0,
-                            3.0, -1.0, 30.0};
+    std::vector<T> aData = {
+        10.0, 2.0, 3.0,
+        2.0, 20.0, -1.0,
+        3.0, -1.0, 30.0
+    };
     DTensor<T> A(3, 3, 2);
     DTensor<T> A0(A, 2, 0, 0);
     DTensor<T> A1(A, 2, 1, 1);
@@ -1217,11 +1315,14 @@ TEST_F(CholeskyTest, choleskyBatchFactorisation) {
  * Batched Cholesky solve
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchFactorSolve(T epsilon) {
-    std::vector<T> aData = {10.0, 2.0, 3.0,
-                            2.0, 20.0, -1.0,
-                            3.0, -1.0, 30.0};
+    std::vector<T> aData = {
+        10.0, 2.0, 3.0,
+        2.0, 20.0, -1.0,
+        3.0, -1.0, 30.0
+    };
     DTensor<T> A(3, 3, 2);
     DTensor<T> A0(A, 2, 0, 0);
     DTensor<T> A1(A, 2, 1, 1);
@@ -1241,8 +1342,10 @@ void choleskyBatchFactorSolve(T epsilon) {
     std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
     std::vector<T> actual(6);
     sol.download(actual);
-    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);  // 0
-    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i + 3], epsilon);  // 1
+    for (size_t i = 0; i < 3; i++)
+        EXPECT_NEAR(expected[i], actual[i], epsilon); // 0
+    for (size_t i = 0; i < 3; i++)
+        EXPECT_NEAR(expected[i], actual[i + 3], epsilon); // 1
     DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
@@ -1258,19 +1361,24 @@ TEST_F(CholeskyTest, choleskyBatchFactorSolve) {
  * Batched Cholesky solve (factor provided)
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void choleskyBatchSolve(T epsilon) {
-    std::vector<T> aData = {10.0, 2.0, 3.0,
-                            2.0, 20.0, -1.0,
-                            3.0, -1.0, 30.0};
+    std::vector<T> aData = {
+        10.0, 2.0, 3.0,
+        2.0, 20.0, -1.0,
+        3.0, -1.0, 30.0
+    };
     DTensor<T> A(3, 3, 2);
     DTensor<T> A0(A, 2, 0, 0);
     DTensor<T> A1(A, 2, 1, 1);
     A0.upload(aData);
     A1.upload(aData);
-    std::vector<T> lowData = {3.162277660168380, 0, 0,
-                              0.632455532033676, 4.427188724235731, 0,
-                              0.948683298050514, -0.361403161162101, 5.382321781081287};  // from matlab
+    std::vector<T> lowData = {
+        3.162277660168380, 0, 0,
+        0.632455532033676, 4.427188724235731, 0,
+        0.948683298050514, -0.361403161162101, 5.382321781081287
+    }; // from matlab
     DTensor<T> low(3, 3, 2);
     DTensor<T> low0(low, 2, 0, 0);
     DTensor<T> low1(low, 2, 1, 1);
@@ -1289,8 +1397,10 @@ void choleskyBatchSolve(T epsilon) {
     std::vector<T> expected = {-0.126805213103205, -0.128566396618528, 0.175061641423036};
     std::vector<T> actual(6);
     sol.download(actual);
-    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i], epsilon);  // 0
-    for (size_t i = 0; i < 3; i++) EXPECT_NEAR(expected[i], actual[i + 3], epsilon);  // 1
+    for (size_t i = 0; i < 3; i++)
+        EXPECT_NEAR(expected[i], actual[i], epsilon); // 0
+    for (size_t i = 0; i < 3; i++)
+        EXPECT_NEAR(expected[i], actual[i + 3], epsilon); // 1
     DTensor<T> error = A * sol;
     error -= rhs;
     EXPECT_TRUE(error.normF() < epsilon);
@@ -1308,9 +1418,11 @@ TEST_F(CholeskyTest, choleskyBatchSolve) {
  * ================================================================================================ */
 class QRTest : public testing::Test {
 protected:
-    QRTest() {}
+    QRTest() {
+    }
 
-    virtual ~QRTest() {}
+    virtual ~QRTest() {
+    }
 };
 
 
@@ -1318,7 +1430,8 @@ protected:
  * QR factorisation
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void qrFactorisation(T epsilon) {
     size_t nR = 4;
     size_t nC = 3;
@@ -1349,7 +1462,8 @@ TEST_F(QRTest, qrFactorisation) {
  * - tall and skinny matrix
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void qrFactorisationTall(T epsilon) {
     size_t nR = 20;
     size_t nC = 3;
@@ -1379,19 +1493,24 @@ TEST_F(QRTest, qrFactorisationTall) {
  * QR factorisation: solve least squares
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void qrLeastSquares(T epsilon) {
     size_t nR = 4;
     size_t nC = 3;
     DTensor<T> temp(nR, nC);
-    std::vector<T> vecA = {85.5638, -59.4001, -80.1992,
-                           99.9464, 5.51393, 5.17935,
-                           6.87488, -26.7536, 36.0914,
-                           -44.3857, -32.1268, 54.8915};  // Random matrix
-    std::vector<T> vecB = {-23.3585,
-                           -48.5744,
-                           43.4229,
-                           -56.5081};  // Random vector
+    std::vector<T> vecA = {
+        85.5638, -59.4001, -80.1992,
+        99.9464, 5.51393, 5.17935,
+        6.87488, -26.7536, 36.0914,
+        -44.3857, -32.1268, 54.8915
+    }; // Random matrix
+    std::vector<T> vecB = {
+        -23.3585,
+        -48.5744,
+        43.4229,
+        -56.5081
+    }; // Random vector
     DTensor<T> A(vecA, nR, nC, 1, rowMajor);
     DTensor<T> b(vecB, nR);
     DTensor<T> xFull(nR);
@@ -1407,7 +1526,7 @@ void qrLeastSquares(T epsilon) {
     Ax.addAB(A, x);
     Ax -= b;
     T nrm = Ax.normF();
-    EXPECT_NEAR(nrm, 80.003169364198072, epsilon);  // From MatLab
+    EXPECT_NEAR(nrm, 80.003169364198072, epsilon); // From MatLab
 }
 
 TEST_F(QRTest, qrLeastSquares) {
@@ -1421,9 +1540,11 @@ TEST_F(QRTest, qrLeastSquares) {
  * ================================================================================================ */
 class NullspaceTest : public testing::Test {
 protected:
-    NullspaceTest() {}
+    NullspaceTest() {
+    }
 
-    virtual ~NullspaceTest() {}
+    virtual ~NullspaceTest() {
+    }
 };
 
 
@@ -1431,13 +1552,16 @@ protected:
  * Basic nullspace test
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void computeNullspaceTensor(T epsilon) {
-    std::vector<T> aData = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
-                            1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
-                            1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12,
-                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<T> aData = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
+        1, 2, 3, 4, 2, 4, 6, 8, 3, 6, 9, 12,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
     DTensor<T> A(aData, 3, 4, 5);
     Nullspace<T> ns(A);
     DTensor<T> nA = ns.nullspace();
@@ -1471,14 +1595,17 @@ TEST_F(NullspaceTest, computeNullspaceTensor) {
  * Nullspace is trivial
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void computeNullspaceTrivial(T epsilon) {
-    std::vector<T> data{4, 5, 7,
-                        4, 1, 8,
-                        4, 5, 0,
-                        1, 1, 1,
-                        5, 6, 7,
-                        9, 0, 3};
+    std::vector<T> data{
+        4, 5, 7,
+        4, 1, 8,
+        4, 5, 0,
+        1, 1, 1,
+        5, 6, 7,
+        9, 0, 3
+    };
     DTensor<T> A(data, 3, 3, 2, rowMajor);
     Nullspace<T> nullA(A);
     DTensor<T> N = nullA.nullspace();
@@ -1494,14 +1621,17 @@ TEST_F(NullspaceTest, computeNullspaceTrivial) {
  * Project onto nullspace
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void projectOnNullspaceTensor(T epsilon) {
     // offline
     size_t m = 3;
     size_t n = 7;
-    std::vector<T> mat{1, -2, 3, 4, -1, -1, -1,
-                       1, 2, -3, 4, -1, -1, -1,
-                       -1, 3, 5, -7, -1, -1, -1};
+    std::vector<T> mat{
+        1, -2, 3, 4, -1, -1, -1,
+        1, 2, -3, 4, -1, -1, -1,
+        -1, 3, 5, -7, -1, -1, -1
+    };
     DTensor<T> A(m, n, 1);
     A.upload(mat, rowMajor);
     Nullspace<T> ns = Nullspace(A);
@@ -1538,9 +1668,11 @@ TEST_F(NullspaceTest, projectOnNullspaceTensor) {
  * ================================================================================================ */
 class GivensAnnihilatorTest : public testing::Test {
 protected:
-    GivensAnnihilatorTest() {}
+    GivensAnnihilatorTest() {
+    }
 
-    virtual ~GivensAnnihilatorTest() {}
+    virtual ~GivensAnnihilatorTest() {
+    }
 };
 
 
@@ -1548,7 +1680,8 @@ protected:
  * GivensAnnihilator works
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void givensAnnihilateElement(T epsilon) {
     size_t m = 10;
     size_t n = 6;
@@ -1573,12 +1706,12 @@ TEST_F(GivensAnnihilatorTest, givensAnnihilateElement) {
 }
 
 
-
 /* ---------------------------------------
  * GivensAnnihilator: correctness
  * --------------------------------------- */
 
-TEMPLATE_WITH_TYPE_T TEMPLATE_CONSTRAINT_REQUIRES_FPX
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
 void givensAnnihilateCorrectness(T epsilon) {
     size_t m = 10, n = 6;
     std::vector<double> v(m * n);
@@ -1593,13 +1726,9 @@ void givensAnnihilateCorrectness(T epsilon) {
     EXPECT_NEAR(2.137186834969645, a(0, 0), epsilon);
     EXPECT_NEAR(44.552125559751822, a(0, 3), epsilon);
     EXPECT_NEAR(-0.328797974610715, a(1, 3), epsilon);
-
 }
 
 TEST_F(GivensAnnihilatorTest, givensAnnihilateCorrectness) {
     givensAnnihilateCorrectness<double>(1e-14);
     givensAnnihilateCorrectness<float>(1e-12);
 }
-
-
-

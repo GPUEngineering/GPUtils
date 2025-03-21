@@ -395,4 +395,14 @@ N.project(vectors);
 std::cout << vectors << "\n";
 ```
 
+## 5. Other
+
+We can get the total allocated bytes (on the GPU) with
+```c++
+size_t allocatedBytes = 
+    Session::getInstance().totalAllocatedBytes();
+```
+
+
+
 ## Happy number crunching!
