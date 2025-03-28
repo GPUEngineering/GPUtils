@@ -21,6 +21,8 @@ void xyz() {
     std::cout << "Memory: " << std::setprecision(3)
             << (float) Session::getInstance().totalAllocatedBytes() / 1e6
             << " MB" << std::endl;
+
+    Session::getInstance().synchronizeAllStreams();
 }
 
 

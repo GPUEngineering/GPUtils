@@ -156,7 +156,7 @@ private:
         m_cublasHandles.resize(m_numCublasHandlesStreams);
         m_cublasStreams.resize(m_numCublasHandlesStreams);
         m_cusolverHandles.resize(m_numCublasHandlesStreams);
-        for (size_t i=0; i<m_numCublasHandlesStreams; i++) {
+        for (size_t i = 0; i < m_numCublasHandlesStreams; i++) {
             gpuErrChk(cublasCreate(&m_cublasHandles[i]));
             gpuErrChk(cudaStreamCreate(&m_cublasStreams[i]));
             gpuErrChk(cublasSetStream(m_cublasHandles[i], m_cublasStreams[i]));
@@ -166,7 +166,7 @@ private:
     }
 
     ~Session() {
-        for (size_t i=0; i<m_numCublasHandlesStreams; i++) {
+        for (size_t i = 0; i < m_numCublasHandlesStreams; i++) {
             gpuErrChk(cublasDestroy(m_cublasHandles[i]));
             gpuErrChk(cusolverDnDestroy(m_cusolverHandles[i]));
         }
@@ -188,14 +188,14 @@ public:
      * @param idx index of stream
      * @return cuBLAS handle
      */
-    cublasHandle_t &cuBlasHandle(size_t idx=0) { return m_cublasHandles[idx]; }
+    cublasHandle_t &cuBlasHandle(size_t idx = 0) { return m_cublasHandles[idx]; }
 
     /**
      * cuSolver handle
      * @param idx index of stream
      * @return cuSolver handle
      */
-    cusolverDnHandle_t &cuSolverHandle(size_t idx=0) { return m_cusolverHandles[idx]; }
+    cusolverDnHandle_t &cuSolverHandle(size_t idx = 0) { return m_cusolverHandles[idx]; }
 
     /**
      * Preferred method for CUDA memory allocation; it allocated memory on the device
@@ -206,7 +206,7 @@ public:
      * @param s size to be allocated
      * @return CUDA error
      */
-    cudaError_t cudaAllocate(void** d, size_t s) {
+    cudaError_t cudaAllocate(void **d, size_t s) {
         cudaError_t err = cudaMalloc(d, s);
         if (err == cudaSuccess) {
             m_bytesAllocated += s;
@@ -224,6 +224,26 @@ public:
      * @param s allocated bytes (can be negative)
      */
     void incrementAllocatedBytes(int s) { m_bytesAllocated += s; }
+
+    /**
+     * Synchronize stream
+     * @param idx stream index
+     */
+    void synchronizeStream(size_t idx = 0) const {
+        if (idx >= m_numCublasHandlesStreams) {
+            throw std::runtime_error("stream index out of range");
+        }
+        gpuErrChk(cudaStreamSynchronize(m_cublasStreams[idx]));
+    }
+
+    /**
+     * Synchronize all streams
+     */
+    void synchronizeAllStreams() const {
+        for (size_t i = 0; i < m_numCublasHandlesStreams; i++) {
+            synchronizeStream(i);
+        }
+    }
 };
 
 
@@ -974,32 +994,36 @@ inline float DTensor<float>::dotF(const DTensor<float> &other) {
 template<>
 inline double DTensor<double>::normF() const {
     double the_norm;
-    gpuErrChk(cublasDnrm2(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &the_norm));
+    gpuErrChk(
+        cublasDnrm2(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &the_norm));
     return the_norm;
 }
 
 template<>
 inline float DTensor<float>::normF() const {
     float the_norm;
-    gpuErrChk(cublasSnrm2(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &the_norm));
+    gpuErrChk(
+        cublasSnrm2(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &the_norm));
     return the_norm;
 }
 
 template<>
 inline float DTensor<float>::sumAbs() const {
     float sumAbsAllElements;
-    gpuErrChk(cublasSasum(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &sumAbsAllElements));
+    gpuErrChk(
+        cublasSasum(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &sumAbsAllElements));
     return sumAbsAllElements;
 }
 
 template<>
 inline double DTensor<double>::sumAbs() const {
     double sumAbsAllElements;
-    gpuErrChk(cublasDasum(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &sumAbsAllElements));
+    gpuErrChk(
+        cublasDasum(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &sumAbsAllElements));
     return sumAbsAllElements;
 }
 
@@ -1007,8 +1031,9 @@ template<>
 inline float DTensor<float>::maxAbs() const {
     int idx;
     float hostDst;
-    gpuErrChk(cublasIsamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIsamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -1017,8 +1042,9 @@ template<>
 inline double DTensor<double>::maxAbs() const {
     int idx;
     double hostDst;
-    gpuErrChk(cublasIdamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIdamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -1027,8 +1053,9 @@ template<>
 inline float DTensor<float>::minAbs() const {
     int idx;
     float hostDst;
-    gpuErrChk(cublasIsamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIsamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -1037,8 +1064,9 @@ template<>
 inline double DTensor<double>::minAbs() const {
     int idx;
     double hostDst;
-    gpuErrChk(cublasIdamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIdamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -1087,7 +1115,7 @@ inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
 
     if (numMats() > 1) {
         m_doDestroyPtrMatrices = true;
-        cudaStatus = Session::getInstance().cudaAllocate((void**) &m_d_ptrMatrices, numMats() * sizeof(T *));
+        cudaStatus = Session::getInstance().cudaAllocate((void **) &m_d_ptrMatrices, numMats() * sizeof(T *));
         if (cudaStatus != cudaSuccess) {
             gpuErrChk(cudaFree(m_d_data)); // ... free previously allocated memory
             gpuErrChk(cudaStatus); // ... and memento mori
@@ -1183,7 +1211,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator*=(double scalar) {
     double alpha = scalar;
     gpuErrChk(
-        cublasDscal(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+        cublasDscal(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha,
+            m_d_data, 1));
     return *this;
 }
 
@@ -1202,7 +1231,8 @@ template<>
 inline DTensor<float> &DTensor<float>::operator*=(float scalar) {
     float alpha = scalar;
     gpuErrChk(
-        cublasSscal(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+        cublasSscal(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha,
+            m_d_data, 1));
     return *this;
 }
 
@@ -1210,7 +1240,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator+=(const DTensor<double> &rhs) {
     const double alpha = 1.;
     gpuErrChk(
-        cublasDaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+        cublasDaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.
+            m_d_data,
             1, m_d_data, 1));
     return *this;
 }
@@ -1219,7 +1250,8 @@ template<>
 inline DTensor<float> &DTensor<float>::operator+=(const DTensor<float> &rhs) {
     const float alpha = 1.;
     gpuErrChk(
-        cublasSaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+        cublasSaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.
+            m_d_data,
             1, m_d_data, 1));
     return *this;
 }
@@ -1227,7 +1259,8 @@ inline DTensor<float> &DTensor<float>::operator+=(const DTensor<float> &rhs) {
 template<>
 inline DTensor<float> &DTensor<float>::operator-=(const DTensor<float> &rhs) {
     const float alpha = -1.;
-    cublasSaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1,
+    cublasSaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha,
+                rhs.m_d_data, 1,
                 m_d_data, 1);
     return *this;
 }
@@ -1236,7 +1269,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator-=(const DTensor<double> &rhs) {
     const double alpha = -1.;
     gpuErrChk(
-        cublasDaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+        cublasDaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.
+            m_d_data,
             1, m_d_data, 1));
     return *this;
 }
@@ -2259,7 +2293,8 @@ inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
      * Pass cosine and sine as device pointers
      * (Avoid having to download first)
      */
-    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_DEVICE));
+    gpuErrChk(
+        cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_DEVICE));
 
     /* Useful definitions */
     T *aux = m_d_rhyp_cos_sin->raw();
@@ -2272,7 +2307,8 @@ inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
     m_matrix->applyLeftGivensRotation(i, k, aux + 1, aux + 2);
 
     /* Change back to default behaviour */
-    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_HOST));
+    gpuErrChk(
+        cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_HOST));
 }
 
 
