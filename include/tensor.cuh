@@ -198,6 +198,13 @@ public:
     cusolverDnHandle_t &cuSolverHandle(size_t idx = 0) { return m_cusolverHandles[idx]; }
 
     /**
+     *
+     * @param idx index of stream
+     * @return stream
+     */
+    cudaStream_t &stream(size_t idx = 0) { return m_cublasStreams[idx]; }
+
+    /**
      * Preferred method for CUDA memory allocation; it allocated memory on the device
      * and counts the allocated bytes (you can then call #totalAllocatedBytes()).
      * In essence, this is a wrapper for cudaMalloc.
@@ -1602,7 +1609,8 @@ public:
         for (size_t i = 0; i < m_rank->numMats(); i++) {
             DTensor<T> Si(*m_S, 2, i, i);
             DTensor<unsigned int> rankI(*m_rank, 2, i, i);
-            k_countNonzeroSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK>>>(Si.raw(), numElS,
+            cudaStream_t s = Session::getInstance().stream(m_tensor->streamIdx());
+            k_countNonzeroSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK, 0, s>>>(Si.raw(), numElS,
                 rankI.raw(), epsilon);
         }
         return *m_rank;
@@ -2301,7 +2309,8 @@ inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
     T *matData = m_matrix->raw();
 
     /* Call kernel to determine 1/sqrt(Ai^2 + Ak^2) */
-    k_givensAnnihilateRHypot<<<1, 1>>>(m_matrix->raw(), aux, i, k, j, nR);
+    cudaStream_t s = Session::getInstance().stream(m_matrix->streamIdx());
+    k_givensAnnihilateRHypot<<<1, 1, 0, s>>>(m_matrix->raw(), aux, i, k, j, nR);
 
     /* Apply Givens rotation */
     m_matrix->applyLeftGivensRotation(i, k, aux + 1, aux + 2);
