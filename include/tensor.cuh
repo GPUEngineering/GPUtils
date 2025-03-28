@@ -127,32 +127,39 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
  */
 class Session {
 public:
-    static Session &getInstance() {
-        static Session instance;
+    static Session &getInstance(size_t numStreams=1) {
+        static Session instance(numStreams);
         return instance;
     }
 
 private:
-    Session() {
-        gpuErrChk(cublasCreate(&m_cublasHandle));
+    Session(size_t numStreams=1) {
+        m_numBublasHandlesStreams = numStreams;
+        m_cublasHandles.reserve(m_numBublasHandlesStreams);
+        for (size_t i=0; i<m_numBublasHandlesStreams; i++) {
+            gpuErrChk(cublasCreate(&m_cublasHandles[i]));
+        }
         gpuErrChk(cusolverDnCreate(&m_cusolverHandle));
     }
 
     ~Session() {
-        gpuErrChk(cublasDestroy(m_cublasHandle));
+        for (size_t i=0; i<m_numBublasHandlesStreams; i++) {
+            gpuErrChk(cublasDestroy(m_cublasHandles[i]));
+        }
         gpuErrChk(cusolverDnDestroy(m_cusolverHandle));
     }
 
-    cublasHandle_t m_cublasHandle;
+    std::vector<cublasHandle_t> m_cublasHandles;
     cusolverDnHandle_t m_cusolverHandle;
-    size_t bytesAllocated = 0;
+    size_t m_bytesAllocated = 0;
+    size_t m_numBublasHandlesStreams = 1;
 
 public:
     Session(Session const &) = delete;
 
     void operator=(Session const &) = delete;
 
-    cublasHandle_t &cuBlasHandle() { return m_cublasHandle; }
+    cublasHandle_t &cuBlasHandle() { return m_cublasHandles[0]; }
 
     cusolverDnHandle_t &cuSolverHandle() { return m_cusolverHandle; }
 
@@ -168,7 +175,7 @@ public:
     cudaError_t cudaAllocate(void** d, size_t s) {
         cudaError_t err = cudaMalloc(d, s);
         if (err == cudaSuccess) {
-            bytesAllocated += s;
+            m_bytesAllocated += s;
         }
         return err;
     }
@@ -176,9 +183,9 @@ public:
     /**
      * @return Total allocated bytes
      */
-    size_t totalAllocatedBytes() const { return bytesAllocated; }
+    size_t totalAllocatedBytes() const { return m_bytesAllocated; }
 
-    void incrementAllocatedBytes(size_t s) { bytesAllocated += s; }
+    void incrementAllocatedBytes(size_t s) { m_bytesAllocated += s; }
 };
 
 

@@ -21,6 +21,7 @@ void xyz() {
 
 
 int main() {
+    Session::getInstance(5);
     xyz();
     std::cout << "Memory (outside): " << std::setprecision(3)
             << (float) Session::getInstance().totalAllocatedBytes() / 1e6
