@@ -6,8 +6,7 @@
 
 void xyz() {
     /* Write to binary file */
-    auto r = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1);
-    r.setStreamIdx(1);
+    DTensor<double> r = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(1);
     std::string fName = "abcd.bt"; // binary tensor file extension: .bt
     r.saveToFile(fName);
 

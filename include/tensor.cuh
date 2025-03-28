@@ -116,6 +116,7 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
 /* ================================================================================================
  *  SESSION
  * ================================================================================================ */
+static size_t s_numStreams = 1;
 
 /**
  * Singleton for Cuda library handles.
@@ -125,11 +126,12 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
  * The cuBlas handle can be accessed anywhere by `Session::getInstance().cuBlasHandle()`
  * The cuSolver handle can be accessed anywhere by `Session::getInstance().cuSolverHandle()`
  */
-static size_t s_numStreams = 1;
-
 class Session {
 public:
-
+    /**
+     *
+     * @param numStreams
+     */
     static void setStreams(size_t numStreams) {
         s_numStreams = numStreams;
     }
@@ -140,11 +142,11 @@ public:
     }
 
 private:
-    Session(size_t numStreams=10) {
-        m_numBublasHandlesStreams = numStreams;
-        m_cublasHandles.resize(m_numBublasHandlesStreams);
-        m_cublasStreams.resize(m_numBublasHandlesStreams);
-        for (size_t i=0; i<m_numBublasHandlesStreams; i++) {
+    Session(size_t numStreams) {
+        m_numCublasHandlesStreams = numStreams;
+        m_cublasHandles.resize(m_numCublasHandlesStreams);
+        m_cublasStreams.resize(m_numCublasHandlesStreams);
+        for (size_t i=0; i<m_numCublasHandlesStreams; i++) {
             gpuErrChk(cublasCreate(&m_cublasHandles[i]));
             gpuErrChk(cudaStreamCreate(&m_cublasStreams[i]));
             gpuErrChk(cublasSetStream(m_cublasHandles[i], m_cublasStreams[i]));
@@ -153,7 +155,7 @@ private:
     }
 
     ~Session() {
-        for (size_t i=0; i<m_numBublasHandlesStreams; i++) {
+        for (size_t i=0; i<m_numCublasHandlesStreams; i++) {
             gpuErrChk(cublasDestroy(m_cublasHandles[i]));
         }
         gpuErrChk(cusolverDnDestroy(m_cusolverHandle));
@@ -163,7 +165,7 @@ private:
     std::vector<cudaStream_t> m_cublasStreams;
     cusolverDnHandle_t m_cusolverHandle;
     size_t m_bytesAllocated = 0;
-    size_t m_numBublasHandlesStreams = 1;
+    size_t m_numCublasHandlesStreams = 1;
 
 public:
     Session(Session const &) = delete;
@@ -288,7 +290,7 @@ public:
     /**
      * Set the stream ID
      */
-    void setStreamIdx(size_t);
+    DTensor<T> setStreamIdx(size_t);
 
     size_t streamIdx() const { return m_idxStream; }
 
@@ -614,11 +616,12 @@ public:
 }; /* END OF DTENSOR */
 
 template<typename T>
-void DTensor<T>::setStreamIdx(size_t idx) {
+DTensor<T> DTensor<T>::setStreamIdx(size_t idx) {
     if (idx >= s_numStreams) {
         throw std::invalid_argument("Invalid stream index; it exceeds the max allocated streams");
     }
     m_idxStream = idx;
+    return *this;
 }
 
 template<typename T>
