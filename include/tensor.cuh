@@ -129,13 +129,18 @@ static size_t s_numStreams = 1;
 class Session {
 public:
     /**
-     *
-     * @param numStreams
+     * Sets the total number of available streams
+     * @param numStreams number of streams (default: 1)
      */
     static void setStreams(size_t numStreams) {
         s_numStreams = numStreams;
     }
 
+    /**
+     * Returns the unique instance of Session (constructed upon first
+     * invocation)
+     * @return instance of Session
+     */
     static Session &getInstance() {
         static Session instance(s_numStreams);
         return instance;
@@ -146,24 +151,26 @@ private:
         m_numCublasHandlesStreams = numStreams;
         m_cublasHandles.resize(m_numCublasHandlesStreams);
         m_cublasStreams.resize(m_numCublasHandlesStreams);
+        m_cusolverHandles.resize(m_numCublasHandlesStreams);
         for (size_t i=0; i<m_numCublasHandlesStreams; i++) {
             gpuErrChk(cublasCreate(&m_cublasHandles[i]));
             gpuErrChk(cudaStreamCreate(&m_cublasStreams[i]));
             gpuErrChk(cublasSetStream(m_cublasHandles[i], m_cublasStreams[i]));
+            gpuErrChk(cusolverDnCreate(&m_cusolverHandles[i]));
+            gpuErrChk(cusolverDnSetStream(m_cusolverHandles[i], m_cublasStreams[i]));
         }
-        gpuErrChk(cusolverDnCreate(&m_cusolverHandle));
     }
 
     ~Session() {
         for (size_t i=0; i<m_numCublasHandlesStreams; i++) {
             gpuErrChk(cublasDestroy(m_cublasHandles[i]));
+            gpuErrChk(cusolverDnDestroy(m_cusolverHandles[i]));
         }
-        gpuErrChk(cusolverDnDestroy(m_cusolverHandle));
     }
 
     std::vector<cublasHandle_t> m_cublasHandles;
     std::vector<cudaStream_t> m_cublasStreams;
-    cusolverDnHandle_t m_cusolverHandle;
+    std::vector<cusolverDnHandle_t> m_cusolverHandles;
     size_t m_bytesAllocated = 0;
     size_t m_numCublasHandlesStreams = 1;
 
@@ -172,9 +179,19 @@ public:
 
     void operator=(Session const &) = delete;
 
+    /**
+     * cuBLAS handle
+     * @param idx index of stream
+     * @return cuBLAS handle
+     */
     cublasHandle_t &cuBlasHandle(size_t idx=0) { return m_cublasHandles[idx]; }
 
-    cusolverDnHandle_t &cuSolverHandle() { return m_cusolverHandle; }
+    /**
+     * cuSolver handle
+     * @param idx index of stream
+     * @return cuSolver handle
+     */
+    cusolverDnHandle_t &cuSolverHandle(size_t idx=0) { return m_cusolverHandles[idx]; }
 
     /**
      * Preferred method for CUDA memory allocation; it allocated memory on the device
@@ -198,7 +215,11 @@ public:
      */
     size_t totalAllocatedBytes() const { return m_bytesAllocated; }
 
-    void incrementAllocatedBytes(size_t s) { m_bytesAllocated += s; }
+    /**
+     * Increment counter of allocated bytes
+     * @param s allocated bytes (can be negative)
+     */
+    void incrementAllocatedBytes(int s) { m_bytesAllocated += s; }
 };
 
 
