@@ -411,7 +411,10 @@ Session::setStreams(4); // create 4 strems
 ```
 Then, you can use `setStreamIdx` to select a stream to go with your instance of `DTensor`
 ```c++
-auto a = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(2);
+auto a = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(0);
+auto b = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(1);
+// do stuff...
+Session::getInstance().synchronizeAllStreams();
 ```
 
 ## Happy number crunching!
