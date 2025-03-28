@@ -116,6 +116,11 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
 /* ================================================================================================
  *  SESSION
  * ================================================================================================ */
+/**
+ * Total number of allocated streams
+ * Can be changed with Session::setStreams()
+ */
+static size_t s_numStreams = 1;
 
 /**
  * Singleton for Cuda library handles.
@@ -127,34 +132,70 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
  */
 class Session {
 public:
+    /**
+     * Sets the total number of available streams
+     * @param numStreams number of streams (default: 1)
+     */
+    static void setStreams(size_t numStreams) {
+        s_numStreams = numStreams;
+    }
+
+    /**
+     * Returns the unique instance of Session (constructed upon first
+     * invocation)
+     * @return instance of Session
+     */
     static Session &getInstance() {
-        static Session instance;
+        static Session instance(s_numStreams);
         return instance;
     }
 
 private:
-    Session() {
-        gpuErrChk(cublasCreate(&m_cublasHandle));
-        gpuErrChk(cusolverDnCreate(&m_cusolverHandle));
+    Session(size_t numStreams) {
+        m_numCublasHandlesStreams = numStreams;
+        m_cublasHandles.resize(m_numCublasHandlesStreams);
+        m_cublasStreams.resize(m_numCublasHandlesStreams);
+        m_cusolverHandles.resize(m_numCublasHandlesStreams);
+        for (size_t i = 0; i < m_numCublasHandlesStreams; i++) {
+            gpuErrChk(cublasCreate(&m_cublasHandles[i]));
+            gpuErrChk(cudaStreamCreate(&m_cublasStreams[i]));
+            gpuErrChk(cublasSetStream(m_cublasHandles[i], m_cublasStreams[i]));
+            gpuErrChk(cusolverDnCreate(&m_cusolverHandles[i]));
+            gpuErrChk(cusolverDnSetStream(m_cusolverHandles[i], m_cublasStreams[i]));
+        }
     }
 
     ~Session() {
-        gpuErrChk(cublasDestroy(m_cublasHandle));
-        gpuErrChk(cusolverDnDestroy(m_cusolverHandle));
+        for (size_t i = 0; i < m_numCublasHandlesStreams; i++) {
+            gpuErrChk(cublasDestroy(m_cublasHandles[i]));
+            gpuErrChk(cusolverDnDestroy(m_cusolverHandles[i]));
+        }
     }
 
-    cublasHandle_t m_cublasHandle;
-    cusolverDnHandle_t m_cusolverHandle;
-    size_t bytesAllocated = 0;
+    std::vector<cublasHandle_t> m_cublasHandles;
+    std::vector<cudaStream_t> m_cublasStreams;
+    std::vector<cusolverDnHandle_t> m_cusolverHandles;
+    size_t m_bytesAllocated = 0;
+    size_t m_numCublasHandlesStreams = 1;
 
 public:
     Session(Session const &) = delete;
 
     void operator=(Session const &) = delete;
 
-    cublasHandle_t &cuBlasHandle() { return m_cublasHandle; }
+    /**
+     * cuBLAS handle
+     * @param idx index of stream
+     * @return cuBLAS handle
+     */
+    cublasHandle_t &cuBlasHandle(size_t idx = 0) { return m_cublasHandles[idx]; }
 
-    cusolverDnHandle_t &cuSolverHandle() { return m_cusolverHandle; }
+    /**
+     * cuSolver handle
+     * @param idx index of stream
+     * @return cuSolver handle
+     */
+    cusolverDnHandle_t &cuSolverHandle(size_t idx = 0) { return m_cusolverHandles[idx]; }
 
     /**
      * Preferred method for CUDA memory allocation; it allocated memory on the device
@@ -165,10 +206,10 @@ public:
      * @param s size to be allocated
      * @return CUDA error
      */
-    cudaError_t cudaAllocate(void** d, size_t s) {
+    cudaError_t cudaAllocate(void **d, size_t s) {
         cudaError_t err = cudaMalloc(d, s);
         if (err == cudaSuccess) {
-            bytesAllocated += s;
+            m_bytesAllocated += s;
         }
         return err;
     }
@@ -176,9 +217,33 @@ public:
     /**
      * @return Total allocated bytes
      */
-    size_t totalAllocatedBytes() const { return bytesAllocated; }
+    size_t totalAllocatedBytes() const { return m_bytesAllocated; }
 
-    void incrementAllocatedBytes(size_t s) { bytesAllocated += s; }
+    /**
+     * Increment counter of allocated bytes
+     * @param s allocated bytes (can be negative)
+     */
+    void incrementAllocatedBytes(int s) { m_bytesAllocated += s; }
+
+    /**
+     * Synchronize stream
+     * @param idx stream index
+     */
+    void synchronizeStream(size_t idx = 0) const {
+        if (idx >= m_numCublasHandlesStreams) {
+            throw std::runtime_error("stream index out of range");
+        }
+        gpuErrChk(cudaStreamSynchronize(m_cublasStreams[idx]));
+    }
+
+    /**
+     * Synchronize all streams
+     */
+    void synchronizeAllStreams() const {
+        for (size_t i = 0; i < m_numCublasHandlesStreams; i++) {
+            synchronizeStream(i);
+        }
+    }
 };
 
 
@@ -213,6 +278,7 @@ private:
     size_t m_numMats = 0; ///< Number of matrices
     bool m_doDestroyData = false; ///< Whether to destroy memory
     bool m_doDestroyPtrMatrices = false; ///< Whether to destroy memory
+    size_t m_idxStream = 0; ///< Stream index (defaults to 0)
 
     void destroy() {
         if (m_doDestroyData) {
@@ -266,6 +332,13 @@ private:
     void initialisePointersToMatricesData();
 
 public:
+    /**
+     * Set the stream ID
+     */
+    DTensor<T> setStreamIdx(size_t);
+
+    size_t streamIdx() const { return m_idxStream; }
+
     /**
      * Create a tensor with random elements
      * @param numRows number of rows
@@ -588,6 +661,15 @@ public:
 }; /* END OF DTENSOR */
 
 template<typename T>
+DTensor<T> DTensor<T>::setStreamIdx(size_t idx) {
+    if (idx >= s_numStreams) {
+        throw std::invalid_argument("Invalid stream index; it exceeds the max allocated streams");
+    }
+    m_idxStream = idx;
+    return *this;
+}
+
+template<typename T>
 void DTensor<T>::initialisePointersToMatricesData() {
     /* Make sure m_d_ptrMatrices has been allocated */
     if (m_numMats <= 1 || !m_d_ptrMatrices || !m_doDestroyPtrMatrices) {
@@ -806,7 +888,7 @@ DTensor<T>::DTensor(const DTensor<T> &other) {
     m_numMats = other.m_numMats;
     m_numRows = other.m_numRows;
     m_numCols = other.m_numCols;
-
+    m_idxStream = other.m_idxStream;
     allocateOnDevice(m_numRows * m_numCols * m_numMats);
     gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
         cudaMemcpyDeviceToDevice));
@@ -839,6 +921,7 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
     m_d_data = other.m_d_data + offset;
     m_doDestroyData = false;
     m_doDestroyPtrMatrices = false;
+    m_idxStream = other.m_idxStream;
 }
 
 template<typename T>
@@ -851,6 +934,7 @@ DTensor<T>::DTensor(DTensor<T> &&other) {
     m_doDestroyData = other.m_doDestroyData;
     m_doDestroyPtrMatrices = other.m_doDestroyPtrMatrices;
     m_d_ptrMatrices = other.m_d_ptrMatrices;
+    m_idxStream = other.m_idxStream;
     /* Invalidate other */
     other.m_doDestroyPtrMatrices = false;
     other.m_doDestroyData = false;
@@ -887,7 +971,7 @@ inline double DTensor<double>::dotF(const DTensor<double> &other) {
         throw std::invalid_argument("[dotF] incompatible dimensions");
     size_t n = numEl();
     double result;
-    gpuErrChk(cublasDdot(Session::getInstance().cuBlasHandle(), n,
+    gpuErrChk(cublasDdot(Session::getInstance().cuBlasHandle(m_idxStream), n,
         raw(), 1,
         other.raw(), 1,
         &result));
@@ -900,7 +984,7 @@ inline float DTensor<float>::dotF(const DTensor<float> &other) {
         throw std::invalid_argument("[dotF] incompatible dimensions");
     size_t n = numEl();
     float result;
-    gpuErrChk(cublasSdot(Session::getInstance().cuBlasHandle(), n,
+    gpuErrChk(cublasSdot(Session::getInstance().cuBlasHandle(m_idxStream), n,
         raw(), 1,
         other.raw(), 1,
         &result));
@@ -910,32 +994,36 @@ inline float DTensor<float>::dotF(const DTensor<float> &other) {
 template<>
 inline double DTensor<double>::normF() const {
     double the_norm;
-    gpuErrChk(cublasDnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &the_norm));
+    gpuErrChk(
+        cublasDnrm2(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &the_norm));
     return the_norm;
 }
 
 template<>
 inline float DTensor<float>::normF() const {
     float the_norm;
-    gpuErrChk(cublasSnrm2(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &the_norm));
+    gpuErrChk(
+        cublasSnrm2(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &the_norm));
     return the_norm;
 }
 
 template<>
 inline float DTensor<float>::sumAbs() const {
     float sumAbsAllElements;
-    gpuErrChk(cublasSasum(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &sumAbsAllElements));
+    gpuErrChk(
+        cublasSasum(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &sumAbsAllElements));
     return sumAbsAllElements;
 }
 
 template<>
 inline double DTensor<double>::sumAbs() const {
     double sumAbsAllElements;
-    gpuErrChk(cublasDasum(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &sumAbsAllElements));
+    gpuErrChk(
+        cublasDasum(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &sumAbsAllElements));
     return sumAbsAllElements;
 }
 
@@ -943,8 +1031,9 @@ template<>
 inline float DTensor<float>::maxAbs() const {
     int idx;
     float hostDst;
-    gpuErrChk(cublasIsamax(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIsamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -953,8 +1042,9 @@ template<>
 inline double DTensor<double>::maxAbs() const {
     int idx;
     double hostDst;
-    gpuErrChk(cublasIdamax(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIdamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -963,8 +1053,9 @@ template<>
 inline float DTensor<float>::minAbs() const {
     int idx;
     float hostDst;
-    gpuErrChk(cublasIsamin(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIsamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -973,8 +1064,9 @@ template<>
 inline double DTensor<double>::minAbs() const {
     int idx;
     double hostDst;
-    gpuErrChk(cublasIdamin(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, m_d_data, 1,
-        &idx));
+    gpuErrChk(
+        cublasIdamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
+            &idx));
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
@@ -985,10 +1077,10 @@ void DTensor<T>::applyRightGivensRotation(size_t i, size_t j, const T *c, const 
     T *col_i = m_d_data + i * m_numRows;
     T *col_j = m_d_data + j * m_numRows;
     if constexpr (std::is_same_v<T, double>) {
-        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numRows,
+        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows,
             col_i, 1, col_j, 1, c, minus_s));
     } else if constexpr (std::is_same_v<T, float>) {
-        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numRows,
+        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows,
             col_i, 1, col_j, 1, c, minus_s));
     }
 }
@@ -997,12 +1089,12 @@ template<typename T>
 void DTensor<T>::applyLeftGivensRotation(size_t i, size_t j, const T *c, const T *minus_s) {
     if (m_numMats > 1) throw std::invalid_argument("[applyLeftGivensRotation] tensors (nMat>1) not supported");
     if constexpr (std::is_same_v<T, double>) {
-        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(), m_numCols,
+        gpuErrChk(cublasDrot(Session::getInstance().cuBlasHandle(m_idxStream), m_numCols,
             m_d_data + i, m_numRows,
             m_d_data + j, m_numRows,
             c, minus_s));
     } else if constexpr (std::is_same_v<T, float>) {
-        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(), m_numCols,
+        gpuErrChk(cublasSrot(Session::getInstance().cuBlasHandle(m_idxStream), m_numCols,
             m_d_data + i, m_numRows,
             m_d_data + j, m_numRows,
             c, minus_s));
@@ -1023,7 +1115,7 @@ inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
 
     if (numMats() > 1) {
         m_doDestroyPtrMatrices = true;
-        cudaStatus = Session::getInstance().cudaAllocate((void**) &m_d_ptrMatrices, numMats() * sizeof(T *));
+        cudaStatus = Session::getInstance().cudaAllocate((void **) &m_d_ptrMatrices, numMats() * sizeof(T *));
         if (cudaStatus != cudaSuccess) {
             gpuErrChk(cudaFree(m_d_data)); // ... free previously allocated memory
             gpuErrChk(cudaStatus); // ... and memento mori
@@ -1078,7 +1170,7 @@ inline DTensor<float> DTensor<float>::tr() const {
     float alpha = 1.0f, beta = 0;
     size_t numElMat = m_numCols * m_numRows;
     for (size_t i = 0; i < m_numMats; i++) {
-        gpuErrChk(cublasSgeam(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasSgeam(Session::getInstance().cuBlasHandle(m_idxStream),
             CUBLAS_OP_T, CUBLAS_OP_N,
             m_numCols, m_numRows,
             &alpha, raw() + numElMat * i, m_numRows,
@@ -1094,7 +1186,7 @@ inline DTensor<double> DTensor<double>::tr() const {
     double alpha = 1.0f, beta = 0;
     size_t numElMat = m_numCols * m_numRows;
     for (size_t i = 0; i < m_numMats; i++) {
-        gpuErrChk(cublasDgeam(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasDgeam(Session::getInstance().cuBlasHandle(m_idxStream),
             CUBLAS_OP_T, CUBLAS_OP_N,
             m_numCols, m_numRows,
             &alpha, raw() + numElMat * i, m_numRows,
@@ -1119,7 +1211,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator*=(double scalar) {
     double alpha = scalar;
     gpuErrChk(
-        cublasDscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+        cublasDscal(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha,
+            m_d_data, 1));
     return *this;
 }
 
@@ -1130,6 +1223,7 @@ DTensor<T> &DTensor<T>::operator=(const DTensor<T> &other) {
     m_numCols = other.m_numCols;
     m_doDestroyData = false;
     m_d_data = other.m_d_data;
+    m_idxStream = other.m_idxStream;
     return *this;
 }
 
@@ -1137,7 +1231,8 @@ template<>
 inline DTensor<float> &DTensor<float>::operator*=(float scalar) {
     float alpha = scalar;
     gpuErrChk(
-        cublasSscal(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, m_d_data, 1));
+        cublasSscal(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha,
+            m_d_data, 1));
     return *this;
 }
 
@@ -1145,7 +1240,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator+=(const DTensor<double> &rhs) {
     const double alpha = 1.;
     gpuErrChk(
-        cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+        cublasDaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.
+            m_d_data,
             1, m_d_data, 1));
     return *this;
 }
@@ -1154,7 +1250,8 @@ template<>
 inline DTensor<float> &DTensor<float>::operator+=(const DTensor<float> &rhs) {
     const float alpha = 1.;
     gpuErrChk(
-        cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+        cublasSaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.
+            m_d_data,
             1, m_d_data, 1));
     return *this;
 }
@@ -1162,7 +1259,8 @@ inline DTensor<float> &DTensor<float>::operator+=(const DTensor<float> &rhs) {
 template<>
 inline DTensor<float> &DTensor<float>::operator-=(const DTensor<float> &rhs) {
     const float alpha = -1.;
-    cublasSaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data, 1,
+    cublasSaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha,
+                rhs.m_d_data, 1,
                 m_d_data, 1);
     return *this;
 }
@@ -1171,7 +1269,8 @@ template<>
 inline DTensor<double> &DTensor<double>::operator-=(const DTensor<double> &rhs) {
     const double alpha = -1.;
     gpuErrChk(
-        cublasDaxpy(Session::getInstance().cuBlasHandle(), m_numRows * m_numCols * m_numMats, &alpha, rhs.m_d_data,
+        cublasDaxpy(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, &alpha, rhs.
+            m_d_data,
             1, m_d_data, 1));
     return *this;
 }
@@ -1192,7 +1291,7 @@ inline void DTensor<double>::addAB(const DTensor<double> &A, const DTensor<doubl
     size_t nCB = B.numCols();
     double _alpha = alpha, _beta = beta;
     if (nMat > 1) {
-        gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasDgemmBatched(Session::getInstance().cuBlasHandle(m_idxStream),
             CUBLAS_OP_N, CUBLAS_OP_N,
             nRA, nCB, nCA, &_alpha,
             A.m_d_ptrMatrices, nRA,
@@ -1201,7 +1300,7 @@ inline void DTensor<double>::addAB(const DTensor<double> &A, const DTensor<doubl
             m_d_ptrMatrices, nRA,
             nMat));
     } else {
-        gpuErrChk(cublasDgemm(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasDgemm(Session::getInstance().cuBlasHandle(m_idxStream),
             CUBLAS_OP_N, CUBLAS_OP_N,
             nRA, nCB, nCA, &_alpha,
             A.raw(), nRA,
@@ -1219,7 +1318,7 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
     size_t nCB = B.numCols();
     float _alpha = alpha, _beta = beta;
     if (nMat > 1) {
-        gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasSgemmBatched(Session::getInstance().cuBlasHandle(m_idxStream),
             CUBLAS_OP_N, CUBLAS_OP_N,
             nRA, nCB, nCA, &_alpha,
             A.m_d_ptrMatrices, nRA,
@@ -1228,7 +1327,7 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
             m_d_ptrMatrices, nRA,
             nMat));
     } else {
-        gpuErrChk(cublasSgemm(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasSgemm(Session::getInstance().cuBlasHandle(m_idxStream),
             CUBLAS_OP_N, CUBLAS_OP_N,
             nRA, nCB, nCA, &_alpha,
             A.raw(), nRA,
@@ -1252,7 +1351,7 @@ inline void DTensor<double>::leastSquaresBatched(DTensor &B) {
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize); // TODO consider preallocating?
-    gpuErrChk(cublasDgelsBatched(Session::getInstance().cuBlasHandle(),
+    gpuErrChk(cublasDgelsBatched(Session::getInstance().cuBlasHandle(m_idxStream),
         CUBLAS_OP_N,
         m_numRows,
         m_numCols,
@@ -1280,7 +1379,7 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
     DTensor<int> infoArray(batchSize); // TODO consider preallocating?
-    gpuErrChk(cublasSgelsBatched(Session::getInstance().cuBlasHandle(),
+    gpuErrChk(cublasSgelsBatched(Session::getInstance().cuBlasHandle(m_idxStream),
         CUBLAS_OP_N,
         m_numRows,
         m_numCols,
@@ -1300,7 +1399,7 @@ inline DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, 
     size_t n = numCols(), m = numRows();
     DTensor<double> rowsOnly(rowsRangeLength, numCols(), 1);
     for (size_t i = 0; i < rowsRangeLength; i++) {
-        gpuErrChk(cublasDcopy(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasDcopy(Session::getInstance().cuBlasHandle(m_idxStream),
             n, // # values to copy
             raw() + rowsFrom + i + matIdx * n * m, m,
             rowsOnly.raw() + i,
@@ -1315,7 +1414,7 @@ inline DTensor<float> DTensor<float>::getRows(size_t rowsFrom, size_t rowsTo, si
     size_t n = numCols(), m = numRows();
     DTensor<float> rowsOnly(rowsRangeLength, numCols(), 1);
     for (size_t i = 0; i < rowsRangeLength; i++) {
-        gpuErrChk(cublasScopy(Session::getInstance().cuBlasHandle(),
+        gpuErrChk(cublasScopy(Session::getInstance().cuBlasHandle(m_idxStream),
             n, // # values to copy
             raw() + rowsFrom + i + matIdx * n * m, m,
             rowsOnly.raw() + i,
@@ -1801,7 +1900,7 @@ inline void QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
         rhs.raw(), m,
         m_workspace->raw(), m_workspaceSize,
         m_info->raw()));
-    gpuErrChk(cublasDtrsm(Session::getInstance().cuBlasHandle(),
+    gpuErrChk(cublasDtrsm(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, n, 1,
         &alpha,
         m_matrix->raw(), m,
@@ -1820,7 +1919,7 @@ inline void QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
         rhs.raw(), m,
         m_workspace->raw(), m_workspaceSize,
         m_info->raw()));
-    gpuErrChk(cublasStrsm(Session::getInstance().cuBlasHandle(),
+    gpuErrChk(cublasStrsm(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, n, 1,
         &alpha,
         m_matrix->raw(), m,
@@ -2194,7 +2293,8 @@ inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
      * Pass cosine and sine as device pointers
      * (Avoid having to download first)
      */
-    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(), CUBLAS_POINTER_MODE_DEVICE));
+    gpuErrChk(
+        cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_DEVICE));
 
     /* Useful definitions */
     T *aux = m_d_rhyp_cos_sin->raw();
@@ -2207,7 +2307,8 @@ inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
     m_matrix->applyLeftGivensRotation(i, k, aux + 1, aux + 2);
 
     /* Change back to default behaviour */
-    gpuErrChk(cublasSetPointerMode(Session::getInstance().cuBlasHandle(), CUBLAS_POINTER_MODE_HOST));
+    gpuErrChk(
+        cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_HOST));
 }
 
 
