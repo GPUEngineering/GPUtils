@@ -403,6 +403,15 @@ size_t allocatedBytes =
     Session::getInstance().totalAllocatedBytes();
 ```
 
-
+GPUtils supports multiple streams. By default a single stream is created, 
+but you can set the number of streams you need with 
+```c++
+/* This needs to be the first line in your code */
+Session::setStreams(4); // create 4 strems
+```
+Then, you can use `setStreamIdx` to select a stream to go with your instance of `DTensor`
+```c++
+auto a = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(2);
+```
 
 ## Happy number crunching!

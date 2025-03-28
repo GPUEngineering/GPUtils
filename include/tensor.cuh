@@ -116,6 +116,10 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
 /* ================================================================================================
  *  SESSION
  * ================================================================================================ */
+/**
+ * Total number of allocated streams
+ * Can be changed with Session::setStreams()
+ */
 static size_t s_numStreams = 1;
 
 /**
