@@ -611,6 +611,17 @@ public:
     void leastSquaresBatched(DTensor &b);
 
     /**
+     * Allocation-free overload using a caller-owned device status buffer.
+     * infoArray must have at least numMats() integers; the first numMats()
+     * entries receive cuBLAS per-matrix status codes. No resizing is performed.
+     * A is overwritten by its factorisation and b by the solutions/residuals.
+     * Work is submitted on A's stream. Keep A, b and infoArray alive until that
+     * stream completes. Reuse on the same stream is ordered; sharing the buffer
+     * across streams requires explicit synchronization. Its streamIdx is not used.
+     */
+    void leastSquaresBatched(DTensor &b, DTensor<int> &infoArray);
+
+    /**
      * Batched `C <- bC + a*A*B`.
      * Performs the operation `Ci <- bCi + a*Ai*Bi` for each k-index `i`.
      * C is this tensor.
@@ -1394,7 +1405,7 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
 }
 
 template<>
-inline void DTensor<double>::leastSquaresBatched(DTensor &B) {
+inline void DTensor<double>::leastSquaresBatched(DTensor &B, DTensor<int> &infoArray) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
@@ -1406,7 +1417,8 @@ inline void DTensor<double>::leastSquaresBatched(DTensor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
-    DTensor<int> infoArray(batchSize); // TODO consider preallocating?
+    if (infoArray.numEl() < batchSize || !infoArray.raw())
+        throw std::invalid_argument("[Least squares batched] status buffer is too small");
     gpuErrChk(cublasDgelsBatched(Session::getInstance().cuBlasHandle(m_idxStream),
         CUBLAS_OP_N,
         m_numRows,
@@ -1422,7 +1434,7 @@ inline void DTensor<double>::leastSquaresBatched(DTensor &B) {
 }
 
 template<>
-inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
+inline void DTensor<float>::leastSquaresBatched(DTensor &B, DTensor<int> &infoArray) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
@@ -1434,7 +1446,8 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
     if (m_numCols > m_numRows)
         throw std::invalid_argument("[Least squares batched] supports square or tall matrices only");
     int info = 0;
-    DTensor<int> infoArray(batchSize); // TODO consider preallocating?
+    if (infoArray.numEl() < batchSize || !infoArray.raw())
+        throw std::invalid_argument("[Least squares batched] status buffer is too small");
     gpuErrChk(cublasSgelsBatched(Session::getInstance().cuBlasHandle(m_idxStream),
         CUBLAS_OP_N,
         m_numRows,
@@ -1447,6 +1460,12 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
         &info,
         infoArray.raw(),
         batchSize));
+}
+
+template<typename T>
+inline void DTensor<T>::leastSquaresBatched(DTensor &B) {
+    DTensor<int> infoArray(numMats());
+    leastSquaresBatched(B, infoArray);
 }
 
 template<>

@@ -59,6 +59,19 @@ TEST(SessionTest, streamSelectionAndExecution) {
     std::vector<double> result;
     C.download(result);
     EXPECT_EQ((std::vector<double>{23, 34, 31, 46}), result);
+
+    DTensor<double> lhs({1, 0, 0, 1, 1, 0, 0, 1}, 2, 2, 2);
+    DTensor<double> rhs(std::vector<double>{2, 3, 4, 5}, 2, 1, 2);
+    DTensor<int> status(2); // The solver uses lhs's stream, not the buffer's.
+    lhs.setStreamIdx(1);
+    rhs.setStreamIdx(1);
+    lhs.leastSquaresBatched(rhs, status);
+    Session::getInstance().synchronizeStream(1);
+    rhs.download(result);
+    EXPECT_EQ((std::vector<double>{2, 3, 4, 5}), result);
+    std::vector<int> codes;
+    status.download(codes);
+    EXPECT_EQ((std::vector<int>{0, 0}), codes);
 }
 
 template<typename T>
@@ -1288,6 +1301,52 @@ void tensorLeastSquares1(T epsilon) {
 TEST_F(LeastSquaresTest, tensorLS1) {
     tensorLeastSquares1<float>(PRECISION_LOW);
     tensorLeastSquares1<double>(PRECISION_HIGH);
+}
+
+template<typename T>
+void leastSquaresReusesStatusBuffer(T epsilon) {
+    auto &session = Session::getInstance();
+    for (size_t rows : {size_t(2), size_t(3)}) {
+        const std::vector<T> matrix = rows == 2
+            ? std::vector<T>{1,0,0,1, 2,0,0,2}
+            : std::vector<T>{1,0,1,0,1,1, 2,0,2,0,2,2};
+        DTensor<T> A(matrix, rows, 2, 2);
+        DTensor<T> B(rows, 1, 2);
+        DTensor<int> status(3); // Excess capacity is allowed and left untouched.
+        DTensor<int> tooSmall(1);
+        DTensor<int> empty;
+        EXPECT_THROW(A.leastSquaresBatched(B, tooSmall), std::invalid_argument);
+        EXPECT_THROW(A.leastSquaresBatched(B, empty), std::invalid_argument);
+        const auto *statusPointer = status.raw();
+        const size_t allocated = session.totalAllocatedBytes();
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            T x = T(2+repeat), y = T(3-repeat);
+            std::vector<T> rhs = rows == 2
+                ? std::vector<T>{x,y,2*x,2*y}
+                : std::vector<T>{x,y,x+y,2*x,2*y,2*(x+y)};
+            A.upload(matrix); // gels overwrites its inputs, so restore each run.
+            B.upload(rhs);
+            status.upload(std::vector<int>{-1,-1,123});
+            A.leastSquaresBatched(B, status);
+            session.synchronizeStream(A.streamIdx());
+            EXPECT_EQ(allocated, session.totalAllocatedBytes());
+            EXPECT_EQ(statusPointer, status.raw());
+            std::vector<T> solution;
+            B.download(solution);
+            for (size_t batch = 0; batch < 2; ++batch) {
+                EXPECT_NEAR(x, solution[batch*rows], epsilon);
+                EXPECT_NEAR(y, solution[batch*rows+1], epsilon);
+            }
+            std::vector<int> codes;
+            status.download(codes);
+            EXPECT_EQ((std::vector<int>{0,0,123}), codes);
+        }
+    }
+}
+
+TEST_F(LeastSquaresTest, reusableStatusBuffer) {
+    leastSquaresReusesStatusBuffer<float>(PRECISION_LOW);
+    leastSquaresReusesStatusBuffer<double>(PRECISION_HIGH);
 }
 
 
