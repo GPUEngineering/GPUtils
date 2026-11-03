@@ -38,7 +38,7 @@ single column-major matrix. All options require positive integers.
   DTensors; the strided variant uses raw device buffers without matrix-pointer
   arrays. This estimates the benefit of a future pointer-free storage path;
   changing `addAB` alone will not remove the current DTensor pointer allocations.
-- Rows `preallocated`: current per-row cuBLAS copy loop versus one asynchronous
+- Rows `preallocated`: original per-row cuBLAS copy loop versus one asynchronous
   2D device copy versus one extraction kernel, using an existing destination.
 - Rows `allocate`: actual `getRows` is reported separately, alongside the old
   per-row loop and alternatives allocating an identically shaped DTensor.

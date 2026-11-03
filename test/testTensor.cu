@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <thread>
+#include <chrono>
 
 #define PRECISION_LOW 1e-4
 #define PRECISION_HIGH 1e-10
@@ -28,13 +30,14 @@ protected:
 /* ---------------------------------------
  * Session streams
  *
- * This test must remain before all tensor tests: Session is a singleton, so
- * the number of streams has to be selected before its first use.
+ * Configure before main, without initializing CUDA, so filtered/shuffled tests
+ * have the same stream setup and do not depend on test execution order.
  * --------------------------------------- */
+
+static const bool testStreamsConfigured = [] { Session::setStreams(2); return true; }();
 
 TEST(SessionTest, streamSelectionAndExecution) {
     EXPECT_THROW(Session::setStreams(0), std::invalid_argument);
-    Session::setStreams(2);
 
     DTensor<double> A({1, 2, 3, 4}, 2, 2);
     DTensor<double> B({5, 6, 7, 8}, 2, 2);
@@ -72,6 +75,103 @@ TEST(SessionTest, streamSelectionAndExecution) {
     std::vector<int> codes;
     status.download(codes);
     EXPECT_EQ((std::vector<int>{0, 0}), codes);
+}
+
+// Temporarily replace handle 1's streams with a nonblocking stream to remove
+// implicit legacy-default-stream ordering from the regression tests.
+class NonblockingTestStream {
+public:
+    cudaStream_t stream, oldBlasStream, oldSolverStream;
+    cublasHandle_t blas = Session::getInstance().cuBlasHandle(1);
+    cusolverDnHandle_t solver = Session::getInstance().cuSolverHandle(1);
+    cublasPointerMode_t oldMode;
+    NonblockingTestStream() {
+        gpuErrChk(cublasGetStream(blas, &oldBlasStream));
+        gpuErrChk(cusolverDnGetStream(solver, &oldSolverStream));
+        gpuErrChk(cublasGetPointerMode(blas, &oldMode));
+        gpuErrChk(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+        gpuErrChk(cublasSetStream(blas, stream));
+        gpuErrChk(cusolverDnSetStream(solver, stream));
+    }
+    ~NonblockingTestStream() {
+        gpuErrChk(cudaStreamSynchronize(stream));
+        gpuErrChk(cublasSetPointerMode(blas, oldMode));
+        gpuErrChk(cublasSetStream(blas, oldBlasStream));
+        gpuErrChk(cusolverDnSetStream(solver, oldSolverStream));
+        gpuErrChk(cudaStreamDestroy(stream));
+    }
+};
+
+static void CUDART_CB delayTestInput(void *) {
+    // No CUDA API calls are permitted inside a CUDA host callback.
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+}
+
+template<typename T>
+void qrUsesSelectedStream(T epsilon) {
+    NonblockingTestStream execution;
+    DTensor<T> source(std::vector<T>{1,0,1,0,1,1}, 3, 2);
+    DTensor<T> sourceB(std::vector<T>{2,3,5}, 3);
+    DTensor<T> A(3,2,1,true), B(3,1,1,true), captured(3), Q(3,2), R(2,2);
+    A.setStreamIdx(1);
+    QRFactoriser<T> qr(A);
+    gpuErrChk(cudaLaunchHostFunc(execution.stream, delayTestInput, nullptr));
+    gpuErrChk(cudaMemcpyAsync(A.raw(), source.raw(), 6*sizeof(T), cudaMemcpyDeviceToDevice, execution.stream));
+    gpuErrChk(cudaMemcpyAsync(B.raw(), sourceB.raw(), 3*sizeof(T), cudaMemcpyDeviceToDevice, execution.stream));
+    qr.factorise();
+    qr.leastSquares(B);
+    // A downstream consumer must see the completed solution on this stream.
+    gpuErrChk(cudaMemcpyAsync(captured.raw(), B.raw(), 3*sizeof(T), cudaMemcpyDeviceToDevice, execution.stream));
+    gpuErrChk(cudaStreamSynchronize(execution.stream));
+    std::vector<T> solution;
+    captured.download(solution);
+    EXPECT_NEAR(2, solution[0], epsilon);
+    EXPECT_NEAR(3, solution[1], epsilon);
+    EXPECT_EQ(0, qr.info()(0));
+
+    qr.getQR(Q,R);
+    std::vector<T> q, r, expected;
+    Q.download(q); R.download(r); source.download(expected);
+    for (size_t c=0;c<2;++c) for (size_t row=0;row<3;++row) {
+        T actual=0;
+        for (size_t k=0;k<2;++k) actual += q[row+3*k]*r[k+2*c];
+        EXPECT_NEAR(expected[row+3*c], actual, epsilon);
+    }
+}
+
+TEST_F(TensorTest, qrOrdersWorkOnSelectedStream) {
+    qrUsesSelectedStream<float>(PRECISION_LOW);
+    qrUsesSelectedStream<double>(PRECISION_HIGH);
+}
+
+template<typename T>
+void givensUsesSelectedStream(T epsilon) {
+    NonblockingTestStream execution;
+    DTensor<T> source(std::vector<T>{3,4,0,5},2,2);
+    DTensor<T> A(std::vector<T>{1,0,0,1},2,2), captured(2,2);
+    A.setStreamIdx(1);
+    GivensAnnihilator<T> rotation(A);
+    for (auto mode : {CUBLAS_POINTER_MODE_HOST, CUBLAS_POINTER_MODE_DEVICE}) {
+        A.upload(std::vector<T>{1,0,0,1});
+        gpuErrChk(cublasSetPointerMode(execution.blas,mode));
+        gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+        gpuErrChk(cudaMemcpyAsync(A.raw(),source.raw(),4*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+        rotation.annihilate(0,1,0);
+        gpuErrChk(cudaMemcpyAsync(captured.raw(),A.raw(),4*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+        gpuErrChk(cudaStreamSynchronize(execution.stream));
+        cublasPointerMode_t actualMode;
+        gpuErrChk(cublasGetPointerMode(execution.blas,&actualMode));
+        EXPECT_EQ(mode,actualMode);
+        std::vector<T> actual;
+        captured.download(actual);
+        const std::vector<T> expected{5,0,4,3};
+        for(size_t i=0;i<expected.size();++i) EXPECT_NEAR(expected[i],actual[i],epsilon);
+    }
+}
+
+TEST_F(TensorTest, givensOrdersWorkOnSelectedStream) {
+    givensUsesSelectedStream<float>(PRECISION_LOW);
+    givensUsesSelectedStream<double>(PRECISION_HIGH);
 }
 
 template<typename T>
@@ -1052,6 +1152,69 @@ void tensorGetRows() {
 TEST_F(TensorTest, tensorGetRows) {
     tensorGetRows<float>();
     tensorGetRows<double>();
+}
+
+template<typename T>
+void tensorGetRowsInto() {
+    std::vector<T> data(24);
+    DTensor<T> source(4,3,2);
+    for (size_t count : {size_t(1),size_t(2),size_t(4)}) {
+        DTensor<T> destination(count,3);
+        auto *pointer = destination.raw();
+        const size_t allocated = Session::getInstance().totalAllocatedBytes();
+        const size_t first = count == 4 ? 0 : 1;
+        for (size_t repeat=0;repeat<3;++repeat) {
+            std::iota(data.begin(),data.end(),T(10*repeat));
+            source.upload(data);
+            source.getRowsInto(destination,first,first+count-1,repeat%2);
+            Session::getInstance().synchronizeStream(source.streamIdx());
+            EXPECT_EQ(pointer,destination.raw());
+            EXPECT_EQ(allocated,Session::getInstance().totalAllocatedBytes());
+            std::vector<T> actual;
+            destination.download(actual);
+            for (size_t col=0;col<3;++col) for(size_t row=0;row<count;++row)
+                EXPECT_EQ(data[12*(repeat%2)+4*col+first+row],actual[count*col+row]);
+        }
+    }
+    DTensor<T> destination(2,3), wrongRows(1,3), wrongColumns(2,2), wrongBatch(2,3,2), empty;
+    EXPECT_THROW(source.getRowsInto(destination,2,1,0),std::invalid_argument);
+    EXPECT_THROW(source.getRowsInto(destination,0,4,0),std::invalid_argument);
+    EXPECT_THROW(source.getRowsInto(destination,0,1,2),std::invalid_argument);
+    EXPECT_THROW(source.getRowsInto(wrongRows,0,1,0),std::invalid_argument);
+    EXPECT_THROW(source.getRowsInto(wrongColumns,0,1,0),std::invalid_argument);
+    EXPECT_THROW(source.getRowsInto(wrongBatch,0,1,0),std::invalid_argument);
+    EXPECT_THROW(source.getRowsInto(empty,0,1,0),std::invalid_argument);
+    DTensor<T> overlapping(source,2,0,0);
+    EXPECT_THROW(source.getRowsInto(overlapping,0,3,0),std::invalid_argument);
+    EXPECT_THROW(overlapping.getRowsInto(overlapping,0,3,0),std::invalid_argument);
+}
+
+TEST_F(TensorTest, getRowsIntoReusesDestination) {
+    tensorGetRowsInto<float>();
+    tensorGetRowsInto<double>();
+    tensorGetRowsInto<int>();
+}
+
+template<typename T>
+void getRowsIntoUsesSelectedStream() {
+    NonblockingTestStream execution;
+    DTensor<T> producer(std::vector<T>{1,2,3,4,5,6},3,2);
+    DTensor<T> source(3,2,1,true), destination(2,2), captured(2,2);
+    source.setStreamIdx(1);
+    gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+    gpuErrChk(cudaMemcpyAsync(source.raw(),producer.raw(),6*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+    source.getRowsInto(destination,1,2,0);
+    gpuErrChk(cudaMemcpyAsync(captured.raw(),destination.raw(),4*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+    gpuErrChk(cudaStreamSynchronize(execution.stream));
+    EXPECT_EQ(0,destination.streamIdx()); // Caller configuration is preserved.
+    std::vector<T> actual;
+    captured.download(actual);
+    EXPECT_EQ((std::vector<T>{2,3,5,6}),actual);
+}
+
+TEST_F(TensorTest, getRowsIntoOrdersWorkOnSelectedStream) {
+    getRowsIntoUsesSelectedStream<float>();
+    getRowsIntoUsesSelectedStream<double>();
 }
 
 

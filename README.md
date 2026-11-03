@@ -8,6 +8,18 @@ It manages their memory and facilitates various algebraic operations.
 A tensor has three axes: `[rows (m) x columns (n) x matrices (k)]`.
 An (m,n,1)-tensor stores a _matrix_, and an (m,1,1)-tensor stores a _vector_.
 
+Explicit tensor dimensions must be positive and fit in the integer dimensions
+used by CUDA's BLAS and solver interfaces. A default-constructed tensor is an
+uninitialized placeholder. Tensor sizes and allocation sizes are checked for
+overflow. Slices are non-owning views: their source storage must remain alive
+and must not be reallocated while the view is used.
+
+Numerical operations intended for repeated use may leave operand and index
+validation to the caller. In particular, `addAB` requires compatible matrix
+and batch dimensions and correctly sized output, `+=` and `-=` require matching
+tensor shapes, and Givens rotation indices must be in range. Validate these
+preconditions during application setup before entering time-critical code.
+
 We first need to decide on a data type between `float` or `double`.
 We will use `float` in the following examples.
 
@@ -239,6 +251,25 @@ Then, we can solve the system by
 A.leastSquaresBatched(B);
 ```
 
+For repeated batched solves, allocate the per-matrix device status buffer once
+during setup and pass it explicitly:
+
+```c++
+DTensor<int> info(A.numMats()); // setup: one integer per matrix
+A.leastSquaresBatched(B, info); // no GPUtils workspace allocation in this call
+Session::getInstance().synchronizeStream(A.streamIdx());
+std::vector<int> status;
+info.download(status);
+```
+
+The original one-argument overload remains available and allocates its own
+temporary status buffer. The supplied buffer may be larger than the batch;
+only its first `A.numMats()` entries are written. Both overloads overwrite A
+and B; restore the original inputs before solving a new problem. Keep the
+inputs and supplied buffer alive until A's stream completes. Reuse on that
+stream is ordered; use separate buffers or synchronization for concurrent
+streams. The buffer's own stream index does not select the solve stream.
+
 The `DTensor` `B` will be overwritten with the solution.
 
 > [!IMPORTANT]
@@ -264,6 +295,11 @@ If the file extension is `.bt` (binary tensor), the data will be stored in binar
 The structure of the binary encoding is similar to that of the text encoding:
 the first three `uint64_t`-sized positions correspond to the number of rows, columns
 and matrices, followed by the elements of the tensor.
+The dimensions and payload are stored in the host's native byte order and the
+payload uses the native representation of `T`; the file does not record its
+element type. The Python API uses little-endian dimensions, so interoperability
+requires a little-endian host and a matching NumPy dtype. Readers reject missing,
+malformed, truncated, or extra data.
 
 To load a tensor from a file, the static function `DTensor<T>::parseFromFile(filename)` can be used. For example:
 
@@ -409,6 +445,8 @@ but you can set the number of streams you need with
 /* This needs to be the first line in your code */
 Session::setStreams(4); // create 4 strems
 ```
+Call `setStreams` with a positive count before the first `Session` or tensor
+allocation initializes the session. Changing the count afterward is rejected.
 Then, you can use `setStreamIdx` to select a stream to go with your instance of `DTensor`
 ```c++
 auto a = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(0);

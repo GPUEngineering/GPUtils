@@ -514,6 +514,16 @@ public:
     DTensor<T> getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const;
 
     /**
+     * Copy rows into existing storage without allocating or resizing.
+     * destination must have shape (rowsTo-rowsFrom+1, numCols(), 1) and must
+     * not overlap this tensor's storage. Indices and shape are checked.
+     * The copy runs on this tensor's stream; destination.streamIdx() is not
+     * changed. Keep both buffers alive until completion and explicitly order
+     * accesses from any other stream, including prior uses of destination.
+     */
+    void getRowsInto(DTensor<T> &destination, size_t rowsFrom, size_t rowsTo, size_t matIdx) const;
+
+    /**
      * Transposes each (m,n)-matrix of this tensor.
      * Each transposed matrix is stored at same k-index in new tensor.
      * @return tensor of transposed matrices
@@ -1468,19 +1478,33 @@ inline void DTensor<T>::leastSquaresBatched(DTensor &B) {
     leastSquaresBatched(B, infoArray);
 }
 
+template<typename T>
+inline void DTensor<T>::getRowsInto(DTensor<T> &destination, size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
+    if (rowsFrom > rowsTo || rowsTo >= numRows() || matIdx >= numMats())
+        throw std::invalid_argument("invalid row or matrix range");
+    const size_t count = rowsTo - rowsFrom + 1;
+    if (destination.numRows() != count || destination.numCols() != numCols() || destination.numMats() != 1)
+        throw std::invalid_argument("row destination has incompatible shape");
+    // CUDA copies do not support overlapping source and destination regions.
+    const auto sourceBegin = reinterpret_cast<std::uintptr_t>(raw());
+    const auto destinationBegin = reinterpret_cast<std::uintptr_t>(destination.raw());
+    if (sourceBegin < destinationBegin + destination.numEl() * sizeof(T) &&
+        destinationBegin < sourceBegin + numEl() * sizeof(T))
+        throw std::invalid_argument("row destination overlaps source storage");
+    cudaStream_t stream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_idxStream), &stream));
+    gpuErrChk(cudaMemcpy2DAsync(destination.raw(), count * sizeof(T),
+        raw() + rowsFrom + matIdx * numCols() * numRows(), numRows() * sizeof(T),
+        count * sizeof(T), numCols(), cudaMemcpyDeviceToDevice, stream));
+}
+
 template<>
 inline DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
     if (rowsFrom > rowsTo || rowsTo >= numRows() || matIdx >= numMats())
         throw std::invalid_argument("invalid row or matrix range");
-    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
-    size_t n = numCols(), m = numRows();
-    DTensor<double> rowsOnly(rowsRangeLength, numCols(), 1);
+    DTensor<double> rowsOnly(rowsTo - rowsFrom + 1, numCols(), 1);
     rowsOnly.m_idxStream = m_idxStream;
-    cudaStream_t stream;
-    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_idxStream), &stream));
-    gpuErrChk(cudaMemcpy2DAsync(rowsOnly.raw(), rowsRangeLength * sizeof(double),
-        raw() + rowsFrom + matIdx * n * m, m * sizeof(double),
-        rowsRangeLength * sizeof(double), n, cudaMemcpyDeviceToDevice, stream));
+    getRowsInto(rowsOnly, rowsFrom, rowsTo, matIdx);
     return rowsOnly;
 }
 
@@ -1488,15 +1512,9 @@ template<>
 inline DTensor<float> DTensor<float>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
     if (rowsFrom > rowsTo || rowsTo >= numRows() || matIdx >= numMats())
         throw std::invalid_argument("invalid row or matrix range");
-    size_t rowsRangeLength = rowsTo - rowsFrom + 1;
-    size_t n = numCols(), m = numRows();
-    DTensor<float> rowsOnly(rowsRangeLength, numCols(), 1);
+    DTensor<float> rowsOnly(rowsTo - rowsFrom + 1, numCols(), 1);
     rowsOnly.m_idxStream = m_idxStream;
-    cudaStream_t stream;
-    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_idxStream), &stream));
-    gpuErrChk(cudaMemcpy2DAsync(rowsOnly.raw(), rowsRangeLength * sizeof(float),
-        raw() + rowsFrom + matIdx * n * m, m * sizeof(float),
-        rowsRangeLength * sizeof(float), n, cudaMemcpyDeviceToDevice, stream));
+    getRowsInto(rowsOnly, rowsFrom, rowsTo, matIdx);
     return rowsOnly;
 }
 
@@ -1898,6 +1916,7 @@ public:
 
     /**
      * Factorise matrix.
+     * Work is enqueued on the bound matrix's selected stream.
      */
     void factorise();
 
@@ -1906,6 +1925,8 @@ public:
      * A is the matrix that is factorised and b is the provided matrix.
      * A and b must have compatible dimensions (same number of rows and matrices=1).
      * A must be tall or square (m>=n).
+     * Both solver and BLAS work use A's stream, independent of b.streamIdx().
+     * Keep inputs and this workspace alive until that stream completes.
      * @param b provided matrix
      */
     void leastSquares(DTensor<T> &b);
@@ -1913,6 +1934,7 @@ public:
     /**
      * Populate the given tensors with Q and R.
      * Caution! This is an inefficient method: only to be used for debugging.
+     * It synchronizes A's stream before reading the triangular factor on host.
      *
      * @param Q matrix Q (preallocated)
      * @param R matrix R (preallocated)
@@ -1926,7 +1948,7 @@ template<>
 inline void QRFactoriser<double>::computeWorkspaceSize() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    gpuErrChk(cusolverDnDgeqrf_bufferSize(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDgeqrf_bufferSize(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         m, n,
         nullptr, m,
         &m_workspaceSize));
@@ -1936,7 +1958,7 @@ template<>
 inline void QRFactoriser<float>::computeWorkspaceSize() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    gpuErrChk(cusolverDnSgeqrf_bufferSize(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSgeqrf_bufferSize(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         m, n,
         nullptr, m,
         &m_workspaceSize));
@@ -1946,7 +1968,7 @@ template<>
 inline void QRFactoriser<double>::factorise() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    gpuErrChk(cusolverDnDgeqrf(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDgeqrf(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         m, n,
         m_matrix->raw(), m,
         m_householder->raw(),
@@ -1959,7 +1981,7 @@ template<>
 inline void QRFactoriser<float>::factorise() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    gpuErrChk(cusolverDnSgeqrf(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSgeqrf(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         m, n,
         m_matrix->raw(), m,
         m_householder->raw(),
@@ -1972,7 +1994,7 @@ inline void QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     double alpha = 1.;
-    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
         m_matrix->raw(), m,
         m_householder->raw(),
@@ -1991,7 +2013,7 @@ inline void QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     float alpha = 1.;
-    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
         m_matrix->raw(), m,
         m_householder->raw(),
@@ -2022,13 +2044,15 @@ inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) 
     }
     Q.upload(vecQ, rowMajor);
     // Apply Householder reflectors to compute Q
-    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
         m_matrix->raw(), m,
         m_householder->raw(),
         Q.raw(), m,
         m_workspace->raw(), m_workspaceSize,
         m_info->raw()));
+    // This debugging helper reads R on the host; finish the selected stream first.
+    Session::getInstance().synchronizeStream(m_matrix->streamIdx());
     // Extract upper triangular R
     std::vector<double> vecR(n * n, 0.);
     for (size_t r = 0; r < n; r++) {
@@ -2056,13 +2080,15 @@ inline void QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
     }
     Q.upload(vecQ, rowMajor);
     // Apply Householder reflectors to compute Q
-    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
         m_matrix->raw(), m,
         m_householder->raw(),
         Q.raw(), m,
         m_workspace->raw(), m_workspaceSize,
         m_info->raw()));
+    // This debugging helper reads R on the host; finish the selected stream first.
+    Session::getInstance().synchronizeStream(m_matrix->streamIdx());
     // Extract upper triangular R
     std::vector<float> vecR(n * n, 0.);
     for (size_t r = 0; r < n; r++) {
@@ -2372,22 +2398,25 @@ inline void GivensAnnihilator<T>::annihilate(size_t i, size_t k, size_t j) {
      * Pass cosine and sine as device pointers
      * (Avoid having to download first)
      */
-    gpuErrChk(
-        cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_DEVICE));
+    auto handle = Session::getInstance().cuBlasHandle(m_matrix->streamIdx());
+    cudaStream_t stream;
+    cublasPointerMode_t previousMode;
+    gpuErrChk(cublasGetStream(handle, &stream));
+    gpuErrChk(cublasGetPointerMode(handle, &previousMode));
+    gpuErrChk(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE));
 
     /* Useful definitions */
     T *aux = m_d_rhyp_cos_sin->raw();
-    T *matData = m_matrix->raw();
 
     /* Call kernel to determine 1/sqrt(Ai^2 + Ak^2) */
-    k_givensAnnihilateRHypot<<<1, 1>>>(m_matrix->raw(), aux, i, k, j, nR);
+    k_givensAnnihilateRHypot<<<1, 1, 0, stream>>>(m_matrix->raw(), aux, i, k, j, nR);
+    gpuErrChk(cudaGetLastError());
 
     /* Apply Givens rotation */
     m_matrix->applyLeftGivensRotation(i, k, aux + 1, aux + 2);
 
-    /* Change back to default behaviour */
-    gpuErrChk(
-        cublasSetPointerMode(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()), CUBLAS_POINTER_MODE_HOST));
+    /* Restore the caller's pointer mode. */
+    gpuErrChk(cublasSetPointerMode(handle, previousMode));
 }
 
 
