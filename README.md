@@ -94,8 +94,35 @@ DTensor<float> y(10);
 x.deviceCopyTo(y);  // x ---> y (device memory to device memory)
 ```
 
-The copy constructor has also been implemented; to hard-copy a `DTensor` just
-do `DTensor<float> myCopy(existingTensor)`.
+Copy construction and copy assignment create independent owning storage:
+
+```c++
+DTensor<float> myCopy(existingTensor);
+myCopy = existingTensor;             // deep copy, replacing myCopy's allocation
+myCopy = std::move(existingTensor);  // transfer storage; existingTensor becomes empty
+```
+
+**Compatibility change:** copy assignment previously aliased the source. It now
+matches the copy constructor's deep-copy semantics. Copies preserve the source's
+shape and stream index, and complete on the source's stream before returning.
+Self-copy and self-move assignment are safe no-ops; empty and moved-from tensors
+can be assigned again. Moving an owning tensor transfers its allocation without
+copying device data. Replacing an owning destination releases its old allocation
+and invalidates views referring to it.
+
+For intentional aliasing, use the slice constructor explicitly. Slices remain
+non-owning: their backing allocation must outlive them. Copying a slice produces
+independent owning storage; moving a slice preserves its non-owning nature and
+does not extend the backing allocation's lifetime. In particular, do not move a
+slice into the tensor that owns its backing allocation; copy it instead.
+Assigning into a slice replaces that view rather than writing through it.
+
+For repeated operations requiring no allocation, preallocate the destination
+and use `existingTensor.deviceCopyTo(myCopy)` instead of copy assignment.
+Ensure previous asynchronous uses of a destination have completed before
+replacing its storage, and establish dependencies for source writes from other
+streams. Move assignment can free old storage; it is not a guarantee of bounded
+real-time latency.
 
 Lastly, a not so efficient method that should only be used for 
 debugging, if at all, is the `()` operator (e.g., `x(i, j, k)`), which fetches

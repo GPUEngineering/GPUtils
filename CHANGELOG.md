@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** copy assignment now deep-copies tensor data and shape consistently with
+  copy construction, instead of creating a non-owning alias. Use explicit slices for
+  aliasing, and `deviceCopyTo` for copying into preallocated storage. Move assignment
+  transfers ownership and empties the source; moving a slice retains its borrowing semantics.
 - Column-major uploads copy directly from the supplied host vector; only row-major uploads
   allocate a conversion buffer.
 - `setStreamIdx` returns a reference for lvalues and moves rvalues into the returned tensor,
@@ -49,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Copy/move assignment releases the destination's previous owned storage, preserves
+  matrix-pointer and stream metadata, and handles self-assignment and empty tensors safely.
+  Copy construction and assignment complete copies on the source's selected stream.
+  Added regression coverage for ownership, allocation accounting, views, and stream ordering.
 - Enable testing at the project root so `ctest --test-dir build` discovers the test suite.
 - Make the Python-format binary-reader test self-contained, removing its dependency on
   separately generated Python test files and a particular working directory.

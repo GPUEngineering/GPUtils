@@ -440,7 +440,20 @@ public:
      * Move constructor.
      * @param other tensor to move to newly constructed tensor
      */
-    DTensor(DTensor &&other);
+    DTensor(DTensor &&other) noexcept;
+
+    /** Exchange storage, ownership, shape and stream metadata without copying. */
+    void swap(DTensor &other) noexcept {
+        using std::swap;
+        swap(m_d_data, other.m_d_data);
+        swap(m_d_ptrMatrices, other.m_d_ptrMatrices);
+        swap(m_numRows, other.m_numRows);
+        swap(m_numCols, other.m_numCols);
+        swap(m_numMats, other.m_numMats);
+        swap(m_doDestroyData, other.m_doDestroyData);
+        swap(m_doDestroyPtrMatrices, other.m_doDestroyPtrMatrices);
+        swap(m_idxStream, other.m_idxStream);
+    }
 
     /**
      * Slice constructor.
@@ -674,7 +687,11 @@ public:
 
     /* ------------- OPERATORS ------------- */
 
+    /** Deep copy, replacing this tensor's storage (also when this is a view). */
     DTensor &operator=(const DTensor &other);
+
+    /** Transfer ownership/view metadata, leaving other empty. Invalidates old views. */
+    DTensor &operator=(DTensor &&other) noexcept;
 
     T operator()(size_t i, size_t j = 0, size_t k = 0) const;
 
@@ -964,11 +981,21 @@ DTensor<T>::DTensor(const DTensor<T> &other) {
     m_numRows = other.m_numRows;
     m_numCols = other.m_numCols;
     m_idxStream = other.m_idxStream;
-    allocateOnDevice(m_numRows * m_numCols * m_numMats);
-    gpuErrChk(cudaMemcpy(m_d_data, other.raw(), m_numRows * m_numCols * m_numMats * sizeof(T),
-        cudaMemcpyDeviceToDevice));
-    /* Initialise m_d_ptrMatrices */
-    initialisePointersToMatricesData();
+    if (other.numEl() == 0) return;
+    try {
+        allocateOnDevice(numEl());
+        initialisePointersToMatricesData();
+        cudaStream_t stream;
+        gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_idxStream), &stream));
+        gpuErrChk(cudaMemcpyAsync(m_d_data, other.raw(), numEl() * sizeof(T),
+            cudaMemcpyDeviceToDevice, stream));
+        // Copies are complete on return, including work previously queued on
+        // the source's stream, so the source can subsequently be destroyed.
+        gpuErrChk(cudaStreamSynchronize(stream));
+    } catch (...) {
+        destroy();
+        throw;
+    }
 }
 
 template<typename T>
@@ -1002,24 +1029,8 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
 }
 
 template<typename T>
-DTensor<T>::DTensor(DTensor<T> &&other) {
-    /* Steal everything from other */
-    m_numCols = other.m_numCols;
-    m_numRows = other.m_numRows;
-    m_numMats = other.m_numMats;
-    m_d_data = other.m_d_data;
-    m_doDestroyData = other.m_doDestroyData;
-    m_doDestroyPtrMatrices = other.m_doDestroyPtrMatrices;
-    m_d_ptrMatrices = other.m_d_ptrMatrices;
-    m_idxStream = other.m_idxStream;
-    /* Invalidate other */
-    other.m_doDestroyPtrMatrices = false;
-    other.m_doDestroyData = false;
-    other.m_d_ptrMatrices = nullptr;
-    other.m_d_data = nullptr;
-    other.m_numCols = 0;
-    other.m_numRows = 0;
-    other.m_numMats = 0;
+DTensor<T>::DTensor(DTensor<T> &&other) noexcept {
+    swap(other);
 }
 
 template<typename T>
@@ -1293,12 +1304,19 @@ inline DTensor<double> &DTensor<double>::operator*=(double scalar) {
 
 template<typename T>
 DTensor<T> &DTensor<T>::operator=(const DTensor<T> &other) {
-    m_numMats = other.m_numMats;
-    m_numRows = other.m_numRows;
-    m_numCols = other.m_numCols;
-    m_doDestroyData = false;
-    m_d_data = other.m_d_data;
-    m_idxStream = other.m_idxStream;
+    if (this != &other) {
+        DTensor temporary(other);
+        swap(temporary);
+    }
+    return *this;
+}
+
+template<typename T>
+DTensor<T> &DTensor<T>::operator=(DTensor<T> &&other) noexcept {
+    if (this != &other) {
+        DTensor temporary(std::move(other));
+        swap(temporary);
+    }
     return *this;
 }
 

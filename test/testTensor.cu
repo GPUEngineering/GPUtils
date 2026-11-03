@@ -899,16 +899,141 @@ void tensorAssignmentOperator() {
     DTensor<T> tenz(data, 2, 3, 4);
     DTensor<T> other;
     other = tenz;
-    EXPECT_EQ(tenz.raw(), other.raw());
+    EXPECT_NE(tenz.raw(), other.raw());
+    EXPECT_NE(tenz.ptrMatrices(), other.ptrMatrices());
     EXPECT_EQ(2, other.numRows());
     EXPECT_EQ(3, other.numCols());
     EXPECT_EQ(4, other.numMats());
+    std::vector<T> actual;
+    other.download(actual);
+    EXPECT_EQ(data, actual);
+    tenz.upload(std::vector<T>(data.size(), T(0)));
+    other.download(actual);
+    EXPECT_EQ(data, actual);
 }
 
 TEST_F(TensorTest, tensorAssignmentOperator) {
     tensorAssignmentOperator<float>();
     tensorAssignmentOperator<double>();
     tensorAssignmentOperator<int>();
+}
+
+template<typename T>
+void tensorAssignmentOwnership() {
+    static_assert(std::is_nothrow_move_constructible_v<DTensor<T>>);
+    static_assert(std::is_nothrow_move_assignable_v<DTensor<T>>);
+    auto &session = Session::getInstance();
+    const size_t baseline = session.totalAllocatedBytes();
+    const std::vector<T> data{1,2,3,4,5,6,7,8};
+    const size_t bytes = data.size()*sizeof(T) + 2*sizeof(T *);
+    {
+        DTensor<T> source(data,2,2,2), target(13);
+        target = source;
+        EXPECT_EQ(baseline+2*bytes,session.totalAllocatedBytes());
+        const DTensor<T> &self = target;
+        auto *raw = target.raw();
+        target = self;
+        EXPECT_EQ(raw,target.raw());
+        EXPECT_EQ(baseline+2*bytes,session.totalAllocatedBytes());
+        std::vector<T *> matrices(2);
+        gpuErrChk(cudaMemcpy(matrices.data(),target.ptrMatrices(),2*sizeof(T *),cudaMemcpyDeviceToHost));
+        EXPECT_EQ(target.raw(),matrices[0]);
+        EXPECT_EQ(target.raw()+4,matrices[1]);
+
+        auto *sourceRaw = source.raw();
+        auto *sourceMatrices = source.ptrMatrices();
+        target = std::move(source);
+        EXPECT_EQ(sourceRaw,target.raw());
+        EXPECT_EQ(sourceMatrices,target.ptrMatrices());
+        EXPECT_EQ(nullptr,source.raw());
+        EXPECT_EQ(nullptr,source.ptrMatrices());
+        EXPECT_EQ(0,source.numEl());
+        EXPECT_EQ(baseline+bytes,session.totalAllocatedBytes());
+        auto &moveSelf = target;
+        target = std::move(moveSelf);
+        EXPECT_EQ(sourceRaw,target.raw());
+        std::vector<T> actual;
+        target.download(actual);
+        EXPECT_EQ(data,actual);
+        source = target; // A moved-from tensor can be assigned again.
+        EXPECT_NE(source.raw(),target.raw());
+    }
+    EXPECT_EQ(baseline,session.totalAllocatedBytes());
+    {
+        DTensor<T> target(13);
+        { DTensor<T> source(data,2,2,2); target = source; }
+        EXPECT_EQ(baseline+bytes,session.totalAllocatedBytes());
+        std::vector<T> actual;
+        target.download(actual);
+        EXPECT_EQ(data,actual); // Source destruction cannot invalidate the copy.
+        DTensor<T> empty;
+        DTensor<T> emptyCopy(empty);
+        EXPECT_EQ(nullptr,emptyCopy.raw());
+        target = empty;
+        EXPECT_EQ(nullptr,target.raw());
+        EXPECT_EQ(0,target.numEl());
+        EXPECT_EQ(baseline,session.totalAllocatedBytes());
+        target = DTensor<T>(data,2,2,2);
+        EXPECT_EQ(baseline+bytes,session.totalAllocatedBytes());
+        target = std::move(emptyCopy);
+        EXPECT_EQ(nullptr,target.raw());
+        EXPECT_EQ(baseline,session.totalAllocatedBytes());
+    }
+    {
+        DTensor<T> owner(data,2,2,2);
+        DTensor<T> view(owner,2,0,0);
+        view = owner; // Detach the view without freeing the owner's storage.
+        EXPECT_NE(owner.raw(),view.raw());
+        EXPECT_EQ(baseline+2*bytes,session.totalAllocatedBytes());
+        DTensor<T> source(data,2,2,2);
+        DTensor<T> moveDestination(owner,2,0,0);
+        auto *raw = source.raw();
+        moveDestination = std::move(source);
+        EXPECT_EQ(raw,moveDestination.raw());
+        std::vector<T> actual;
+        owner.download(actual);
+        EXPECT_EQ(data,actual);
+    }
+    EXPECT_EQ(baseline,session.totalAllocatedBytes());
+    {
+        DTensor<T> owner(data,2,2,2);
+        DTensor<T> view(owner,2,1,1);
+        owner = view; // Copy before releasing the storage being viewed.
+        std::vector<T> actual;
+        owner.download(actual);
+        EXPECT_EQ((std::vector<T>{5,6,7,8}),actual);
+        EXPECT_EQ(1,owner.numMats());
+    }
+    EXPECT_EQ(baseline,session.totalAllocatedBytes());
+}
+
+TEST_F(TensorTest, assignmentReleasesAndTransfersOwnership) {
+    tensorAssignmentOwnership<float>();
+    tensorAssignmentOwnership<double>();
+    tensorAssignmentOwnership<int>();
+}
+
+TEST_F(TensorTest, copiesRespectSelectedStream) {
+    NonblockingTestStream execution;
+    const std::vector<double> data{1,2,3,4,5,6,7,8};
+    DTensor<double> producer(data,2,2,2), source(2,2,2,true), assigned(3);
+    source.setStreamIdx(1);
+    gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+    gpuErrChk(cudaMemcpyAsync(source.raw(),producer.raw(),data.size()*sizeof(double),cudaMemcpyDeviceToDevice,execution.stream));
+    DTensor<double> constructed(source);
+    assigned = source;
+    EXPECT_EQ(1,constructed.streamIdx());
+    EXPECT_EQ(1,assigned.streamIdx());
+    std::vector<double> actual;
+    constructed.download(actual);
+    EXPECT_EQ(data,actual);
+    assigned.download(actual);
+    EXPECT_EQ(data,actual);
+    DTensor<double> moved;
+    auto *pointer = assigned.raw();
+    moved = std::move(assigned);
+    EXPECT_EQ(1,moved.streamIdx());
+    EXPECT_EQ(pointer,moved.raw());
 }
 
 /* ---------------------------------------
