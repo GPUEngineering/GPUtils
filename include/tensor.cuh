@@ -1175,15 +1175,12 @@ inline bool DTensor<T>::upload(const std::vector<T> &vec, StorageMode mode) {
     size_t thisSize = m_numRows * m_numCols * m_numMats;
     // make sure vec is of right size
     if (size != thisSize) throw std::invalid_argument("[upload] vec has wrong size");
-    std::vector<T> vecCm(thisSize);
     if (mode == StorageMode::rowMajor) {
+        std::vector<T> vecCm(thisSize);
         rm2cm(vec, vecCm);
+        gpuErrChk(cudaMemcpy(m_d_data, vecCm.data(), size * sizeof(T), cudaMemcpyHostToDevice));
     } else {
-        vecCm = vec;
-    }
-    if (size <= thisSize) {
-        size_t buffer_size = size * sizeof(T);
-        gpuErrChk(cudaMemcpy(m_d_data, vecCm.data(), buffer_size, cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMemcpy(m_d_data, vec.data(), size * sizeof(T), cudaMemcpyHostToDevice));
     }
     return true;
 }
