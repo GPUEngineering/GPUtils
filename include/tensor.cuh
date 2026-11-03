@@ -15,6 +15,11 @@
 #include <optional>
 #include <cassert>
 #include <fstream>
+#include <sstream>
+#include <limits>
+#include <cstdint>
+#include <climits>
+#include <cmath>
 
 
 /**
@@ -131,12 +136,15 @@ static size_t s_numStreams = 1;
  * The cuSolver handle can be accessed anywhere by `Session::getInstance().cuSolverHandle()`
  */
 class Session {
+    static bool &initialized() { static bool value = false; return value; }
 public:
     /**
      * Sets the total number of available streams
      * @param numStreams number of streams (default: 1)
      */
     static void setStreams(size_t numStreams) {
+        if (numStreams == 0) throw std::invalid_argument("stream count must be positive");
+        if (initialized()) throw std::logic_error("streams must be configured before Session initialization");
         s_numStreams = numStreams;
     }
 
@@ -163,6 +171,7 @@ private:
             gpuErrChk(cusolverDnCreate(&m_cusolverHandles[i]));
             gpuErrChk(cusolverDnSetStream(m_cusolverHandles[i], m_cublasStreams[i]));
         }
+        initialized() = true;
     }
 
     ~Session() {
@@ -180,6 +189,8 @@ private:
 
 public:
     Session(Session const &) = delete;
+
+    size_t numStreams() const { return m_numCublasHandlesStreams; }
 
     void operator=(Session const &) = delete;
 
@@ -259,6 +270,24 @@ enum StorageMode {
     rowMajor, ///< row major storage
     defaultMajor = columnMajor
 };
+
+// Explicitly sized tensors are nonempty. Default construction remains available
+// for an uninitialized tensor. CUDA BLAS and solver APIs use int dimensions.
+template<typename T>
+size_t checkedTensorSize(size_t rows, size_t cols, size_t mats) {
+    if (!rows || !cols || !mats || rows > INT_MAX || cols > INT_MAX || mats > INT_MAX)
+        throw std::invalid_argument("tensor dimensions must be positive and fit in int");
+    const size_t limit = std::numeric_limits<size_t>::max();
+    if (rows > limit / cols || rows * cols > limit / mats ||
+        rows * cols * mats > limit / sizeof(T) || mats > limit / sizeof(T *))
+        throw std::invalid_argument("tensor dimensions overflow allocation size");
+    return rows * cols * mats;
+}
+
+inline void validateStorageMode(StorageMode mode) {
+    if (mode != columnMajor && mode != rowMajor)
+        throw std::invalid_argument("invalid storage mode");
+}
 
 
 /**
@@ -549,7 +578,7 @@ public:
      * @param j second column index
      * @param c cos θ
      * @param minus_s minus sin θ
-     * @throws std::invalid_argument if either i or j is greater or equal ncols
+     * @pre i and j are less than numCols(); indices are not checked.
      */
     void applyRightGivensRotation(size_t i, size_t j, const T *c, const T *minus_s);
 
@@ -560,7 +589,7 @@ public:
      * @param j second row index
      * @param c cos θ
      * @param minus_s minus sin θ
-     * @throws std::invalid_argument if either i or j is greater or equal nrows
+     * @pre i and j are less than numRows(); indices are not checked.
      */
     void applyLeftGivensRotation(size_t i, size_t j, const T *c, const T *minus_s);
 
@@ -662,7 +691,7 @@ public:
 
 template<typename T>
 DTensor<T> DTensor<T>::setStreamIdx(size_t idx) {
-    if (idx >= s_numStreams) {
+    if (idx >= Session::getInstance().numStreams()) {
         throw std::invalid_argument("Invalid stream index; it exceeds the max allocated streams");
     }
     m_idxStream = idx;
@@ -689,12 +718,15 @@ void DTensor<T>::initialisePointersToMatricesData() {
 
 template<typename T>
 DTensor<T> DTensor<T>::createRandomTensor(size_t numRows, size_t numCols, size_t numMats, T low, T hi) {
+    const size_t size = checkedTensorSize<T>(numRows, numCols, numMats);
+    if (!(low <= hi)) throw std::invalid_argument("invalid random range");
     if constexpr (std::is_floating_point<T>::value) {
-        auto randVec = generateRealRandomVector(numRows * numCols * numMats, low, hi);
+        if (!std::isfinite(low) || !std::isfinite(hi)) throw std::invalid_argument("random bounds must be finite");
+        auto randVec = generateRealRandomVector(size, low, hi);
         DTensor<T> a(randVec, numRows, numCols, numMats);
         return a;
     } else if constexpr (std::is_same_v<T, int>) {
-        auto randVec = generateIntRandomVector(numRows * numCols * numMats, low, hi);
+        auto randVec = generateIntRandomVector(size, low, hi);
         DTensor<T> a(randVec, numRows, numCols, numMats);
         return a;
     }
@@ -717,45 +749,36 @@ data_t<T> vectorFromTextFile(std::string path_to_file) {
     file.open(path_to_file, std::ios::in);
     if (!file.is_open()) { throw std::invalid_argument("[vectorFromTextFile] the file does not exist"); }
 
-    std::string line;
-    getline(file, line);
-    dataStruct.numRows = atoi(line.c_str());
-    getline(file, line);
-    dataStruct.numCols = atoi(line.c_str());
-    getline(file, line);
-    dataStruct.numMats = atoi(line.c_str());
-
-    size_t numElements = dataStruct.numRows * dataStruct.numCols * dataStruct.numMats;
-    std::vector<T> vecDataFromFile(numElements);
-
-    size_t i = 0;
-    while (getline(file, line)) {
-        if constexpr (std::is_same_v<T, int>) {
-            vecDataFromFile[i] = atoi(line.c_str());
-        } else if constexpr (std::is_same_v<T, double>) {
-            vecDataFromFile[i] = std::stod(line.c_str());
-        } else if constexpr (std::is_same_v<T, float>) {
-            vecDataFromFile[i] = std::stof(line.c_str());
-        } else if constexpr (std::is_same_v<T, long double>) {
-            vecDataFromFile[i] = std::stold(line.c_str());
-        } else if constexpr (std::is_same_v<T, long>) {
-            vecDataFromFile[i] = std::stol(line.c_str());
-        } else if constexpr (std::is_same_v<T, long long>) {
-            vecDataFromFile[i] = std::stoll(line.c_str());
-        } else if constexpr (std::is_same_v<T, unsigned long>) {
-            vecDataFromFile[i] = std::stoul(line.c_str());
-        } else if constexpr (std::is_same_v<T, unsigned long long>) {
-            vecDataFromFile[i] = std::stoull(line.c_str());
-        } else if constexpr (std::is_same_v<T, size_t>) {
-            sscanf(line.c_str(), "%zu", &vecDataFromFile[i]);
-        } else {
-            throw std::invalid_argument("data type not supported");
+    auto readDimension = [&file]() -> size_t {
+        std::string line;
+        if (!std::getline(file, line)) throw std::invalid_argument("missing tensor dimension");
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line.find_first_not_of("0123456789") != std::string::npos)
+            throw std::invalid_argument("invalid tensor dimension in text file");
+        try {
+            unsigned long long value = std::stoull(line);
+            if (value > std::numeric_limits<size_t>::max()) throw std::invalid_argument("dimension too large");
+            return static_cast<size_t>(value);
+        } catch (const std::out_of_range &) { throw std::invalid_argument("dimension too large"); }
+    };
+    dataStruct.numRows = readDimension();
+    dataStruct.numCols = readDimension();
+    dataStruct.numMats = readDimension();
+    size_t numElements = checkedTensorSize<T>(dataStruct.numRows, dataStruct.numCols, dataStruct.numMats);
+    if constexpr (!std::is_arithmetic_v<T> || std::is_same_v<T, char>) {
+        throw std::invalid_argument("data type not supported");
+    } else {
+        dataStruct.data.resize(numElements);
+        for (T &value : dataStruct.data) {
+            std::string line;
+            if (!std::getline(file, line)) throw std::invalid_argument("truncated tensor text file");
+            std::istringstream input(line);
+            if (!(input >> value) || !(input >> std::ws).eof())
+                throw std::invalid_argument("invalid tensor text data");
         }
-
-        if (++i == numElements) break;
+        std::string extra;
+        if (file >> extra) throw std::invalid_argument("extra tensor text data");
     }
-    dataStruct.data = vecDataFromFile;
-    file.close();
     return dataStruct;
 }
 
@@ -766,27 +789,38 @@ data_t<T> vectorFromBinaryFile(std::string path_to_file) {
     std::ifstream inFile;
     inFile.open(path_to_file, std::ios::binary);
     if (!inFile.is_open()) { throw std::invalid_argument("[vectorFromBinaryFile] the file does not exist"); }
-    inFile.read(reinterpret_cast<char *>(&(dataStruct.numRows)), sizeof(uint64_t));
-    inFile.read(reinterpret_cast<char *>(&(dataStruct.numCols)), sizeof(uint64_t));
-    inFile.read(reinterpret_cast<char *>(&(dataStruct.numMats)), sizeof(uint64_t));
-    uint64_t numElements = dataStruct.numRows * dataStruct.numCols * dataStruct.numMats;
-    std::vector<T> vecDataFromFile(numElements);
-    for (size_t i = 0; i < numElements; i++) {
-        T el;
-        inFile.read(reinterpret_cast<char *>(&el), sizeof(T));
-        vecDataFromFile[i] = el;
-    }
-    inFile.close();
-    dataStruct.data = vecDataFromFile;
+    uint64_t dimensions[3]{};
+    if (!inFile.read(reinterpret_cast<char *>(dimensions), sizeof(dimensions)))
+        throw std::invalid_argument("truncated tensor binary header");
+    for (auto dimension : dimensions)
+        if (dimension > std::numeric_limits<size_t>::max()) throw std::invalid_argument("dimension too large");
+    dataStruct.numRows = static_cast<size_t>(dimensions[0]);
+    dataStruct.numCols = static_cast<size_t>(dimensions[1]);
+    dataStruct.numMats = static_cast<size_t>(dimensions[2]);
+    size_t numElements = checkedTensorSize<T>(dataStruct.numRows, dataStruct.numCols, dataStruct.numMats);
+    size_t bytes = numElements * sizeof(T);
+    if (bytes > static_cast<size_t>(std::numeric_limits<std::streamsize>::max()))
+        throw std::invalid_argument("tensor binary payload too large");
+    auto payloadStart = inFile.tellg();
+    inFile.seekg(0, std::ios::end);
+    auto payloadEnd = inFile.tellg();
+    if (payloadStart < 0 || payloadEnd < payloadStart ||
+        static_cast<uint64_t>(payloadEnd - payloadStart) != bytes)
+        throw std::invalid_argument("invalid tensor binary payload size");
+    inFile.seekg(payloadStart);
+    dataStruct.data.resize(numElements);
+    if (!inFile.read(reinterpret_cast<char *>(dataStruct.data.data()), static_cast<std::streamsize>(bytes)))
+        throw std::invalid_argument("truncated tensor binary payload");
     return dataStruct;
 }
 
 template<typename T>
 DTensor<T> DTensor<T>::parseFromFile(std::string path_to_file,
                                      StorageMode mode) {
+    validateStorageMode(mode);
     // Figure out file extension
     size_t pathToFileLength = path_to_file.length();
-    std::string fileNameExtension = path_to_file.substr(pathToFileLength - 3);
+    std::string fileNameExtension = pathToFileLength >= 3 ? path_to_file.substr(pathToFileLength - 3) : "";
     typedef data_t<T> (*PARSER)(std::string);
     PARSER parser = (fileNameExtension == ".bt") ? vectorFromBinaryFile<T> : vectorFromTextFile<T>;
     auto parsedData = parser(path_to_file);
@@ -801,7 +835,7 @@ void DTensor<T>::saveToFile(std::string pathToFile) {
 
     // Figure out file extension
     size_t pathToFileLength = pathToFile.length();
-    std::string fileNameExtension = pathToFile.substr(pathToFileLength - 3);
+    std::string fileNameExtension = pathToFileLength >= 3 ? pathToFile.substr(pathToFileLength - 3) : "";
     // If the extension is .bt...
     if (fileNameExtension == ".bt") {
         uint64_t nr = (uint64_t) numRows(),
@@ -809,18 +843,23 @@ void DTensor<T>::saveToFile(std::string pathToFile) {
                 nm = (uint64_t) numMats();
         std::ofstream outFile;
         outFile.open(pathToFile, std::ios::binary);
+        if (!outFile) throw std::runtime_error("cannot open tensor output file");
         outFile.write(reinterpret_cast<const char *>(&nr), sizeof(uint64_t));
         outFile.write(reinterpret_cast<const char *>(&nc), sizeof(uint64_t));
         outFile.write(reinterpret_cast<const char *>(&nm), sizeof(uint64_t));
         for (const T &el: myData) outFile.write(reinterpret_cast<const char *>(&el), sizeof(T));
         outFile.close();
+        if (!outFile) throw std::runtime_error("failed writing tensor output file");
     } else {
         std::ofstream file(pathToFile);
+        if (!file) throw std::runtime_error("cannot open tensor output file");
         file << numRows() << std::endl << numCols() << std::endl << numMats() << std::endl;
         if constexpr (std::is_floating_point<T>::value) {
             file << std::setprecision(std::numeric_limits<T>::max_digits10);
         }
         for (const T &el: myData) file << el << std::endl;
+        file.close();
+        if (!file) throw std::runtime_error("failed writing tensor output file");
     }
 }
 
@@ -828,7 +867,7 @@ void DTensor<T>::saveToFile(std::string pathToFile) {
 template<typename T>
 void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats) {
     if (m_numRows == newNumRows && m_numCols == newNumCols && m_numMats == newNumMats) return;
-    size_t newNumElements = newNumRows * newNumCols * newNumMats;
+    size_t newNumElements = checkedTensorSize<T>(newNumRows, newNumCols, newNumMats);
     /* Check whether dimensions are compatible */
     if (numEl() != newNumElements) {
         char errMessage[256];
@@ -862,10 +901,10 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
 
 template<typename T>
 DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
+    size_t size = checkedTensorSize<T>(m, n, k);
     m_numRows = m;
     m_numCols = n;
     m_numMats = k;
-    size_t size = m * n * k;
     allocateOnDevice(size, zero);
     /* Initialise m_d_ptrMatrices */
     initialisePointersToMatricesData();
@@ -873,10 +912,12 @@ DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
 
 template<typename T>
 DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k, StorageMode mode) {
+    size_t size = checkedTensorSize<T>(m, n, k);
+    validateStorageMode(mode);
+    if (data.size() != size) throw std::invalid_argument("tensor data has wrong size");
     m_numRows = m;
     m_numCols = n;
     m_numMats = k;
-    size_t size = m * n * k;
     allocateOnDevice(size);
     upload(data, mode);
     /* Initialise m_d_ptrMatrices */
@@ -898,7 +939,9 @@ DTensor<T>::DTensor(const DTensor<T> &other) {
 
 template<typename T>
 DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to) {
-    if (from > to) throw std::invalid_argument("from > to");
+    if (axis > 2 || from > to) throw std::invalid_argument("invalid slice axis or range");
+    const size_t extent = axis == 0 ? other.m_numRows : axis == 1 ? other.m_numCols : other.m_numMats;
+    if (to >= extent) throw std::invalid_argument("slice range exceeds axis");
     size_t offset = 0, len = to - from + 1;
     m_d_ptrMatrices = nullptr;
     if (axis == 2) {
@@ -906,7 +949,7 @@ DTensor<T>::DTensor(const DTensor<T> &other, size_t axis, size_t from, size_t to
         m_numRows = other.m_numRows;
         m_numCols = other.m_numCols;
         m_numMats = len;
-        m_d_ptrMatrices = other.m_d_ptrMatrices + from;
+        m_d_ptrMatrices = other.m_d_ptrMatrices ? other.m_d_ptrMatrices + from : nullptr;
     } else if (axis == 1) {
         offset = other.m_numRows * from;
         m_numRows = other.m_numRows;
@@ -1127,6 +1170,7 @@ inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
 
 template<typename T>
 inline bool DTensor<T>::upload(const std::vector<T> &vec, StorageMode mode) {
+    validateStorageMode(mode);
     size_t size = vec.size();
     size_t thisSize = m_numRows * m_numCols * m_numMats;
     // make sure vec is of right size
@@ -1277,6 +1321,8 @@ inline DTensor<double> &DTensor<double>::operator-=(const DTensor<double> &rhs) 
 
 template<typename T>
 inline T DTensor<T>::operator()(size_t i, size_t j, size_t k) const {
+    if (i >= m_numRows || j >= m_numCols || k >= m_numMats)
+        throw std::invalid_argument("tensor index out of range");
     T hostDst;
     size_t offset = i + m_numRows * (j + m_numCols * k);
     gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
@@ -1395,6 +1441,8 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B) {
 
 template<>
 inline DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
+    if (rowsFrom > rowsTo || rowsTo >= numRows() || matIdx >= numMats())
+        throw std::invalid_argument("invalid row or matrix range");
     size_t rowsRangeLength = rowsTo - rowsFrom + 1;
     size_t n = numCols(), m = numRows();
     DTensor<double> rowsOnly(rowsRangeLength, numCols(), 1);
@@ -1410,6 +1458,8 @@ inline DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, 
 
 template<>
 inline DTensor<float> DTensor<float>::getRows(size_t rowsFrom, size_t rowsTo, size_t matIdx) const {
+    if (rowsFrom > rowsTo || rowsTo >= numRows() || matIdx >= numMats())
+        throw std::invalid_argument("invalid row or matrix range");
     size_t rowsRangeLength = rowsTo - rowsFrom + 1;
     size_t n = numCols(), m = numRows();
     DTensor<float> rowsOnly(rowsRangeLength, numCols(), 1);
@@ -1516,7 +1566,7 @@ private:
      * @param mat matrix to be factorised
      */
     void checkMatrix(DTensor<T> &tensor) const {
-        if (tensor.numRows() < tensor.numCols()) {
+        if (!tensor.numRows() || !tensor.numCols() || !tensor.numMats() || tensor.numRows() < tensor.numCols()) {
             throw std::invalid_argument("[svd] your matrix is fat (no offence)");
         }
     };
@@ -1701,6 +1751,7 @@ private:
 
 public:
     CholeskyFactoriser(DTensor<T> &A) : IStatus() {
+        if (!A.numRows() || !A.numCols() || !A.numMats()) throw std::invalid_argument("[Cholesky] empty tensor");
         if (A.numMats() > 1) throw std::invalid_argument("[Cholesky] 3D tensors require `CholeskyBatchFactoriser`");
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be square");
         m_matrix = &A;
@@ -1809,6 +1860,7 @@ private:
 
 public:
     QRFactoriser(DTensor<T> &A) : IStatus() {
+        if (!A.numRows() || !A.numCols() || !A.numMats()) throw std::invalid_argument("[QR] empty tensor");
         if (A.numMats() > 1) throw std::invalid_argument("[QR] 3D tensors require `leastSquaresBatched`");
         if (A.numRows() < A.numCols()) throw std::invalid_argument("[QR] Matrix A must be tall or square");
         m_matrix = &A;
@@ -1930,9 +1982,9 @@ template<>
 inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    if (Q.numRows() != m || Q.numCols() != n)
+    if (Q.numRows() != m || Q.numCols() != n || Q.numMats() != 1)
         throw std::invalid_argument("[QR] invalid shape of Q.");
-    if (R.numRows() != n || R.numCols() != n)
+    if (R.numRows() != n || R.numCols() != n || R.numMats() != 1)
         throw std::invalid_argument("[QR] invalid shape of R.");
     // Initialize Q to 1's on diagonal
     std::vector<double> vecQ(m * n, 0.);
@@ -1964,9 +2016,9 @@ template<>
 inline void QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    if (Q.numRows() != m || Q.numCols() != n)
+    if (Q.numRows() != m || Q.numCols() != n || Q.numMats() != 1)
         throw std::invalid_argument("[QR] invalid shape of Q.");
-    if (R.numRows() != n || R.numCols() != n)
+    if (R.numRows() != n || R.numCols() != n || R.numMats() != 1)
         throw std::invalid_argument("[QR] invalid shape of R.");
     // Initialize Q to 1's on diagonal
     std::vector<float> vecQ(m * n, 0.);
@@ -2045,7 +2097,7 @@ template<typename T>
 TEMPLATE_CONSTRAINT_REQUIRES_FPX
 inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     size_t m = a.numRows(), n = a.numCols(), nMats = a.numMats();
-    if (m > n) throw std::invalid_argument("[nullspace] I was expecting a square or fat matrix");
+    if (!m || !n || !nMats || m > n) throw std::invalid_argument("[nullspace] expected a nonempty square or fat matrix");
     m_nullspace = std::make_unique<DTensor<T> >(n, n, nMats, true);
     m_projOp = std::make_unique<DTensor<T> >(n, n, nMats, true);
     auto aTranspose = a.tr();
@@ -2114,7 +2166,7 @@ public:
      */
     CholeskyBatchFactoriser(DTensor<T> &A, bool factorised = false) : IStatus(A.numMats()),
                                                                       m_factorisationDone(factorised) {
-        if (A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be square");
+        if (!A.numRows() || !A.numMats() || A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be nonempty and square");
         m_matrix = &A;
         m_numRows = A.numRows();
         m_numMats = A.numMats();
@@ -2234,7 +2286,7 @@ public:
      * @throws std::invalid_argument if a.numMats() > 1
      */
     GivensAnnihilator(DTensor<T> &a) {
-        if (a.numMats() > 1) {
+        if (!a.numRows() || !a.numCols() || a.numMats() != 1) {
             throw std::invalid_argument("[GivensAnnihilator] tensors (numMats > 1) not supported");
         }
         m_matrix = &a;
@@ -2248,7 +2300,7 @@ public:
      * @param a
      */
     void setMatrix(DTensor<T> &a) {
-        if (a.numMats() > 1) {
+        if (!a.numRows() || !a.numCols() || a.numMats() != 1) {
             throw std::invalid_argument("[GivensAnnihilator] tensors (numMats > 1) not supported");
         }
         m_matrix = &a;

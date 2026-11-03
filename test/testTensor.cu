@@ -26,6 +26,37 @@ protected:
 #define TENSOR_DATA_234AMB {-6, 8, -6, 2, 4, -5, -27, 9, 13, 11, -5, 3, -4, -5, 1, -7, 10, 2, 2, -2, 0, 8, 0, 3};
 
 /* ---------------------------------------
+ * Session streams
+ *
+ * This test must remain before all tensor tests: Session is a singleton, so
+ * the number of streams has to be selected before its first use.
+ * --------------------------------------- */
+
+TEST(SessionTest, streamSelectionAndExecution) {
+    EXPECT_THROW(Session::setStreams(0), std::invalid_argument);
+    Session::setStreams(2);
+
+    DTensor<double> A({1, 2, 3, 4}, 2, 2);
+    DTensor<double> B({5, 6, 7, 8}, 2, 2);
+    DTensor<double> C(2, 2, 1, true);
+    A.setStreamIdx(1);
+    B.setStreamIdx(1);
+    C.setStreamIdx(1);
+
+    EXPECT_EQ(1, A.streamIdx());
+    EXPECT_EQ(1, B.streamIdx());
+    EXPECT_EQ(1, C.streamIdx());
+    EXPECT_THROW(A.setStreamIdx(2), std::invalid_argument);
+    EXPECT_THROW(Session::setStreams(3), std::logic_error);
+
+    C.addAB(A, B);
+    Session::getInstance().synchronizeStream(1);
+    std::vector<double> result;
+    C.download(result);
+    EXPECT_EQ((std::vector<double>{23, 34, 31, 46}), result);
+}
+
+/* ---------------------------------------
  * Zero Tensor (Constructor)
  * --------------------------------------- */
 
@@ -359,7 +390,8 @@ TEMPLATE_WITH_TYPE_T
 void tensorSlicingConstructorAxis0() {
     std::vector<T> data = TENSOR_DATA_234A;
     DTensor<T> tenz(data, 2, 3, 4);
-    DTensor<T> tenzSlice(tenz, 0, 2, 3); // elements 2..3
+    DTensor<T> column(tenz, 1, 1, 1);
+    DTensor<T> tenzSlice(column, 0, 0, 1); // both rows of the second column
     EXPECT_EQ(2, tenzSlice.numRows());
     EXPECT_EQ(1, tenzSlice.numCols());
     EXPECT_EQ(1, tenzSlice.numMats());
@@ -1011,6 +1043,142 @@ TEST_F(TensorTest, tensorBytesAllocatedDeallocated) {
     tensorBytesAllocatedDeallocated<float>();
     tensorBytesAllocatedDeallocated<double>();
     tensorBytesAllocatedDeallocated<int>();
+}
+
+/* ---------------------------------------
+ * Input validation
+ * --------------------------------------- */
+
+TEST_F(TensorTest, sliceConstructorRejectsInvalidAxisAndRanges) {
+    DTensor<double> tensor(2, 3, 2);
+
+    EXPECT_THROW(DTensor<double>(tensor, 3, 0, 0), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>(tensor, 0, 1, 0), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>(tensor, 0, 0, 2), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>(tensor, 1, 0, 3), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>(tensor, 2, 0, 2), std::invalid_argument);
+}
+
+TEST_F(TensorTest, givensRotationsRejectBatches) {
+    const double c = 1.0;
+    const double minusS = 0.0;
+    DTensor<double> batchedMatrix(2, 3, 2);
+
+    EXPECT_THROW(batchedMatrix.applyRightGivensRotation(0, 1, &c, &minusS), std::invalid_argument);
+    EXPECT_THROW(batchedMatrix.applyLeftGivensRotation(0, 1, &c, &minusS), std::invalid_argument);
+}
+
+TEST_F(TensorTest, tensorOperationsRejectIncompatibleDimensions) {
+    DTensor<double> twoByTwo(2, 2);
+    DTensor<double> twoByThree(2, 3);
+    DTensor<double> tooSmall(3);
+
+    EXPECT_THROW(twoByTwo.dotF(twoByThree), std::invalid_argument);
+    EXPECT_THROW(twoByTwo.deviceCopyTo(tooSmall), std::invalid_argument);
+}
+
+TEST_F(TensorTest, tensorSetupRejectsInvalidDimensionsAndRanges) {
+    EXPECT_THROW(DTensor<double>(0, 1, 1), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>(static_cast<size_t>(INT_MAX) + 1, 1, 1), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>(static_cast<size_t>(INT_MAX), static_cast<size_t>(INT_MAX), 2), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>((std::vector<double>{1}), 2), std::invalid_argument);
+    EXPECT_THROW(DTensor<double>::createRandomTensor(2, 1, 1, 2.0, 1.0), std::invalid_argument);
+    DTensor<double> tensor(2, 3, 2);
+    EXPECT_THROW(tensor.reshape(static_cast<size_t>(INT_MAX), static_cast<size_t>(INT_MAX), 2), std::invalid_argument);
+    EXPECT_THROW(tensor.getRows(1, 0, 0), std::invalid_argument);
+    EXPECT_THROW(tensor.getRows(0, 2, 0), std::invalid_argument);
+    EXPECT_THROW(tensor.getRows(0, 1, 2), std::invalid_argument);
+    EXPECT_THROW(tensor(2, 0, 0), std::invalid_argument);
+    EXPECT_THROW(tensor(0, 3, 0), std::invalid_argument);
+    EXPECT_THROW(tensor(0, 0, 2), std::invalid_argument);
+    EXPECT_THROW(tensor.upload(std::vector<double>(12), static_cast<StorageMode>(99)), std::invalid_argument);
+}
+
+TEST_F(TensorTest, factoriserSetupRejectsEmptyAndIncompatibleMatrices) {
+    DTensor<double> empty;
+    DTensor<double> wide(2, 3);
+    DTensor<double> nonsquare(3, 2, 2);
+    EXPECT_THROW(Svd<double> svd(empty), std::invalid_argument);
+    EXPECT_THROW(CholeskyFactoriser<double> cholesky(empty), std::invalid_argument);
+    EXPECT_THROW(QRFactoriser<double> qr(wide), std::invalid_argument);
+    EXPECT_THROW(CholeskyBatchFactoriser<double> cholesky(nonsquare), std::invalid_argument);
+    EXPECT_THROW(GivensAnnihilator<double> givens(empty), std::invalid_argument);
+}
+
+TEST_F(TensorTest, fileParsingRejectsMalformedDataAndHeaders) {
+    const auto path = std::filesystem::path(testing::TempDir()) / "gputils_invalid_input.dtensor";
+    for (const auto &content : {"2\n1\n1\n1\n", "2\n1\n1\n1\ninvalid\n", "1\n1\n1\n1\n2\n", "2\n"}) {
+        { std::ofstream file(path); ASSERT_TRUE(file.is_open()); file << content; }
+        EXPECT_THROW(DTensor<double>::parseFromFile(path.string()), std::invalid_argument);
+    }
+    std::filesystem::remove(path);
+    const auto binaryPath = std::filesystem::path(testing::TempDir()) / "gputils_invalid_header.bt";
+    { std::ofstream file(binaryPath, std::ios::binary); ASSERT_TRUE(file.is_open()); file.put('\1'); }
+    EXPECT_THROW(DTensor<double>::parseFromFile(binaryPath.string()), std::invalid_argument);
+    std::filesystem::remove(binaryPath);
+}
+
+TEST_F(TensorTest, leastSquaresRejectsIncompatibleDimensions) {
+    DTensor<double> tallMatrix(3, 2, 2);
+    DTensor<double> wrongRows(2, 1, 2);
+    DTensor<double> wrongColumns(3, 2, 2);
+    DTensor<double> wrongBatchSize(3, 1, 1);
+    DTensor<double> wideMatrix(2, 3, 2);
+    DTensor<double> compatibleRhs(2, 1, 2);
+
+    EXPECT_THROW(tallMatrix.leastSquaresBatched(wrongRows), std::invalid_argument);
+    EXPECT_THROW(tallMatrix.leastSquaresBatched(wrongColumns), std::invalid_argument);
+    EXPECT_THROW(tallMatrix.leastSquaresBatched(wrongBatchSize), std::invalid_argument);
+    EXPECT_THROW(wideMatrix.leastSquaresBatched(compatibleRhs), std::invalid_argument);
+}
+
+/* ---------------------------------------
+ * Matrix multiplication coefficients
+ * --------------------------------------- */
+
+TEST_F(TensorTest, tensorAddABUsesAlphaBetaForASingleMatrix) {
+    DTensor<double> A({1, 2, 3, 4}, 2, 2);
+    DTensor<double> B({5, 6, 7, 8}, 2, 2);
+    DTensor<double> C({1, 2, 3, 4}, 2, 2);
+
+    C.addAB(A, B, 2.0, -1.0);
+
+    std::vector<double> result;
+    C.download(result);
+    EXPECT_EQ((std::vector<double>{45, 66, 59, 88}), result);
+}
+
+/* ---------------------------------------
+ * Malformed input files
+ * --------------------------------------- */
+
+TEST_F(TensorTest, parseTensorRejectsTruncatedBinaryFile) {
+    const auto path = std::filesystem::path(testing::TempDir()) / "gputils_truncated_fixture.bt";
+    const uint64_t rows = 2, cols = 2, mats = 1;
+    const double onlyOneElement = 1.0;
+    {
+        std::ofstream file(path, std::ios::binary);
+        ASSERT_TRUE(file.is_open());
+        file.write(reinterpret_cast<const char *>(&rows), sizeof(rows));
+        file.write(reinterpret_cast<const char *>(&cols), sizeof(cols));
+        file.write(reinterpret_cast<const char *>(&mats), sizeof(mats));
+        file.write(reinterpret_cast<const char *>(&onlyOneElement), sizeof(onlyOneElement));
+    }
+
+    EXPECT_THROW(DTensor<double>::parseFromFile(path.string()), std::invalid_argument);
+    std::filesystem::remove(path);
+}
+
+TEST_F(TensorTest, parseTensorRejectsMalformedTextFile) {
+    const auto path = std::filesystem::path(testing::TempDir()) / "gputils_malformed_fixture.dtensor";
+    {
+        std::ofstream file(path);
+        ASSERT_TRUE(file.is_open());
+        file << "not-a-dimension\n2\n1\n1\n2\n3\n4\n";
+    }
+
+    EXPECT_THROW(DTensor<double>::parseFromFile(path.string()), std::invalid_argument);
+    std::filesystem::remove(path);
 }
 
 
