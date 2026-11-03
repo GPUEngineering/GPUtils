@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "../include/tensor.cuh"
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 
 #define PRECISION_LOW 1e-4
 #define PRECISION_HIGH 1e-10
@@ -191,14 +193,34 @@ TEST_F(TensorTest, parseTensorFromFileBinary) {
  * --------------------------------------- */
 
 TEST_F(TensorTest, parseTensorFromBinaryPython) {
-    std::string fName = "../../python/b_d.bt";
-    DTensor<double> b = DTensor<double>::parseFromFile(fName);
+    // Write the binary layout emitted by write_array_to_gputils_binary_file()
+    // directly, so this test does not depend on the Python test suite having
+    // run first or on its working directory.
+    const auto fName = std::filesystem::path(testing::TempDir()) / "gputils_python_fixture.bt";
+    const uint64_t numRows = 3, numCols = 3, numMats = 2;
+    const std::vector<double> pythonBinaryData = {
+        1, 7, 13, 3, 9, 15, 5, 11, 17,
+        2, 8, 14, 4, 10, 16, 6, 12, 18
+    };
+    {
+        std::ofstream file(fName, std::ios::binary);
+        ASSERT_TRUE(file.is_open());
+        file.write(reinterpret_cast<const char *>(&numRows), sizeof(numRows));
+        file.write(reinterpret_cast<const char *>(&numCols), sizeof(numCols));
+        file.write(reinterpret_cast<const char *>(&numMats), sizeof(numMats));
+        file.write(reinterpret_cast<const char *>(pythonBinaryData.data()),
+                   static_cast<std::streamsize>(pythonBinaryData.size() * sizeof(double)));
+        ASSERT_TRUE(file.good());
+    }
+
+    DTensor<double> b = DTensor<double>::parseFromFile(fName.string());
     for (size_t i = 0; i < 3; i++) {
         for (size_t j = 0; j < 3; j++) {
             EXPECT_NEAR(1 + 2*j + 6*i, b(i, j, 0), PRECISION_HIGH);
             EXPECT_NEAR(2 + 2*j + 6*i, b(i, j, 1), PRECISION_HIGH);
         }
     }
+    std::filesystem::remove(fName);
 }
 
 
