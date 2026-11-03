@@ -6,6 +6,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v1.10.0
+     --------------------- -->
+## v1.10.0 - Unreleased
+
+### Added
+
+- `DTensor::getRowsInto(destination, rowsFrom, rowsTo, matIdx)` copies rows into a
+  preallocated tensor without allocating or resizing; validates indices, destination shape,
+  and non-overlapping storage, and enqueues the copy on the source tensor's stream.
+- `DTensor::leastSquaresBatched(b, infoArray)` accepts a reusable device status buffer,
+  avoiding GPUtils's per-call workspace allocation while retaining the original overload.
+- `Session::numStreams()` exposes the initialized stream count.
+- Standalone Release-mode GPU benchmarks for pointer-based versus strided batched GEMM
+  and row-loop, 2D-copy, kernel, and actual `getRows` extraction paths. Includes configurable
+  dimensions, correctness checks, preallocated and allocation-inclusive measurements,
+  host/CUDA-event timings, CSV percentiles, and build/run documentation.
+- Regression tests for setup validation, malformed files, dimension mismatches in checked
+  operations, non-default GEMM coefficients, stream ordering, move semantics, reusable
+  least-squares status buffers, and preallocated row extraction.
+
+### Changed
+
+- Column-major uploads copy directly from the supplied host vector; only row-major uploads
+  allocate a conversion buffer.
+- `setStreamIdx` returns a reference for lvalues and moves rvalues into the returned tensor,
+  eliminating the previous implicit device allocation and deep copy.
+- `getRows` uses one asynchronous 2D device copy instead of a cuBLAS call per row and
+  returns a tensor with the source's stream index. It shares its copy implementation with
+  `getRowsInto`; caller-supplied destinations retain their own stream index.
+- Explicit tensor allocations require positive dimensions that fit CUDA's integer dimensions
+  and reject allocation-size overflow; default construction remains available for placeholders.
+  Vector constructors validate data length and storage mode before device allocation.
+- Added validation for reshape sizes, slice axes/ranges, random bounds, storage modes,
+  row extraction, debug element access, empty factoriser inputs, and QR output batch shapes.
+- Stream setup rejects zero streams and reconfiguration after session initialization;
+  stream selection validates against the actual initialized count.
+- Documented unchecked numerical-operation preconditions, slice and asynchronous-buffer
+  lifetimes, stream dependencies, reusable workspace usage, and binary-format assumptions.
+- Ignore generated CMake/CTest files, fetched dependencies, build products, and temporary
+  file-I/O test artifacts, including those produced by in-source builds.
+
+### Fixed
+
+- Enable testing at the project root so `ctest --test-dir build` discovers the test suite.
+- Make the Python-format binary-reader test self-contained, removing its dependency on
+  separately generated Python test files and a particular working directory.
+- Reject malformed text headers/data and incomplete or incorrectly sized binary files before
+  constructing tensors; reject extra payload data and report file-write failures. Handle short
+  file names safely and avoid writes into empty text-data vectors and uninitialized binary reads.
+- Avoid null-pointer arithmetic when slicing a single-matrix tensor along the matrix axis.
+- QR workspace queries, factorisation, and least-squares/Q extraction use the matrix-selected
+  cuSolver handle consistently with cuBLAS. The debugging `getQR` method synchronizes that
+  stream before reading the triangular factor on the host.
+- Givens coefficient computation runs on the selected cuBLAS stream before the rotation,
+  checks kernel launch errors, and restores the caller's previous cuBLAS pointer mode.
+- Configure test streams independently of test execution order and add nonblocking-stream
+  regressions with delayed inputs and downstream consumers for QR, Givens, and row extraction.
+- Correct the row-slicing test to select a column before slicing its rows, rather than using
+  flat storage offsets as row indices.
+
+
+<!-- ---------------------
       v1.9.0
      --------------------- -->
 ## v1.9.0 - 28-03-2025
