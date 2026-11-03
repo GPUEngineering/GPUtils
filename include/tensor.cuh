@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <climits>
 #include <cmath>
+#include <utility>
 
 
 /**
@@ -362,9 +363,11 @@ private:
 
 public:
     /**
-     * Set the stream ID
+     * Set the stream ID without copying device storage. Named tensors return
+     * a reference; temporary tensors transfer ownership into the returned value.
      */
-    DTensor<T> setStreamIdx(size_t);
+    DTensor<T> &setStreamIdx(size_t) &;
+    DTensor<T> setStreamIdx(size_t) &&;
 
     size_t streamIdx() const { return m_idxStream; }
 
@@ -500,6 +503,9 @@ public:
 
     /**
      * Slices rows from specified matrix.
+     * The copy is enqueued on this tensor's stream; the result inherits that
+     * stream. Keep the source storage alive until the copy completes, and
+     * synchronize before consuming the result on another stream.
      * @param rowsFrom index to slice rows from (zero-indexed)
      * @param rowsTo index to slice rows to (inclusive)
      * @param matIdx index of matrix to slice rows from (zero-indexed)
@@ -690,12 +696,19 @@ public:
 }; /* END OF DTENSOR */
 
 template<typename T>
-DTensor<T> DTensor<T>::setStreamIdx(size_t idx) {
+DTensor<T> &DTensor<T>::setStreamIdx(size_t idx) & {
     if (idx >= Session::getInstance().numStreams()) {
         throw std::invalid_argument("Invalid stream index; it exceeds the max allocated streams");
     }
     m_idxStream = idx;
     return *this;
+}
+
+template<typename T>
+DTensor<T> DTensor<T>::setStreamIdx(size_t idx) && {
+    // Validate before moving so a rejected stream leaves the source intact.
+    setStreamIdx(idx);
+    return std::move(*this);
 }
 
 template<typename T>
@@ -1443,13 +1456,12 @@ inline DTensor<double> DTensor<double>::getRows(size_t rowsFrom, size_t rowsTo, 
     size_t rowsRangeLength = rowsTo - rowsFrom + 1;
     size_t n = numCols(), m = numRows();
     DTensor<double> rowsOnly(rowsRangeLength, numCols(), 1);
-    for (size_t i = 0; i < rowsRangeLength; i++) {
-        gpuErrChk(cublasDcopy(Session::getInstance().cuBlasHandle(m_idxStream),
-            n, // # values to copy
-            raw() + rowsFrom + i + matIdx * n * m, m,
-            rowsOnly.raw() + i,
-            rowsRangeLength));
-    }
+    rowsOnly.m_idxStream = m_idxStream;
+    cudaStream_t stream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_idxStream), &stream));
+    gpuErrChk(cudaMemcpy2DAsync(rowsOnly.raw(), rowsRangeLength * sizeof(double),
+        raw() + rowsFrom + matIdx * n * m, m * sizeof(double),
+        rowsRangeLength * sizeof(double), n, cudaMemcpyDeviceToDevice, stream));
     return rowsOnly;
 }
 
@@ -1460,13 +1472,12 @@ inline DTensor<float> DTensor<float>::getRows(size_t rowsFrom, size_t rowsTo, si
     size_t rowsRangeLength = rowsTo - rowsFrom + 1;
     size_t n = numCols(), m = numRows();
     DTensor<float> rowsOnly(rowsRangeLength, numCols(), 1);
-    for (size_t i = 0; i < rowsRangeLength; i++) {
-        gpuErrChk(cublasScopy(Session::getInstance().cuBlasHandle(m_idxStream),
-            n, // # values to copy
-            raw() + rowsFrom + i + matIdx * n * m, m,
-            rowsOnly.raw() + i,
-            rowsRangeLength));
-    }
+    rowsOnly.m_idxStream = m_idxStream;
+    cudaStream_t stream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_idxStream), &stream));
+    gpuErrChk(cudaMemcpy2DAsync(rowsOnly.raw(), rowsRangeLength * sizeof(float),
+        raw() + rowsFrom + matIdx * n * m, m * sizeof(float),
+        rowsRangeLength * sizeof(float), n, cudaMemcpyDeviceToDevice, stream));
     return rowsOnly;
 }
 

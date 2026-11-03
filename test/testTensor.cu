@@ -50,10 +50,67 @@ TEST(SessionTest, streamSelectionAndExecution) {
     EXPECT_THROW(Session::setStreams(3), std::logic_error);
 
     C.addAB(A, B);
+    auto selectedRow = C.getRows(1, 1, 0);
+    EXPECT_EQ(1, selectedRow.streamIdx());
     Session::getInstance().synchronizeStream(1);
+    std::vector<double> rowResult;
+    selectedRow.download(rowResult);
+    EXPECT_EQ((std::vector<double>{34, 46}), rowResult);
     std::vector<double> result;
     C.download(result);
     EXPECT_EQ((std::vector<double>{23, 34, 31, 46}), result);
+}
+
+template<typename T>
+void streamSelectionPreservesStorage() {
+    static_assert(std::is_same_v<decltype(std::declval<DTensor<T> &>().setStreamIdx(0)), DTensor<T> &>);
+    static_assert(std::is_same_v<decltype(std::declval<DTensor<T> &&>().setStreamIdx(0)), DTensor<T>>);
+    auto &session = Session::getInstance();
+    const size_t before = session.totalAllocatedBytes();
+    const std::vector<T> data{1, 2, 3, 4, 5, 6, 7, 8};
+    {
+        DTensor<T> source(data, 2, 2, 2);
+        auto *raw = source.raw();
+        auto *matrices = source.ptrMatrices();
+        const size_t allocated = session.totalAllocatedBytes();
+        auto &reference = source.setStreamIdx(0);
+        EXPECT_EQ(&source, &reference);
+        EXPECT_EQ(raw, source.raw());
+        EXPECT_EQ(matrices, source.ptrMatrices());
+        EXPECT_EQ(allocated, session.totalAllocatedBytes());
+
+        EXPECT_THROW(std::move(source).setStreamIdx(session.numStreams()), std::invalid_argument);
+        EXPECT_EQ(raw, source.raw());
+        EXPECT_EQ(0, source.streamIdx());
+
+        auto moved = std::move(source).setStreamIdx(0);
+        EXPECT_EQ(raw, moved.raw());
+        EXPECT_EQ(matrices, moved.ptrMatrices());
+        EXPECT_EQ(nullptr, source.raw());
+        EXPECT_EQ(0, source.numEl());
+        EXPECT_EQ(allocated, session.totalAllocatedBytes());
+        std::vector<T> downloaded;
+        moved.download(downloaded);
+        EXPECT_EQ(data, downloaded);
+    }
+    EXPECT_EQ(before, session.totalAllocatedBytes());
+    {
+        auto chained = DTensor<T>(data, 2, 2, 2).setStreamIdx(0).setStreamIdx(0);
+        EXPECT_EQ(2, chained.numRows());
+        EXPECT_EQ(2, chained.numCols());
+        EXPECT_EQ(2, chained.numMats());
+        EXPECT_EQ(0, chained.streamIdx());
+        std::vector<T> downloaded;
+        chained.download(downloaded);
+        EXPECT_EQ(data, downloaded);
+    }
+    EXPECT_EQ(before, session.totalAllocatedBytes());
+}
+
+TEST_F(TensorTest, streamSelectionPreservesStorage) {
+    streamSelectionPreservesStorage<float>();
+    streamSelectionPreservesStorage<double>();
+    streamSelectionPreservesStorage<int>();
 }
 
 /* ---------------------------------------
@@ -972,6 +1029,11 @@ void tensorGetRows() {
     std::vector<T> actual1(6);
     Ar1.download(actual1);
     EXPECT_EQ(expected1, actual1);
+
+    auto fullMatrix = A.getRows(0, 2, 1);
+    std::vector<T> actualFull;
+    fullMatrix.download(actualFull);
+    EXPECT_EQ((std::vector<T>{5, 6, 7, 8, 9, 10, 11, 12, 13}), actualFull);
 }
 
 TEST_F(TensorTest, tensorGetRows) {
