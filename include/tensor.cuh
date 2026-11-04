@@ -128,6 +128,25 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
  */
 static size_t s_numStreams = 1;
 
+namespace gputils_detail {
+// Independent of CUDA allocation, allowing large-count arithmetic to be tested
+// without requiring multi-gigabyte GPU allocations.
+class AllocationCounter {
+    size_t m_bytes = 0;
+public:
+    size_t bytes() const { return m_bytes; }
+    void recordAllocation(size_t bytes) {
+        if (bytes > std::numeric_limits<size_t>::max() - m_bytes)
+            throw std::overflow_error("allocation counter overflow");
+        m_bytes += bytes;
+    }
+    void recordDeallocation(size_t bytes) {
+        if (bytes > m_bytes) throw std::logic_error("allocation counter underflow");
+        m_bytes -= bytes;
+    }
+};
+}
+
 /**
  * Singleton for Cuda library handles.
  * Cuda library functions require a handle.
@@ -185,7 +204,7 @@ private:
     std::vector<cublasHandle_t> m_cublasHandles;
     std::vector<cudaStream_t> m_cublasStreams;
     std::vector<cusolverDnHandle_t> m_cusolverHandles;
-    size_t m_bytesAllocated = 0;
+    gputils_detail::AllocationCounter m_allocations;
     size_t m_numCublasHandlesStreams = 1;
 
 public:
@@ -219,9 +238,10 @@ public:
      * @return CUDA error
      */
     cudaError_t cudaAllocate(void **d, size_t s) {
+        if (s > std::numeric_limits<size_t>::max() - totalAllocatedBytes()) return cudaErrorInvalidValue;
         cudaError_t err = cudaMalloc(d, s);
         if (err == cudaSuccess) {
-            m_bytesAllocated += s;
+            recordAllocation(s);
         }
         return err;
     }
@@ -229,13 +249,22 @@ public:
     /**
      * @return Total allocated bytes
      */
-    size_t totalAllocatedBytes() const { return m_bytesAllocated; }
+    size_t totalAllocatedBytes() const { return m_allocations.bytes(); }
 
     /**
-     * Increment counter of allocated bytes
-     * @param s allocated bytes (can be negative)
+     * Record externally managed allocations/deallocations without narrowing to
+     * int or unsigned negative arithmetic. Prefer cudaAllocate/cudaRelease for
+     * device storage; their counters update only after successful CUDA calls.
      */
-    void incrementAllocatedBytes(int s) { m_bytesAllocated += s; }
+    void recordAllocation(size_t bytes) { m_allocations.recordAllocation(bytes); }
+    void recordDeallocation(size_t bytes) { m_allocations.recordDeallocation(bytes); }
+
+    cudaError_t cudaRelease(void *data, size_t bytes) {
+        if ((!data && bytes != 0) || bytes > totalAllocatedBytes()) return cudaErrorInvalidValue;
+        cudaError_t err = cudaFree(data);
+        if (err == cudaSuccess) recordDeallocation(bytes);
+        return err;
+    }
 
     /**
      * Synchronize stream
@@ -308,19 +337,21 @@ private:
     size_t m_numMats = 0; ///< Number of matrices
     bool m_doDestroyData = false; ///< Whether to destroy memory
     bool m_doDestroyPtrMatrices = false; ///< Whether to destroy memory
+    size_t m_dataBytes = 0; ///< Actual size of owned element allocation
+    size_t m_matrixPointerCapacity = 0; ///< Capacity of owned matrix-pointer allocation
     size_t m_idxStream = 0; ///< Stream index (defaults to 0)
 
     void destroy() {
         if (m_doDestroyData) {
-            if (m_d_data) gpuErrChk(cudaFree(m_d_data));
-            m_d_data = nullptr;
-            Session::getInstance().incrementAllocatedBytes(-m_numRows * m_numCols * m_numMats * sizeof(T));
+            gpuErrChk(Session::getInstance().cudaRelease(m_d_data, m_dataBytes));
         }
         if (m_doDestroyPtrMatrices) {
-            if (m_d_ptrMatrices) gpuErrChk(cudaFree(m_d_ptrMatrices));
-            m_d_ptrMatrices = nullptr;
-            Session::getInstance().incrementAllocatedBytes(-m_numMats * sizeof(T *));
+            gpuErrChk(Session::getInstance().cudaRelease(m_d_ptrMatrices, m_matrixPointerCapacity * sizeof(T *)));
         }
+        m_d_data = nullptr;
+        m_d_ptrMatrices = nullptr;
+        m_doDestroyData = m_doDestroyPtrMatrices = false;
+        m_dataBytes = m_matrixPointerCapacity = 0;
     }
 
     /**
@@ -452,6 +483,8 @@ public:
         swap(m_numMats, other.m_numMats);
         swap(m_doDestroyData, other.m_doDestroyData);
         swap(m_doDestroyPtrMatrices, other.m_doDestroyPtrMatrices);
+        swap(m_dataBytes, other.m_dataBytes);
+        swap(m_matrixPointerCapacity, other.m_matrixPointerCapacity);
         swap(m_idxStream, other.m_idxStream);
     }
 
@@ -659,9 +692,10 @@ public:
     /**
      * Reshapes the tensor
      *
-     * If the new number of tensors is larger than the current one,
-     * this method will allocate a device array of type T* and length
-     * equal to the new number of matrices.
+     * The owned matrix-pointer capacity is retained when shrinking. This method
+     * allocates a device array of type T* only when the required count exceeds
+     * that capacity. Reshaped views allocate their own matrix-pointer arrays
+     * when needed, without taking ownership of the element storage.
      *
      * No new memory is allocated if newNumMats = 1
      *
@@ -928,20 +962,18 @@ void DTensor<T>::reshape(size_t newNumRows, size_t newNumCols, size_t newNumMats
         throw std::invalid_argument(errMessage);
     }
 
-    /* Only free/reallocate if newNumMats > m_numMats
-     * otherwise, reuse the already allocated memory space */
-    if (newNumMats > m_numMats) {
-        /* Free the memory for m_d_ptrMatrices */
-        if (m_d_ptrMatrices && m_doDestroyPtrMatrices) {
-            gpuErrChk(cudaFree(m_d_ptrMatrices));
-            m_d_ptrMatrices = nullptr;
-            m_doDestroyPtrMatrices = false;
-        }
-        /* Reallocate memory for m_d_ptrMatrices, if necessary */
-        if (newNumMats > 1) {
-            gpuErrChk(Session::getInstance().cudaAllocate((void**)&m_d_ptrMatrices, newNumMats * sizeof(T *)));
-            m_doDestroyPtrMatrices = true;
-        }
+    // Capacity belongs to the allocation, not the current shape. A view gets
+    // its own pointer array when reshaped; its borrowed element data stays borrowed.
+    if (newNumMats > 1 && newNumMats > m_matrixPointerCapacity) {
+        T **newPointers = nullptr;
+        gpuErrChk(Session::getInstance().cudaAllocate((void**)&newPointers, newNumMats * sizeof(T *)));
+        if (m_doDestroyPtrMatrices)
+            gpuErrChk(Session::getInstance().cudaRelease(m_d_ptrMatrices, m_matrixPointerCapacity * sizeof(T *)));
+        m_d_ptrMatrices = newPointers;
+        m_matrixPointerCapacity = newNumMats;
+        m_doDestroyPtrMatrices = true;
+    } else if (newNumMats == 1 && !m_doDestroyPtrMatrices) {
+        m_d_ptrMatrices = nullptr;
     }
 
     m_numRows = newNumRows;
@@ -1199,15 +1231,20 @@ inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     m_doDestroyData = true;
     size_t buffer_size = size * sizeof(T);
     gpuErrChk(Session::getInstance().cudaAllocate((void**)&m_d_data, buffer_size));
+    m_dataBytes = buffer_size;
     if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
 
     if (numMats() > 1) {
         m_doDestroyPtrMatrices = true;
         cudaStatus = Session::getInstance().cudaAllocate((void **) &m_d_ptrMatrices, numMats() * sizeof(T *));
         if (cudaStatus != cudaSuccess) {
-            gpuErrChk(cudaFree(m_d_data)); // ... free previously allocated memory
+            gpuErrChk(Session::getInstance().cudaRelease(m_d_data, m_dataBytes));
+            m_d_data = nullptr;
+            m_dataBytes = 0;
+            m_doDestroyData = false;
             gpuErrChk(cudaStatus); // ... and memento mori
         }
+        m_matrixPointerCapacity = numMats();
     } else {
         m_doDestroyPtrMatrices = false;
     }
@@ -2070,10 +2107,12 @@ inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) 
     std::vector<double> vecQ(m * n, 0.);
     for (size_t r = 0; r < m; r++) {
         for (size_t c = 0; c < n; c++) {
-            if (r == c) { vecQ[r * n + c] = 1.; }
+            if (r == c) { vecQ[r + c * m] = 1.; }
         }
     }
-    Q.upload(vecQ, rowMajor);
+    cudaStream_t stream;
+    gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()), &stream));
+    gpuErrChk(cudaMemcpyAsync(Q.raw(), vecQ.data(), vecQ.size() * sizeof(double), cudaMemcpyHostToDevice, stream));
     // Apply Householder reflectors to compute Q
     gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
@@ -2088,10 +2127,11 @@ inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) 
     std::vector<double> vecR(n * n, 0.);
     for (size_t r = 0; r < n; r++) {
         for (size_t c = r; c < n; c++) {
-            vecR[r * n + c] = (*m_matrix)(r, c);
+            vecR[r + c * n] = (*m_matrix)(r, c);
         }
     }
-    R.upload(vecR, rowMajor);
+    gpuErrChk(cudaMemcpyAsync(R.raw(), vecR.data(), vecR.size() * sizeof(double), cudaMemcpyHostToDevice, stream));
+    gpuErrChk(cudaStreamSynchronize(stream)); // Complete host-buffer use before return.
 }
 
 template<>
@@ -2106,10 +2146,12 @@ inline void QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
     std::vector<float> vecQ(m * n, 0.);
     for (size_t r = 0; r < m; r++) {
         for (size_t c = 0; c < n; c++) {
-            if (r == c) { vecQ[r * n + c] = 1.; }
+            if (r == c) { vecQ[r + c * m] = 1.; }
         }
     }
-    Q.upload(vecQ, rowMajor);
+    cudaStream_t stream;
+    gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()), &stream));
+    gpuErrChk(cudaMemcpyAsync(Q.raw(), vecQ.data(), vecQ.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
     // Apply Householder reflectors to compute Q
     gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
@@ -2124,10 +2166,11 @@ inline void QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
     std::vector<float> vecR(n * n, 0.);
     for (size_t r = 0; r < n; r++) {
         for (size_t c = r; c < n; c++) {
-            vecR[r * n + c] = (*m_matrix)(r, c);
+            vecR[r + c * n] = (*m_matrix)(r, c);
         }
     }
-    R.upload(vecR, rowMajor);
+    gpuErrChk(cudaMemcpyAsync(R.raw(), vecR.data(), vecR.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
+    gpuErrChk(cudaStreamSynchronize(stream)); // Complete host-buffer use before return.
 }
 
 

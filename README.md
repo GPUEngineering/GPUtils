@@ -466,6 +466,19 @@ size_t allocatedBytes =
     Session::getInstance().totalAllocatedBytes();
 ```
 
+This counts live allocations managed by GPUtils, including retained matrix-pointer
+capacity after reshaping, rather than only the bytes implied by the current shape.
+Shrinking preserves pointer capacity; growing within that capacity reuses it.
+Slices do not count borrowed element storage a second time. A reshaped slice may
+own a separate pointer array, which is counted and released independently.
+Moves and swaps transfer allocation sizes along with ownership.
+
+For manual accounting, `recordAllocation(size_t)` and `recordDeallocation(size_t)`
+replace `incrementAllocatedBytes(int)`. They check overflow/underflow without
+narrowing byte counts. Prefer `Session::cudaAllocate` and
+`Session::cudaRelease(pointer, allocatedBytes)` so accounting follows successful
+CUDA calls automatically. Do not also manually account for those wrapper calls.
+
 GPUtils supports multiple streams. By default a single stream is created, 
 but you can set the number of streams you need with 
 ```c++
@@ -481,5 +494,44 @@ auto b = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(1);
 // do stuff...
 Session::getInstance().synchronizeAllStreams();
 ```
+
+## 6. Build, test, and check CUDA memory
+
+The scripts in `scripts/` can be launched from any working directory. They require
+CMake, a supported CUDA toolkit/GPU, a C++ compiler, and Python with NumPy. For an
+isolated Python environment (from the repository root):
+
+```bash
+python3 -m venv build/test-venv
+build/test-venv/bin/python -m pip install numpy
+```
+
+Run all C++ and Python unit tests:
+
+```bash
+./scripts/build_and_test.sh -DSM_ARCH=120
+```
+
+Use `SM_ARCH=86` for A40 or `SM_ARCH=87 -DCPPVERSION=17` for Orin instead of `120`.
+Additional arguments are forwarded to CMake; the default build type is
+`RelWithDebInfo`. `GPUTILS_BUILD_DIR`, `JOBS`, and `PYTHON` override the build
+directory, build parallelism (default 4), and Python interpreter. Without `PYTHON`,
+the script uses `test-venv/bin/python` in the build directory if available, then
+`python3`. Python fixtures stay in the build tree.
+
+Build/test and run the complete CUDA suite under Compute Sanitizer memcheck:
+
+```bash
+./scripts/check_memory.sh -DSM_ARCH=120
+```
+
+This checks invalid device memory accesses and device/heap leaks, runs the full
+suite three times in shuffled order within one process, and checks `gputils_main`
+separately. It enables CUDA line information in the default build configuration,
+preserves failure exit codes, and requires clean error/leak summaries. Complete
+logs and generated fixtures are stored under `build/sanitizer/`. Set
+`COMPUTE_SANITIZER` to override its executable path and `SANITIZER_REPEATS` to
+change the repeat count. Compute Sanitizer checks CUDA memory, not arbitrary
+C++ host-memory leaks. Do not use sanitizer runs for performance measurements.
 
 ## Happy number crunching!

@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/build_and_test.sh` builds the main executable and tests and runs all
+  C++/Python tests; `scripts/check_memory.sh` additionally runs full CUDA memcheck
+  with leak detection, shuffled repeated tests, main-executable checks, and saved logs.
+- Size-safe manual accounting methods `Session::recordAllocation(size_t)` and
+  `recordDeallocation(size_t)`, plus a counted `cudaRelease` wrapper.
 - `DTensor::getRowsInto(destination, rowsFrom, rowsTo, matIdx)` copies rows into a
   preallocated tensor without allocating or resizing; validates indices, destination shape,
   and non-overlapping storage, and enqueues the copy on the source tensor's stream.
@@ -28,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** replace `incrementAllocatedBytes(int)` with separate size-safe
+  allocation/deallocation accounting methods. Reshape retains owned pointer-array
+  capacity when shrinking and reuses it when growing within capacity.
 - **Breaking:** copy assignment now deep-copies tensor data and shape consistently with
   copy construction, instead of creating a non-owning alias. Use explicit slices for
   aliasing, and `deviceCopyTo` for copying into preallocated storage. Move assignment
@@ -53,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep QR debugging-helper host uploads on the selected solver stream and complete
+  them before returning, fixing an intermittent nonblocking-stream failure exposed
+  by the shuffled full-suite sanitizer run.
+- Track actual owned element bytes and matrix-pointer capacity independently of shape,
+  update counters only after successful allocation/free calls, and transfer sizes with
+  moves/swaps. Reshaped views own independent pointer arrays without freeing borrowed
+  data. Added reshape/reallocation/ownership and large-counter arithmetic regressions.
 - Repeated `Svd::rank()` calls reset device counters before counting, preventing
   accumulation across calls and thresholds. SVD factorisation, rank reset/counting,
   and result stream metadata consistently use the input matrix's selected stream.

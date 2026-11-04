@@ -1408,6 +1408,97 @@ TEST_F(TensorTest, tensorBytesAllocatedDeallocated) {
     tensorBytesAllocatedDeallocated<int>();
 }
 
+TEST(AllocationCounterTest, handlesLargeCountsAndRejectsOverflowAndUnderflow) {
+    gputils_detail::AllocationCounter counter;
+    const size_t large = static_cast<size_t>(INT_MAX) + 4096;
+    counter.recordAllocation(large);
+    counter.recordAllocation(17);
+    EXPECT_EQ(large+17,counter.bytes());
+    counter.recordDeallocation(large);
+    EXPECT_EQ(17,counter.bytes());
+    EXPECT_THROW(counter.recordDeallocation(18),std::logic_error);
+    EXPECT_EQ(17,counter.bytes());
+    counter.recordDeallocation(17);
+    counter.recordAllocation(std::numeric_limits<size_t>::max());
+    EXPECT_THROW(counter.recordAllocation(1),std::overflow_error);
+    EXPECT_EQ(std::numeric_limits<size_t>::max(),counter.bytes());
+    counter.recordDeallocation(std::numeric_limits<size_t>::max());
+    EXPECT_EQ(0,counter.bytes());
+}
+
+template<typename T>
+void reshapeAccountsForOwnedCapacity() {
+    auto &session = Session::getInstance();
+    const size_t baseline = session.totalAllocatedBytes();
+    const size_t dataBytes = 24*sizeof(T);
+    std::vector<T> data(24);
+    std::iota(data.begin(),data.end(),T(1));
+    {
+        DTensor<T> tensor(data,2,3,4);
+        auto *raw = tensor.raw();
+        auto *pointers = tensor.ptrMatrices();
+        EXPECT_EQ(baseline+dataBytes+4*sizeof(T *),session.totalAllocatedBytes());
+        tensor.reshape(4,3,2);
+        tensor.reshape(8,3,1);
+        tensor.reshape(2,4,3);
+        EXPECT_EQ(raw,tensor.raw());
+        EXPECT_EQ(pointers,tensor.ptrMatrices());
+        EXPECT_EQ(baseline+dataBytes+4*sizeof(T *),session.totalAllocatedBytes());
+        std::vector<T *> matrices(3);
+        gpuErrChk(cudaMemcpy(matrices.data(),tensor.ptrMatrices(),3*sizeof(T *),cudaMemcpyDeviceToHost));
+        EXPECT_EQ(raw,matrices[0]);
+        EXPECT_EQ(raw+8,matrices[1]);
+        EXPECT_EQ(raw+16,matrices[2]);
+
+        tensor.reshape(2,2,6);
+        pointers = tensor.ptrMatrices();
+        EXPECT_EQ(baseline+dataBytes+6*sizeof(T *),session.totalAllocatedBytes());
+        tensor.reshape(4,3,2);
+        tensor.reshape(2,3,4);
+        EXPECT_EQ(pointers,tensor.ptrMatrices());
+        EXPECT_EQ(baseline+dataBytes+6*sizeof(T *),session.totalAllocatedBytes());
+        EXPECT_THROW(tensor.reshape(2,3,5),std::invalid_argument);
+        std::vector<T> actual;
+        tensor.download(actual);
+        EXPECT_EQ(data,actual);
+
+        DTensor<T> moved(std::move(tensor));
+        DTensor<T> assigned(7);
+        assigned = std::move(moved);
+        EXPECT_EQ(baseline+dataBytes+6*sizeof(T *),session.totalAllocatedBytes());
+        DTensor<T> other(5);
+        assigned.swap(other);
+        other.reshape(24,1,1);
+        EXPECT_EQ(baseline+dataBytes+6*sizeof(T *)+5*sizeof(T),session.totalAllocatedBytes());
+        DTensor<T> copy(other); // Copy owns only the storage its current shape needs.
+        EXPECT_EQ(baseline+2*dataBytes+6*sizeof(T *)+5*sizeof(T),session.totalAllocatedBytes());
+    }
+    EXPECT_EQ(baseline,session.totalAllocatedBytes());
+    {
+        DTensor<T> owner(data,2,3,4);
+        auto *ownerPointers = owner.ptrMatrices();
+        {
+            DTensor<T> view(owner,2,1,2);
+            view.reshape(3,2,2); // Own a new pointer array, but keep borrowing data.
+            EXPECT_NE(ownerPointers+1,view.ptrMatrices());
+            EXPECT_EQ(baseline+dataBytes+6*sizeof(T *),session.totalAllocatedBytes());
+            std::vector<T *> matrices(2);
+            gpuErrChk(cudaMemcpy(matrices.data(),view.ptrMatrices(),2*sizeof(T *),cudaMemcpyDeviceToHost));
+            EXPECT_EQ(owner.raw()+6,matrices[0]);
+            EXPECT_EQ(owner.raw()+12,matrices[1]);
+        }
+        EXPECT_EQ(ownerPointers,owner.ptrMatrices());
+        EXPECT_EQ(baseline+dataBytes+4*sizeof(T *),session.totalAllocatedBytes());
+    }
+    EXPECT_EQ(baseline,session.totalAllocatedBytes());
+}
+
+TEST_F(TensorTest, reshapeTracksAllocationCapacity) {
+    reshapeAccountsForOwnedCapacity<float>();
+    reshapeAccountsForOwnedCapacity<double>();
+    reshapeAccountsForOwnedCapacity<int>();
+}
+
 /* ---------------------------------------
  * Input validation
  * --------------------------------------- */
