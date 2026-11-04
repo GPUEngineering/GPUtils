@@ -2343,6 +2343,7 @@ class Nullspace {
 private:
     std::unique_ptr<DTensor<T> > m_nullspace; ///< Stores all nullspace matrices (N)
     std::unique_ptr<DTensor<T> > m_projOp; ///< Stores all projection operators (N*N')
+    std::unique_ptr<DTensor<T> > m_projectionScratch; ///< Constructor-allocated vector output, separate from GEMM input
 
 public:
     /**
@@ -2368,6 +2369,11 @@ public:
      * b = (b1, ..., bk) onto the nullspace of the original tensor.
      * That is, projection zi = Ni * Ni' * bi.
      * The projection zi is stored in bi.
+     * b must have shape (original numCols, 1, original numMats).
+     * GEMM and copy-back are queued on b's selected stream without allocations.
+     * Keep this object and b alive until that stream completes. Reuse on one
+     * stream is ordered; finish prior work before reusing this object on another.
+     * @throws std::invalid_argument if b has an incompatible shape
      */
     void project(DTensor<T> &b);
 };
@@ -2380,6 +2386,7 @@ inline Nullspace<T>::Nullspace(DTensor<T> &a) {
     if (!m || !n || !nMats || m > n) throw std::invalid_argument("[nullspace] expected a nonempty square or fat matrix");
     m_nullspace = std::make_unique<DTensor<T> >(n, n, nMats, true);
     m_projOp = std::make_unique<DTensor<T> >(n, n, nMats, true);
+    m_projectionScratch = std::make_unique<DTensor<T> >(n, 1, nMats);
     auto aTranspose = a.tr();
     Svd<T> svd(aTranspose, true);
     svd.factorise();
@@ -2408,12 +2415,24 @@ inline Nullspace<T>::Nullspace(DTensor<T> &a) {
         DTensor<T> Ntr = currNsDst.tr();
         currProjOpDst.addAB(currNsDst, Ntr);
     }
+    // Setup is complete before project() can consume the projector on any stream.
+    cudaStream_t setupStream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_projOp->streamIdx()), &setupStream));
+    gpuErrChk(cudaStreamSynchronize(setupStream));
 }
 
 template<typename T>
 TEMPLATE_CONSTRAINT_REQUIRES_FPX
 inline void Nullspace<T>::project(DTensor<T> &b) {
-    b.addAB(*m_projOp, b, 1, 0);
+    if (b.numRows() != m_projectionScratch->numRows() || b.numCols() != 1
+        || b.numMats() != m_projectionScratch->numMats())
+        throw std::invalid_argument("[nullspace] expected one vector per original matrix");
+    m_projectionScratch->setStreamIdx(b.streamIdx());
+    m_projectionScratch->addAB(*m_projOp, b, 1, 0);
+    cudaStream_t stream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(b.streamIdx()), &stream));
+    gpuErrChk(cudaMemcpyAsync(b.raw(), m_projectionScratch->raw(), b.numEl() * sizeof(T),
+        cudaMemcpyDeviceToDevice, stream));
 }
 
 
@@ -2631,6 +2650,13 @@ __global__ void k_givensAnnihilateRHypot(const T *data,
                                          size_t nRows) {
     T xij = data[i + j * nRows];
     T xkj = data[k + j * nRows];
+    if (xij == T(0) && xkj == T(0)) {
+        // The target is already zero: leave both rows unchanged. Avoid 0 * infinity.
+        res[0] = T(0);
+        res[1] = T(1); // cos
+        res[2] = T(0); // -sin
+        return;
+    }
     res[0] = rhypot(xij, xkj);
     res[1] = xij * (*res); // cos
     res[2] = xkj * (*res); // -sin

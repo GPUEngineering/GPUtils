@@ -104,10 +104,11 @@ TEST(SessionTest, streamSelectionAndExecution) {
 class NonblockingTestStream {
 public:
     cudaStream_t stream, oldBlasStream, oldSolverStream;
-    cublasHandle_t blas = Session::getInstance().cuBlasHandle(1);
-    cusolverDnHandle_t solver = Session::getInstance().cuSolverHandle(1);
+    cublasHandle_t blas;
+    cusolverDnHandle_t solver;
     cublasPointerMode_t oldMode;
-    NonblockingTestStream() {
+    explicit NonblockingTestStream(size_t index = 1)
+        : blas(Session::getInstance().cuBlasHandle(index)), solver(Session::getInstance().cuSolverHandle(index)) {
         gpuErrChk(cublasGetStream(blas, &oldBlasStream));
         gpuErrChk(cusolverDnGetStream(solver, &oldSolverStream));
         gpuErrChk(cublasGetPointerMode(blas, &oldMode));
@@ -2973,6 +2974,157 @@ TEST_F(NullspaceTest, projectOnNullspaceTensor) {
     projectOnNullspaceTensor<double>(PRECISION_HIGH);
 }
 
+template<typename T>
+void denseNullspaceProjectionMatchesCpu(size_t n, size_t batches, T tolerance) {
+    // For A = v^T with nonzero column vector v, ker(A) has the dense projector
+    // P = I - v*v^T/(v^T*v). The CPU reference needs no GPU factorisation.
+    std::vector<T> rows(n * batches), input(n * batches);
+    for (size_t k = 0; k < batches; ++k) {
+        for (size_t i = 0; i < n; ++i) {
+            const size_t index = i + k * n;
+            rows[index] = T(1) + T((i + 2 * k) % 7) / T(8);
+            if (k % 2 && i % 2) rows[index] = -rows[index];
+            input[index] = T(16) + T(int(i % 17) - 8) / T(4) + T(k);
+        }
+    }
+    DTensor<T> A(rows, 1, n, batches);
+    Nullspace<T> nullspace(A);
+
+    // Independent out-of-place control uses the same N*N^T construction as
+    // Nullspace, but keeps GEMM input/output storage separate.
+    auto transpose = nullspace.nullspace().tr();
+    DTensor<T> projector(n, n, batches);
+    projector.addAB(nullspace.nullspace(), transpose);
+    DTensor<T> source(n, 1, batches), control(n, 1, batches), projected(n, 1, batches);
+    const auto maxError = [](const std::vector<T> &actual, const std::vector<T> &expected) {
+        T error = 0;
+        for (size_t i = 0; i < actual.size(); ++i) {
+            if (!std::isfinite(actual[i])) return std::numeric_limits<T>::infinity();
+            error = std::max(error, std::abs(actual[i] - expected[i]));
+        }
+        return error;
+    };
+
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        auto current = input;
+        for (size_t i = 0; i < current.size(); ++i)
+            current[i] += T(repeat) * T(int(i % 5) - 2) / T(2);
+        std::vector<T> expected(current.size());
+        for (size_t k = 0; k < batches; ++k) {
+            long double numerator = 0, denominator = 0;
+            for (size_t i = 0; i < n; ++i) {
+                const size_t index = i + k * n;
+                numerator += static_cast<long double>(rows[index]) * current[index];
+                denominator += static_cast<long double>(rows[index]) * rows[index];
+            }
+            for (size_t i = 0; i < n; ++i) {
+                const size_t index = i + k * n;
+                expected[index] = T(static_cast<long double>(current[index])
+                    - static_cast<long double>(rows[index]) * numerator / denominator);
+            }
+        }
+        source.upload(current);
+        control.addAB(projector, source);
+        std::vector<T> actual;
+        control.download(actual);
+        ASSERT_EQ(actual.size(), expected.size());
+        ASSERT_LE(maxError(actual, expected), tolerance)
+            << "Out-of-place control must match the CPU reference before testing project()";
+
+        projected.upload(current);
+        for (int application = 0; application < 2; ++application) {
+            // The second application checks P(Pb) = Pb, without restoring b.
+            nullspace.project(projected);
+            projected.download(actual);
+            ASSERT_EQ(actual.size(), expected.size());
+            EXPECT_LE(maxError(actual, expected), tolerance)
+                << "n=" << n << ", batches=" << batches << ", input=" << repeat
+                << ", projection=" << application;
+        }
+    }
+}
+
+// Larger dense projectors exercise GEMM tiling that small vector tests can miss.
+// Float tolerances allow basis-construction roundoff at these sizes; the control
+// checks that this error stays well below the observed order-one aliasing errors.
+TEST_F(NullspaceTest, denseProjectionRepeatedFloat) {
+    denseNullspaceProjectionMatchesCpu<float>(4096, 1, 1e-2f);
+}
+
+TEST_F(NullspaceTest, denseProjectionRepeatedDouble) {
+    denseNullspaceProjectionMatchesCpu<double>(4096, 1, 1e-10);
+}
+
+TEST_F(NullspaceTest, batchedDenseProjectionRepeatedFloat) {
+    denseNullspaceProjectionMatchesCpu<float>(2048, 3, 1e-2f);
+}
+
+TEST_F(NullspaceTest, batchedDenseProjectionRepeatedDouble) {
+    denseNullspaceProjectionMatchesCpu<double>(2048, 3, 1e-10);
+}
+
+template<typename T>
+void nullspaceProjectionReusesScratchOnSelectedStream(T tolerance) {
+    NonblockingTestStream setup(0);
+    NonblockingTestStream execution;
+    auto &session = Session::getInstance();
+    for (size_t batches : {size_t(1), size_t(3)}) {
+        const size_t n = 4;
+        std::vector<T> input(n * batches), expected(n * batches);
+        for (size_t k = 0; k < batches; ++k)
+            for (size_t i = 0; i < n; ++i) {
+                input[i + k * n] = T(k + 1) * T(i + 1);
+                expected[i + k * n] = T(k + 1) * (T(i) - T(1.5));
+            }
+        DTensor<T> A(std::vector<T>(n * batches, T(1)), 1, n, batches);
+        DTensor<T> producer(input, n, 1, batches), vectors(n, 1, batches, true), captured(n, 1, batches);
+        vectors.setStreamIdx(1); captured.setStreamIdx(1);
+        T *originalPointer = vectors.raw();
+        const size_t before = session.totalAllocatedBytes();
+        {
+            Nullspace<T> nullspace(A); // Construct on stream 0, consume on nonblocking stream 1.
+            const size_t allocated = session.totalAllocatedBytes();
+            for (int repeat = 0; repeat < 3; ++repeat) {
+                gpuErrChk(cudaLaunchHostFunc(execution.stream, delayTestInput, nullptr));
+                gpuErrChk(cudaMemcpyAsync(vectors.raw(), producer.raw(), input.size() * sizeof(T),
+                    cudaMemcpyDeviceToDevice, execution.stream));
+                nullspace.project(vectors);
+                nullspace.project(vectors); // Reuse scratch without a host synchronization.
+                gpuErrChk(cudaMemcpyAsync(captured.raw(), vectors.raw(), input.size() * sizeof(T),
+                    cudaMemcpyDeviceToDevice, execution.stream));
+                std::vector<T> actual;
+                captured.download(actual);
+                ASSERT_EQ(actual.size(), expected.size());
+                for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], tolerance);
+                EXPECT_EQ(vectors.raw(), originalPointer);
+                EXPECT_EQ(vectors.streamIdx(), 1u);
+                EXPECT_EQ(session.totalAllocatedBytes(), allocated);
+            }
+        }
+        EXPECT_EQ(session.totalAllocatedBytes(), before);
+    }
+}
+
+TEST_F(NullspaceTest, projectionReusesScratchOnSelectedStreamFloat) {
+    nullspaceProjectionReusesScratchOnSelectedStream<float>(PRECISION_LOW);
+}
+
+TEST_F(NullspaceTest, projectionReusesScratchOnSelectedStreamDouble) {
+    nullspaceProjectionReusesScratchOnSelectedStream<double>(PRECISION_HIGH);
+}
+
+TEST_F(NullspaceTest, projectionRejectsIncompatibleShapes) {
+    DTensor<double> A(std::vector<double>{1,1,1}, 1, 3);
+    Nullspace<double> nullspace(A);
+    DTensor<double> shortVector(2), matrix(3, 2), wrongBatch(3, 1, 2), empty;
+    const size_t before = Session::getInstance().totalAllocatedBytes();
+    EXPECT_THROW(nullspace.project(shortVector), std::invalid_argument);
+    EXPECT_THROW(nullspace.project(matrix), std::invalid_argument);
+    EXPECT_THROW(nullspace.project(wrongBatch), std::invalid_argument);
+    EXPECT_THROW(nullspace.project(empty), std::invalid_argument);
+    EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), before);
+}
+
 
 /* ================================================================================================
  *  GIVENSANNIHILATOR TESTS
@@ -3014,6 +3166,30 @@ void givensAnnihilateElement(T epsilon) {
 TEST_F(GivensAnnihilatorTest, givensAnnihilateElement) {
     givensAnnihilateElement<float>(PRECISION_LOW);
     givensAnnihilateElement<double>(PRECISION_HIGH);
+}
+
+template<typename T>
+void givensZeroPairLeavesMatrixUnchanged() {
+    // Column-major [[0,2], [0,-3], [7,11]]: the selected pair is already zero.
+    // An identity rotation must also preserve nonzero entries in the other column.
+    const std::vector<T> expected{0, 0, 7, 2, -3, 11};
+    DTensor<T> matrix(expected, 3, 2);
+    GivensAnnihilator<T> annihilator(matrix);
+    annihilator.annihilate(0, 1, 0);
+    std::vector<T> actual;
+    matrix.download(actual);
+    ASSERT_EQ(actual.size(), expected.size());
+    for (size_t index = 0; index < actual.size(); ++index)
+        ASSERT_TRUE(std::isfinite(actual[index])) << "Non-finite element at flat index " << index;
+    EXPECT_EQ(actual, expected);
+}
+
+TEST_F(GivensAnnihilatorTest, zeroPairLeavesMatrixUnchangedFloat) {
+    givensZeroPairLeavesMatrixUnchanged<float>();
+}
+
+TEST_F(GivensAnnihilatorTest, zeroPairLeavesMatrixUnchangedDouble) {
+    givensZeroPairLeavesMatrixUnchanged<double>();
 }
 
 

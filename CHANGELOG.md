@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/run_python_tests.sh` runs the Python pytest suite with configurable interpreter/build paths and optional C++ exchange tests.
+- File-I/O tests cover shapes, precision, binary layout, non-contiguous inputs, malformed files, filesystem errors, and actual C++/Python exchanges using temporary fixtures.
 - `LeastSquaresBatchedWorkspace<T>` preallocates reusable status storage and one-entry matrix-pointer arrays only for batches of one.
 - `Svd::rankRelative(rtol, atol = 0)` adds GPU rank calculation using per-matrix thresholds `max(atol, rtol * sigmaMax)` and validated tolerances.
 - Build/test and CUDA memory-check scripts run C++/Python tests, repeated leak checks, and save sanitizer logs.
@@ -38,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Nullspace projection uses constructor-allocated scratch and stream-ordered copy-back to avoid GEMM aliasing; tests cover dense batches, repeated calls, streams, and allocation reuse.
+- Givens annihilation uses the identity rotation for an already-zero pair, avoiding NaNs and preserving both rows; covered for float and double.
+- Python file I/O rejects incomplete headers, payload-size mismatches, zero dimensions, empty/scalar arrays, and object/zero-size dtypes before loading or overwriting data.
+- Python binary loading preserves column-major element order for single matrices, with a rectangular round-trip regression test.
 - Batched Cholesky and least-squares support single matrices using constructor-allocated pointer storage without allocations during reusable solves.
 - Size QR workspace for the largest requirement across factorisation, least-squares, and Q extraction; add large square/tall regressions for both precisions.
 - Share stream configuration across translation units using an inline static `Session` member, with a two-file regression test.

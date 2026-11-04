@@ -517,10 +517,22 @@ nullspace projection operators `NN' = (N1N1', ..., NkNk')`.
 This allows the user to project-in-place onto the nullspace.
 
 ```c++
-DTensor<float> vectors(m, 1, k);
+DTensor<float> vectors(n, 1, k);
 N.project(vectors);
 std::cout << vectors << "\n";
 ```
+
+`Nullspace` allocates an `n × 1 × k` scratch tensor in its constructor. Projection
+computes into that separate storage and copies back into the existing vector
+allocation, avoiding overlapping GEMM input/output and per-call allocations.
+The constructor completes projector setup before returning. Each `project` call
+queues GEMM and copy-back on the vector tensor's selected stream and returns
+without synchronizing it; the vector's data pointer and stream index stay unchanged.
+Keep the vectors and `Nullspace` object alive until that stream completes.
+Calls on one stream may be queued consecutively. Before reusing the same object
+on another stream, complete its prior work or establish a stream dependency;
+concurrent projections need separate `Nullspace` objects. Inputs must contain
+one `n`-element vector per original matrix; incompatible shapes are rejected.
 
 ## 5. Other
 

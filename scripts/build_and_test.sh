@@ -27,5 +27,6 @@ mkdir -p "$build_dir/python-tests"
 (
     cd -- "$build_dir/python-tests"
     PYTHONPATH="$repo_root/python${PYTHONPATH:+:$PYTHONPATH}" \
+        GPUTILS_FILE_EXCHANGE="$build_dir/test/gputils_file_exchange" \
         "$python" "$repo_root/python/test/test.py" -v
 )

@@ -13,6 +13,7 @@ add_executable(gputils_test)
 target_sources(gputils_test  # add files
         PRIVATE
         testTensor.cu
+        testFileIO.cu
         hostAllocationFailure.cpp
         sessionAcrossTranslationUnits.cu
 )
@@ -30,4 +31,8 @@ target_include_directories(gputils_test
 )
 include(GoogleTest)
 gtest_discover_tests(gputils_test)
+
+add_executable(gputils_file_exchange exchangeTensorFiles.cu)
+target_link_libraries(gputils_file_exchange PRIVATE gputils_compiler_flags cublas cusolver cudadevrt)
+target_include_directories(gputils_file_exchange PRIVATE "${PROJECT_SOURCE_DIR}/include")
 # ----
