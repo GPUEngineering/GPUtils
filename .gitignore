@@ -270,3 +270,22 @@ __pycache__/
 
 
 cmake-*
+
+# CMake/CTest artefacts (including accidental in-source builds)
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+**/_deps/
+
+# Build products from this project
+/gputils_main
+/lib/
+/test/gputils_test*
+
+# Temporary files produced by the C++ file-I/O tests
+/myTest.bt
+/myTest.dtensor

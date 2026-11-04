@@ -45,6 +45,11 @@ tests() {
     # -- run tests
     ctest --test-dir ./build/test --output-on-failure
 
+    # The exchange tests require the C++ helper, so run them after building it.
+    PYTHONPATH="$PWD/python" \
+      GPUTILS_FILE_EXCHANGE="$PWD/build/test/gputils_file_exchange" \
+      "$PWD/python/venv/bin/python" "$PWD/python/test/test.py" CppFileExchangeTest -v
+
     if [ -z "${hwInfoOrin}" ]; then
 
       # -- run compute sanitizer

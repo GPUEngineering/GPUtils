@@ -67,6 +67,9 @@ if(NOT GPUTILS_BUILD_TEST)
     set(GPUTILS_BUILD_TEST OFF)  # Set to ON for local testing (or add `-DGPUTILS_BUILD_TEST=ON` to your CMake profile)
 endif()
 if (GPUTILS_BUILD_TEST)
+    # Register tests in the top-level build tree so `ctest --test-dir build`
+    # discovers tests added by the test subdirectory.
+    enable_testing()
     add_subdirectory(test)
 endif()
 unset(GPUTILS_BUILD_TEST CACHE)

@@ -8,6 +8,24 @@ It manages their memory and facilitates various algebraic operations.
 A tensor has three axes: `[rows (m) x columns (n) x matrices (k)]`.
 An (m,n,1)-tensor stores a _matrix_, and an (m,1,1)-tensor stores a _vector_.
 
+Explicit tensor dimensions must be positive and fit in the integer dimensions
+used by CUDA's BLAS and solver interfaces. A default-constructed tensor is an
+uninitialized placeholder. Tensor sizes and allocation sizes are checked for
+overflow. Slices are non-owning views: their source storage must remain alive
+and must not be reallocated while the view is used.
+
+Allocating constructors and the deep-copy constructor clean up acquired device
+storage if a C++ exception occurs during construction, then rethrow the original
+exception. For example, a host conversion-buffer allocation failure propagates
+`std::bad_alloc` without retaining the constructor's GPU allocations. This does
+not change `gpuErrChk`'s existing process-termination policy for CUDA errors.
+
+Numerical operations intended for repeated use may leave operand and index
+validation to the caller. In particular, `addAB` requires compatible matrix
+and batch dimensions and correctly sized output, `+=` and `-=` require matching
+tensor shapes, and Givens rotation indices must be in range. Validate these
+preconditions during application setup before entering time-critical code.
+
 We first need to decide on a data type between `float` or `double`.
 We will use `float` in the following examples.
 
@@ -82,8 +100,35 @@ DTensor<float> y(10);
 x.deviceCopyTo(y);  // x ---> y (device memory to device memory)
 ```
 
-The copy constructor has also been implemented; to hard-copy a `DTensor` just
-do `DTensor<float> myCopy(existingTensor)`.
+Copy construction and copy assignment create independent owning storage:
+
+```c++
+DTensor<float> myCopy(existingTensor);
+myCopy = existingTensor;             // deep copy, replacing myCopy's allocation
+myCopy = std::move(existingTensor);  // transfer storage; existingTensor becomes empty
+```
+
+**Compatibility change:** copy assignment previously aliased the source. It now
+matches the copy constructor's deep-copy semantics. Copies preserve the source's
+shape and stream index, and complete on the source's stream before returning.
+Self-copy and self-move assignment are safe no-ops; empty and moved-from tensors
+can be assigned again. Moving an owning tensor transfers its allocation without
+copying device data. Replacing an owning destination releases its old allocation
+and invalidates views referring to it.
+
+For intentional aliasing, use the slice constructor explicitly. Slices remain
+non-owning: their backing allocation must outlive them. Copying a slice produces
+independent owning storage; moving a slice preserves its non-owning nature and
+does not extend the backing allocation's lifetime. In particular, do not move a
+slice into the tensor that owns its backing allocation; copy it instead.
+Assigning into a slice replaces that view rather than writing through it.
+
+For repeated operations requiring no allocation, preallocate the destination
+and use `existingTensor.deviceCopyTo(myCopy)` instead of copy assignment.
+Ensure previous asynchronous uses of a destination have completed before
+replacing its storage, and establish dependencies for source writes from other
+streams. Move assignment can free old storage; it is not a guarantee of bounded
+real-time latency.
 
 Lastly, a not so efficient method that should only be used for 
 debugging, if at all, is the `()` operator (e.g., `x(i, j, k)`), which fetches
@@ -239,6 +284,48 @@ Then, we can solve the system by
 A.leastSquaresBatched(B);
 ```
 
+For repeated solves, construct a workspace once during setup. It supports any
+batch size, including one, and subsequent calls allocate no GPUtils memory:
+
+```c++
+LeastSquaresBatchedWorkspace<float> workspace(A);
+A.leastSquaresBatched(B, workspace);
+Session::getInstance().synchronizeStream(A.streamIdx());
+std::vector<int> status;
+workspace.info().download(status);
+```
+
+The workspace owns one status integer per matrix and allocates two one-entry
+device pointer arrays only for a batch of one. Reuse it with tensors of the same
+shape; their storage addresses may differ. Keep it alive until the solve stream
+completes and use separate workspaces for concurrent streams.
+
+For batches with existing device pointer arrays, the status-buffer overload
+also remains available:
+
+```c++
+DTensor<int> info(A.numMats()); // setup: one integer per matrix
+A.leastSquaresBatched(B, info); // no GPUtils workspace allocation in this call
+Session::getInstance().synchronizeStream(A.streamIdx());
+std::vector<int> status;
+info.download(status);
+```
+
+The original one-argument overload remains available and constructs its own
+temporary workspace. The status-only overload rejects single matrices that lack
+device pointer arrays; use an explicit workspace for allocation-free calls in
+that case. The supplied status buffer may be larger than the batch;
+only its first `A.numMats()` entries are written. Both overloads overwrite A
+and B; restore the original inputs before solving a new problem. Keep the
+inputs and supplied buffer alive until A's stream completes. Reuse on that
+stream is ordered; use separate buffers or synchronization for concurrent
+streams. The buffer's own stream index does not select the solve stream.
+
+`CholeskyBatchFactoriser<T>` also supports a batch of one. Its constructor
+allocates two one-entry device pointer arrays only for that case; factorisation
+and repeated solves allocate no GPUtils memory. Ordinary tensors retain their
+existing allocation behaviour, and larger batches reuse tensor pointer arrays.
+
 The `DTensor` `B` will be overwritten with the solution.
 
 > [!IMPORTANT]
@@ -264,6 +351,11 @@ If the file extension is `.bt` (binary tensor), the data will be stored in binar
 The structure of the binary encoding is similar to that of the text encoding:
 the first three `uint64_t`-sized positions correspond to the number of rows, columns
 and matrices, followed by the elements of the tensor.
+The dimensions and payload are stored in the host's native byte order and the
+payload uses the native representation of `T`; the file does not record its
+element type. The Python API uses little-endian dimensions, so interoperability
+requires a little-endian host and a matching NumPy dtype. Readers reject missing,
+malformed, truncated, or extra data.
 
 To load a tensor from a file, the static function `DTensor<T>::parseFromFile(filename)` can be used. For example:
 
@@ -352,6 +444,12 @@ the given matrix $B$. If you want the factoriser to keep your
 matrix, you need to set the third argument of the above constructor
 to `false`.
 
+With `destroyMatrix=false`, SVD owns an independent input copy through a
+`std::unique_ptr`; that copy is released automatically on normal destruction or
+if later constructor setup throws. With `destroyMatrix=true`, SVD only borrows
+the caller's tensor and never frees it. The caller must keep borrowed input
+alive and retain its shape/stream binding while the solver uses it.
+
 After you have factorised the matrix, you can access $S$, $V'$ and, perhaps, $U$.
 You can do:
 
@@ -370,6 +468,35 @@ Here is an example:
 auto U = svdEngine.leftSingularVectors();
 if (U) std::cout << "U = " << U.value();
 ```
+
+### Numerical rank tolerances
+
+After a successful factorisation, `svdEngine.rank(epsilon)` retains its existing
+absolute-cutoff behavior. To use a scale-aware cutoff explicitly:
+
+```c++
+const auto& ranks = svdEngine.rankRelative(1e-6f);       // atol defaults to zero
+const auto& noisyRanks = svdEngine.rankRelative(1e-6f, 1e-8f);
+```
+
+`rankRelative(rtol, atol)` counts singular values **strictly greater than**
+`max(atol, rtol * sigmaMax)`. Each matrix in a batch uses its own largest
+singular value. Both tolerances must be finite and nonnegative. Zero matrices
+have rank zero, including when both tolerances are zero. Computation and counter
+reset stay on the selected stream without downloading singular values or
+allocating new workspace.
+
+With `atol = 0`, rescaling a matrix rescales its threshold, preserving numerical
+rank within floating-point limits. A positive `atol` intentionally imposes an
+absolute cutoff, useful when data have a known noise scale. `rtol` is required;
+one conventional choice is `max(rows, cols) * std::numeric_limits<T>::epsilon()`,
+but applications with noisy data may need a larger tolerance.
+
+Both rank methods return the same reusable internal device buffer. Download or
+deep-copy a result before making another rank call if you need a snapshot, and
+order consumers on other streams explicitly. For example, the second call above
+overwrites the result referenced by `ranks`. `Nullspace` continues to use its
+existing absolute rank policy; this new method does not change its behavior.
 
 ## 4. Projection onto a nullspace
 
@@ -390,10 +517,22 @@ nullspace projection operators `NN' = (N1N1', ..., NkNk')`.
 This allows the user to project-in-place onto the nullspace.
 
 ```c++
-DTensor<float> vectors(m, 1, k);
+DTensor<float> vectors(n, 1, k);
 N.project(vectors);
 std::cout << vectors << "\n";
 ```
+
+`Nullspace` allocates an `n × 1 × k` scratch tensor in its constructor. Projection
+computes into that separate storage and copies back into the existing vector
+allocation, avoiding overlapping GEMM input/output and per-call allocations.
+The constructor completes projector setup before returning. Each `project` call
+queues GEMM and copy-back on the vector tensor's selected stream and returns
+without synchronizing it; the vector's data pointer and stream index stay unchanged.
+Keep the vectors and `Nullspace` object alive until that stream completes.
+Calls on one stream may be queued consecutively. Before reusing the same object
+on another stream, complete its prior work or establish a stream dependency;
+concurrent projections need separate `Nullspace` objects. Inputs must contain
+one `n`-element vector per original matrix; incompatible shapes are rejected.
 
 ## 5. Other
 
@@ -403,12 +542,30 @@ size_t allocatedBytes =
     Session::getInstance().totalAllocatedBytes();
 ```
 
+This counts live allocations managed by GPUtils, including retained matrix-pointer
+capacity after reshaping, rather than only the bytes implied by the current shape.
+Shrinking preserves pointer capacity; growing within that capacity reuses it.
+Slices do not count borrowed element storage a second time. A reshaped slice may
+own a separate pointer array, which is counted and released independently.
+Moves and swaps transfer allocation sizes along with ownership.
+
+For manual accounting, `recordAllocation(size_t)` and `recordDeallocation(size_t)`
+replace `incrementAllocatedBytes(int)`. They check overflow/underflow without
+narrowing byte counts. Prefer `Session::cudaAllocate` and
+`Session::cudaRelease(pointer, allocatedBytes)` so accounting follows successful
+CUDA calls automatically. Do not also manually account for those wrapper calls.
+
 GPUtils supports multiple streams. By default a single stream is created, 
 but you can set the number of streams you need with 
 ```c++
 /* This needs to be the first line in your code */
 Session::setStreams(4); // create 4 strems
 ```
+Call `setStreams` with a positive count before the first `Session` or tensor
+allocation initializes the session. Changing the count afterward is rejected.
+The configured count is shared across translation units through C++17 inline
+static storage: configuration in one source file also applies when another source
+file first initializes the singleton.
 Then, you can use `setStreamIdx` to select a stream to go with your instance of `DTensor`
 ```c++
 auto a = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(0);
@@ -416,5 +573,64 @@ auto b = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(1);
 // do stuff...
 Session::getInstance().synchronizeAllStreams();
 ```
+
+Stream ordering rules:
+
+- Single and batched Cholesky, QR, and SVD execute on their bound matrix's selected
+  stream. Select that stream before constructing the solver. Keep solver workspaces
+  and operands alive until completion; operands produced on another stream require
+  an explicit dependency before the solve. Solver `info()` tensors follow the
+  matrix stream, as do SVD outputs and transpose results.
+- Existing `upload`, `download`, debug element access, and deep copies wait for
+  completion on the tensor/source stream. They do not depend on legacy default-stream
+  synchronization. The row-major upload conversion buffer stays alive until transfer
+  completion. No new public asynchronous host-transfer API is introduced.
+- `source.deviceCopyTo(destination)` waits for prior work on the destination's
+  selected stream, then completes the copy on the source stream before returning.
+  Neither stream index changes, so subsequent destination-stream consumers are safe.
+  This is a blocking convenience operation, not a transfer-overlap API.
+- Arithmetic involving several tensors does not automatically connect all operand
+  streams. Callers must synchronize or establish CUDA-event dependencies between
+  different producer and consumer streams. A selected stream records an execution
+  convention, not a record of every external access to a tensor's raw pointer.
+
+## 6. Build, test, and check CUDA memory
+
+The scripts in `scripts/` can be launched from any working directory. They require
+CMake, a supported CUDA toolkit/GPU, a C++ compiler, and Python with NumPy. For an
+isolated Python environment (from the repository root):
+
+```bash
+python3 -m venv build/test-venv
+build/test-venv/bin/python -m pip install numpy
+```
+
+Run all C++ and Python unit tests:
+
+```bash
+./scripts/build_and_test.sh -DSM_ARCH=120
+```
+
+Use `SM_ARCH=86` for A40 or `SM_ARCH=87 -DCPPVERSION=17` for Orin instead of `120`.
+Additional arguments are forwarded to CMake; the default build type is
+`RelWithDebInfo`. `GPUTILS_BUILD_DIR`, `JOBS`, and `PYTHON` override the build
+directory, build parallelism (default 4), and Python interpreter. Without `PYTHON`,
+the script uses `test-venv/bin/python` in the build directory if available, then
+`python3`. Python fixtures stay in the build tree.
+
+Build/test and run the complete CUDA suite under Compute Sanitizer memcheck:
+
+```bash
+./scripts/check_memory.sh -DSM_ARCH=120
+```
+
+This checks invalid device memory accesses and device/heap leaks, runs the full
+suite three times in shuffled order within one process, and checks `gputils_main`
+separately. It enables CUDA line information in the default build configuration,
+preserves failure exit codes, and requires clean error/leak summaries. Complete
+logs and generated fixtures are stored under `build/sanitizer/`. Set
+`COMPUTE_SANITIZER` to override its executable path and `SANITIZER_REPEATS` to
+change the repeat count. Compute Sanitizer checks CUDA memory, not arbitrary
+C++ host-memory leaks. Do not use sanitizer runs for performance measurements.
 
 ## Happy number crunching!

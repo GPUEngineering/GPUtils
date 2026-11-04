@@ -1,4 +1,15 @@
+import os
+import struct
+
 import numpy as np
+
+
+def _fixed_size_dtype(dt):
+    dtype = np.dtype(dt)
+    if dtype.hasobject or dtype.itemsize == 0:
+        raise ValueError("The binary format requires a fixed-size dtype without objects")
+    return dtype
+
 
 def read_array_from_gputils_binary_file(path, dt=np.dtype('d')):
     """
@@ -6,19 +17,32 @@ def read_array_from_gputils_binary_file(path, dt=np.dtype('d')):
     :param path: path to file
     :param dt: numpy-compatible data type
     :raises ValueError: if the file name specified `path` does not have the .bt extension
+    :raises ValueError: if the header, dimensions, dtype, or payload size are invalid
     """
     if not path.endswith(".bt"):
         raise ValueError("The file must have the .bt extension")
+    dtype = _fixed_size_dtype(dt)
     with open(path, 'rb') as f:
-        nr = int.from_bytes(f.read(8), byteorder='little', signed=False)  # read number of rows
-        nc = int.from_bytes(f.read(8), byteorder='little', signed=False)  # read number of columns
-        nm = int.from_bytes(f.read(8), byteorder='little', signed=False)  # read number of matrices
-        dat = np.fromfile(f, dtype=np.dtype(dt))  # read data
+        header = f.read(24)
+        if len(header) != 24:
+            raise ValueError("The binary tensor header must contain exactly 24 bytes")
+        # Now decode the 24-byte binary header into three integers...
+        nr, nc, nm = struct.unpack('<QQQ', header)
+        if not nr or not nc or not nm:
+            raise ValueError("Tensor dimensions must be positive")
+        count = nr * nc * nm
+        payload_size = count * dtype.itemsize
+        if payload_size > np.iinfo(np.intp).max:
+            raise ValueError("Tensor dimensions exceed NumPy size limits")
+        if os.fstat(f.fileno()).st_size - 24 != payload_size:
+            raise ValueError("The binary payload size does not match its dimensions and dtype")
 
-        if nm >= 2:  # if we actually have a 3D tensor (not a matrix or a vector)
-            dat = dat.reshape((nm, nc, nr)).swapaxes(0, 2)  # I'll explain this to you when you grow up
-        else:
-            dat = dat.reshape((nr, nc, nm))  # reshape
+        dat = np.fromfile(f, dtype=dtype, count=count)
+        if dat.size != count or f.read(1):
+            raise ValueError("The binary payload changed size while being read")
+
+        # Each matrix is column-major, with matrices stored consecutively.
+        dat = dat.reshape((nm, nc, nr)).swapaxes(0, 2)
     return dat
 
 
@@ -28,7 +52,8 @@ def write_array_to_gputils_binary_file(x, path):
 
     :param x: numpy array to save to file
     :param path: path to file
-    :raises ValueError: if `x` has more than 3 dimensions
+    :raises ValueError: if `x` is empty or does not have between 1 and 3 dimensions
+    :raises ValueError: if `x` has a zero-size or object-containing dtype
     :raises ValueError: if the file name specified `path` does not have the .bt extension
     """
 
@@ -36,8 +61,11 @@ def write_array_to_gputils_binary_file(x, path):
         raise ValueError("The file must have the .bt extension")
     x_shape = x.shape
     x_dims = len(x_shape)
-    if x_dims >= 4:
-        raise ValueError("given array cannot have more than 3 dimensions")
+    if not 1 <= x_dims <= 3:
+        raise ValueError("The array must have between 1 and 3 dimensions")
+    if x.size == 0:
+        raise ValueError("Tensor dimensions must be positive")
+    _fixed_size_dtype(x.dtype)
     nr = x_shape[0]
     nc = x_shape[1] if x_dims >= 2 else 1
     nm = x_shape[2] if x_dims == 3 else 1
