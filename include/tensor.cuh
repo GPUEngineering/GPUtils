@@ -195,9 +195,12 @@ private:
     }
 
     ~Session() {
+        // Finish all owned streams before releasing handles or stream resources.
+        synchronizeAllStreams();
         for (size_t i = 0; i < m_numCublasHandlesStreams; i++) {
             gpuErrChk(cublasDestroy(m_cublasHandles[i]));
             gpuErrChk(cusolverDnDestroy(m_cusolverHandles[i]));
+            gpuErrChk(cudaStreamDestroy(m_cublasStreams[i]));
         }
     }
 

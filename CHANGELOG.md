@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Session shutdown completes work on all owned CUDA streams, releases library
+  handles, and explicitly destroys each stream instead of retaining stream resources
+  until CUDA context teardown.
 - Complete selected-stream use for single and batched Cholesky, including workspace
   queries and solves; solver status tensors follow the matrix stream. Host transfers,
   debug scalar reads, initialization, and pointer-array uploads complete on their selected
