@@ -1664,7 +1664,11 @@ public:
         m_Vtr = std::make_shared<DTensor<T> >(n, n, nMats);
         m_S = std::make_shared<DTensor<T> >(minMN, 1, nMats);
         m_rank = std::make_unique<DTensor<unsigned int> >(1, 1, nMats, true);
+        m_rank->setStreamIdx(mat.streamIdx());
+        m_S->setStreamIdx(mat.streamIdx());
+        m_Vtr->setStreamIdx(mat.streamIdx());
         if (computeU) m_U = std::make_shared<DTensor<T> >(m, m, nMats);
+        if (computeU) m_U->setStreamIdx(mat.streamIdx());
     }
 
     /**
@@ -1707,16 +1711,25 @@ public:
     /**
      * Computes the rank of the original matrices and returns
      * a (1, 1, nMats)-tensor.
+     * Each call recomputes the counts on the input matrix's stream. The result
+     * is reusable internal storage; copy/download it before a later call if a
+     * snapshot is needed, and order cross-stream consumers explicitly.
      * @param epsilon any numerical value less than epsilon is considered zero
      * @return rank of original matrices
      */
     DTensor<unsigned int> const &rank(T epsilon = 1e-6) const {
+        cudaStream_t stream;
+        const size_t streamIdx = m_tensor->streamIdx();
+        gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(streamIdx), &stream));
+        m_rank->setStreamIdx(streamIdx);
+        gpuErrChk(cudaMemsetAsync(m_rank->raw(), 0, m_rank->numEl() * sizeof(unsigned int), stream));
         size_t numElS = m_S->numCols() * m_S->numRows();
         for (size_t i = 0; i < m_rank->numMats(); i++) {
             DTensor<T> Si(*m_S, 2, i, i);
             DTensor<unsigned int> rankI(*m_rank, 2, i, i);
-            k_countNonzeroSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK>>>(Si.raw(), numElS,
+            k_countNonzeroSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK, 0, stream>>>(Si.raw(), numElS,
                 rankI.raw(), epsilon);
+            gpuErrChk(cudaGetLastError());
         }
         return *m_rank;
     }
@@ -1725,12 +1738,12 @@ public:
 
 template<>
 inline void Svd<float>::computeWorkspaceSize(size_t m, size_t n) {
-    gpuErrChk(cusolverDnSgesvd_bufferSize(Session::getInstance().cuSolverHandle(), m, n, &m_lwork));
+    gpuErrChk(cusolverDnSgesvd_bufferSize(Session::getInstance().cuSolverHandle(m_tensor->streamIdx()), m, n, &m_lwork));
 }
 
 template<>
 inline void Svd<double>::computeWorkspaceSize(size_t m, size_t n) {
-    gpuErrChk(cusolverDnDgesvd_bufferSize(Session::getInstance().cuSolverHandle(), m, n, &m_lwork));
+    gpuErrChk(cusolverDnDgesvd_bufferSize(Session::getInstance().cuSolverHandle(m_tensor->streamIdx()), m, n, &m_lwork));
 }
 
 
@@ -1747,7 +1760,7 @@ inline void Svd<double>::factorise() {
         if (m_computeU)
             Ui = std::make_unique<DTensor<double> >(*m_U, 2, i, i);
         gpuErrChk(
-            cusolverDnDgesvd(Session::getInstance().cuSolverHandle(),
+            cusolverDnDgesvd(Session::getInstance().cuSolverHandle(m_tensor->streamIdx()),
                 (m_computeU) ? 'A' : 'N', 'A',
                 m, n,
                 Ai.raw(), m,
@@ -1774,7 +1787,7 @@ inline void Svd<float>::factorise() {
         if (m_computeU)
             Ui = std::make_unique<DTensor<float> >(*m_U, 2, i, i);
         gpuErrChk(
-            cusolverDnSgesvd(Session::getInstance().cuSolverHandle(),
+            cusolverDnSgesvd(Session::getInstance().cuSolverHandle(m_tensor->streamIdx()),
                 (m_computeU) ? 'A' : 'N', 'A',
                 m, n,
                 Ai.raw(), m,

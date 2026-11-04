@@ -53,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Repeated `Svd::rank()` calls reset device counters before counting, preventing
+  accumulation across calls and thresholds. SVD factorisation, rank reset/counting,
+  and result stream metadata consistently use the input matrix's selected stream.
+  Added repeated-call and nonblocking-stream regressions for float and double batches.
 - Copy/move assignment releases the destination's previous owned storage, preserves
   matrix-pointer and stream metadata, and handles self-assignment and empty tensors safely.
   Copy construction and assignment complete copies on the source's selected stream.

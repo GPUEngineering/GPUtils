@@ -1797,6 +1797,70 @@ TEST_F(SvdTest, singularValuesRankMultipleMatrices) {
     singularValuesRankMultipleMatrices<double>(PRECISION_HIGH);
 }
 
+template<typename T>
+void rankRepeatedCallsRecomputeCounts() {
+    SCOPED_TRACE((std::is_same_v<T,float> ? "float" : "double"));
+    // Diagonal matrices have known singular values, well away from thresholds.
+    const std::vector<T> data{
+        5,0,0, 0,2,0, 0,0,T(0.01),
+        4,0,0, 0,T(0.05),0, 0,0,0
+    };
+    DTensor<T> matrices(data,3,3,2);
+    Svd<T> svd(matrices);
+    svd.factorise();
+    Session::getInstance().synchronizeAllStreams();
+    EXPECT_EQ(0,svd.info()(0));
+    EXPECT_EQ(0,svd.info()(0,0,1));
+
+    const std::vector<T> thresholds{T(0.1),T(0.1),T(0.001),T(0.1),T(10)};
+    const std::vector<std::vector<unsigned int>> expected{{2,1},{2,1},{3,2},{2,1},{0,0}};
+    for (size_t call=0;call<thresholds.size();++call) {
+        SCOPED_TRACE("rank call " + std::to_string(call+1));
+        // Download a snapshot before the next call overwrites reusable storage.
+        std::vector<unsigned int> actual;
+        svd.rank(thresholds[call]).download(actual);
+        EXPECT_EQ(expected[call],actual);
+    }
+}
+
+TEST_F(SvdTest, rankRepeatedCallsRecomputeCounts) {
+    rankRepeatedCallsRecomputeCounts<float>();
+    rankRepeatedCallsRecomputeCounts<double>();
+}
+
+template<typename T>
+void rankCallsAreOrderedOnSelectedStream() {
+    NonblockingTestStream execution;
+    DTensor<T> matrices(std::vector<T>{5,0,0,2, 4,0,0,T(0.05)},2,2,2);
+    matrices.setStreamIdx(1);
+    Svd<T> svd(matrices);
+    DTensor<unsigned int> first(1,1,2), second(1,1,2), third(1,1,2);
+    gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+    svd.factorise();
+    const auto &rank1 = svd.rank(T(0.1));
+    EXPECT_EQ(1,rank1.streamIdx());
+    gpuErrChk(cudaMemcpyAsync(first.raw(),rank1.raw(),2*sizeof(unsigned int),cudaMemcpyDeviceToDevice,execution.stream));
+    const auto &rank2 = svd.rank(T(0.001));
+    gpuErrChk(cudaMemcpyAsync(second.raw(),rank2.raw(),2*sizeof(unsigned int),cudaMemcpyDeviceToDevice,execution.stream));
+    const auto &rank3 = svd.rank(T(10));
+    gpuErrChk(cudaMemcpyAsync(third.raw(),rank3.raw(),2*sizeof(unsigned int),cudaMemcpyDeviceToDevice,execution.stream));
+    // No synchronization between calls: reset, count and downstream copies
+    // must stay ordered on the same stream.
+    gpuErrChk(cudaStreamSynchronize(execution.stream));
+    std::vector<unsigned int> actual;
+    first.download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{2,1}),actual);
+    second.download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{2,2}),actual);
+    third.download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{0,0}),actual);
+}
+
+TEST_F(SvdTest, rankCallsUseSelectedStream) {
+    rankCallsAreOrderedOnSelectedStream<float>();
+    rankCallsAreOrderedOnSelectedStream<double>();
+}
+
 /* ================================================================================================
  *  CHOLESKY TESTS
  * ================================================================================================ */
