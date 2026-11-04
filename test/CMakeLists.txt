@@ -14,6 +14,7 @@ target_sources(gputils_test  # add files
         PRIVATE
         testTensor.cu
         hostAllocationFailure.cpp
+        sessionAcrossTranslationUnits.cu
 )
 target_link_libraries(gputils_test
     PRIVATE

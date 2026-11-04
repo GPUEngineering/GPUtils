@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Store the configured stream count in a C++17 inline static `Session` member,
+  eliminating per-translation-unit copies. A two-CUDA-translation-unit regression
+  verifies cross-file configuration, singleton identity, second-stream execution,
+  allocation accounting, and rejection of reconfiguration after initialization.
 - SVD uses a `unique_ptr` owner for its optional input copy and a separate raw
   observer for numerical operations, removing manual deletion and preventing leaks
   if later workspace/output construction throws. Fault-injection regressions verify

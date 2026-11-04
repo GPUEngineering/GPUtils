@@ -528,6 +528,9 @@ Session::setStreams(4); // create 4 strems
 ```
 Call `setStreams` with a positive count before the first `Session` or tensor
 allocation initializes the session. Changing the count afterward is rejected.
+The configured count is shared across translation units through C++17 inline
+static storage: configuration in one source file also applies when another source
+file first initializes the singleton.
 Then, you can use `setStreamIdx` to select a stream to go with your instance of `DTensor`
 ```c++
 auto a = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(0);

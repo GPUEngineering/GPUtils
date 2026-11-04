@@ -122,12 +122,6 @@ inline void gpuAssert(T code, const char *file, int line, bool abort = true) {
 /* ================================================================================================
  *  SESSION
  * ================================================================================================ */
-/**
- * Total number of allocated streams
- * Can be changed with Session::setStreams()
- */
-static size_t s_numStreams = 1;
-
 namespace gputils_detail {
 // Independent of CUDA allocation, allowing large-count arithmetic to be tested
 // without requiring multi-gigabyte GPU allocations.
@@ -156,6 +150,8 @@ public:
  * The cuSolver handle can be accessed anywhere by `Session::getInstance().cuSolverHandle()`
  */
 class Session {
+    // C++17 inline storage: one configured count across all translation units.
+    inline static size_t s_numStreams = 1;
     static bool &initialized() { static bool value = false; return value; }
 public:
     /**

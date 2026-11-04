@@ -6,6 +6,7 @@
 #include <thread>
 #include <chrono>
 #include "hostAllocationFailure.h"
+#include "sessionAcrossTranslationUnits.h"
 
 #define PRECISION_LOW 1e-4
 #define PRECISION_HIGH 1e-10
@@ -35,7 +36,27 @@ protected:
  * have the same stream setup and do not depend on test execution order.
  * --------------------------------------- */
 
-static const bool testStreamsConfigured = [] { Session::setStreams(2); return true; }();
+static const bool testStreamsConfigured = [] {
+    gputils_test::configureStreamsFromOtherTranslationUnit(2);
+    return true;
+}();
+
+TEST(SessionTest, configurationIsSharedAcrossTranslationUnits) {
+    // The other CUDA translation unit configured the count before main. This
+    // translation unit must see that count when it first initializes Session.
+    auto &local = Session::getInstance();
+    ASSERT_EQ(2,local.numStreams());
+    auto &other = gputils_test::sessionFromOtherTranslationUnit();
+    EXPECT_EQ(&local,&other);
+    EXPECT_EQ(2,other.numStreams());
+    EXPECT_EQ(local.cuBlasHandle(1),other.cuBlasHandle(1));
+    const size_t before = local.totalAllocatedBytes();
+    EXPECT_TRUE(gputils_test::executeOnSecondStreamFromOtherTranslationUnit());
+    EXPECT_EQ(before,local.totalAllocatedBytes());
+    EXPECT_THROW(gputils_test::configureStreamsFromOtherTranslationUnit(3),std::logic_error);
+    EXPECT_THROW(gputils_test::configureStreamsFromOtherTranslationUnit(0),std::invalid_argument);
+    EXPECT_EQ(2,local.numStreams());
+}
 
 TEST(SessionTest, streamSelectionAndExecution) {
     EXPECT_THROW(Session::setStreams(0), std::invalid_argument);
