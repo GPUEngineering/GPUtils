@@ -1708,14 +1708,14 @@ TEMPLATE_CONSTRAINT_REQUIRES_FPX
 class Svd : public IStatus {
 private:
     int m_lwork = -1; ///< Size of workspace needed for SVD
-    DTensor<T> *m_tensor = nullptr; ///< Pointer to original matrix to be factorised
+    std::unique_ptr<DTensor<T> > m_ownedTensor; ///< Optional private input copy
+    DTensor<T> *m_tensor = nullptr; ///< Observer of caller input or m_ownedTensor
     std::shared_ptr<DTensor<T> > m_Vtr; ///< Matrix V' or right singular vectors
     std::shared_ptr<DTensor<T> > m_S; ///< Diagonal matrix S or singular values
     std::shared_ptr<DTensor<T> > m_U; ///< Matrix U or left singular vectors
     std::unique_ptr<DTensor<T> > m_workspace; ///< Workspace for SVD
     std::shared_ptr<DTensor<unsigned int> > m_rank; ///< Rank of original matrix
     bool m_computeU = false; ///< Whether to compute U
-    bool m_destroyMatrix = true; ///< Whether to sacrifice original matrix
 
     /**
      * Ensures tensor to factorise contains exactly one matrix, and that matrix is tall.
@@ -1745,8 +1745,12 @@ public:
         bool computeU = false,
         bool destroyMatrix = true) : IStatus(mat.numMats()) {
         checkMatrix(mat);
-        m_destroyMatrix = destroyMatrix;
-        m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
+        if (destroyMatrix) {
+            m_tensor = &mat;
+        } else {
+            m_ownedTensor = std::make_unique<DTensor<T> >(mat);
+            m_tensor = m_ownedTensor.get();
+        }
         m_info->setStreamIdx(mat.streamIdx());
         m_computeU = computeU;
         size_t m = mat.numRows();
@@ -1793,13 +1797,8 @@ public:
         return m_U;
     }
 
-    /**
-     * Destroyer.
-     */
-    ~Svd() {
-        m_lwork = -1;
-        if (!m_destroyMatrix && m_tensor) delete m_tensor;
-    }
+    // Member ownership also releases the private copy if construction throws.
+    ~Svd() = default;
 
 
     /**

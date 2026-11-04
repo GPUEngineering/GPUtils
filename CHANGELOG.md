@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SVD uses a `unique_ptr` owner for its optional input copy and a separate raw
+  observer for numerical operations, removing manual deletion and preventing leaks
+  if later workspace/output construction throws. Fault-injection regressions verify
+  cleanup, input preservation, and borrowed-input lifetime for float and double.
 - Allocating tensor constructors release acquired device storage and preserve the
   original exception when host allocation fails during row-major conversion or
   matrix-pointer setup. Regression tests inject actual test-only host `operator new`

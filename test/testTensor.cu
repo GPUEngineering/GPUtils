@@ -1925,6 +1925,74 @@ protected:
     }
 };
 
+template<typename T>
+void svdReleasesOwnedCopyOnConstructionFailure() {
+    auto &session = Session::getInstance();
+    const std::vector<T> data{1,0,0,0,2,0, 3,0,0,0,4,0};
+    DTensor<T> source(data,3,2,2);
+    auto *sourcePointer = source.raw();
+    int workspaceElements = 0;
+    if constexpr (std::is_same_v<T,float>) {
+        gpuErrChk(cusolverDnSgesvd_bufferSize(session.cuSolverHandle(),3,2,&workspaceElements));
+    } else {
+        gpuErrChk(cusolverDnDgesvd_bufferSize(session.cuSolverHandle(),3,2,&workspaceElements));
+    }
+    ASSERT_GT(workspaceElements,0);
+    { Svd<T> warmup(source,true,false); warmup.factorise(); }
+    const size_t copyBytes = data.size()*sizeof(T)+2*sizeof(T *);
+    const size_t infoBytes = 2*sizeof(int)+2*sizeof(int *);
+    const size_t outputBytes = 8*sizeof(T)+2*sizeof(T *);
+    for (bool destroyMatrix : {false,true}) {
+        SCOPED_TRACE(destroyMatrix ? "borrowed input" : "owned copy");
+        const size_t baseline = session.totalAllocatedBytes();
+        failureDeviceBytes = baseline+infoBytes+(destroyMatrix ? 0 : copyBytes)
+            +size_t(workspaceElements)*sizeof(T)+outputBytes;
+        failureHostBytes = 2*sizeof(T *);
+        observedDeviceBytes = observedHostBytes = 0;
+        bool caught = false;
+        {
+            gputils_test::FailHostAllocation failure(failAfterDeviceAllocation);
+            try { Svd<T> broken(source,true,destroyMatrix); }
+            catch (const std::bad_alloc &) { caught = true; }
+        }
+        EXPECT_TRUE(caught);
+        // Failure occurs in V' pointer-table setup, after the optional input
+        // copy and workspace have completed construction and allocated on GPU.
+        EXPECT_EQ(failureDeviceBytes,observedDeviceBytes);
+        EXPECT_EQ(failureHostBytes,observedHostBytes);
+        EXPECT_EQ(baseline,session.totalAllocatedBytes());
+        EXPECT_EQ(sourcePointer,source.raw());
+        std::vector<T> actual;
+        source.download(actual);
+        EXPECT_EQ(data,actual);
+        {
+            Svd<T> recovered(source,true,false);
+            recovered.factorise();
+            EXPECT_EQ(0,recovered.info()(0,0,0));
+            EXPECT_EQ(0,recovered.info()(0,0,1));
+        }
+        EXPECT_EQ(baseline,session.totalAllocatedBytes());
+        source.download(actual);
+        EXPECT_EQ(data,actual);
+    }
+    const size_t beforeBorrow = session.totalAllocatedBytes();
+    {
+        Svd<T> borrowed(source,false,true);
+        borrowed.factorise();
+    }
+    EXPECT_EQ(beforeBorrow,session.totalAllocatedBytes());
+    EXPECT_EQ(sourcePointer,source.raw());
+    source.upload(data); // Successful borrowed-input destruction must not free source.
+    std::vector<T> actual;
+    source.download(actual);
+    EXPECT_EQ(data,actual);
+}
+
+TEST_F(SvdTest, constructionFailureReleasesOwnedCopy) {
+    svdReleasesOwnedCopyOnConstructionFailure<float>();
+    svdReleasesOwnedCopyOnConstructionFailure<double>();
+}
+
 /* ---------------------------------------
  * Computation of singular values
  * and matrix rank

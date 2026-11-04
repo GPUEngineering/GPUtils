@@ -421,6 +421,12 @@ the given matrix $B$. If you want the factoriser to keep your
 matrix, you need to set the third argument of the above constructor
 to `false`.
 
+With `destroyMatrix=false`, SVD owns an independent input copy through a
+`std::unique_ptr`; that copy is released automatically on normal destruction or
+if later constructor setup throws. With `destroyMatrix=true`, SVD only borrows
+the caller's tensor and never frees it. The caller must keep borrowed input
+alive and retain its shape/stream binding while the solver uses it.
+
 After you have factorised the matrix, you can access $S$, $V'$ and, perhaps, $U$.
 You can do:
 
