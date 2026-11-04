@@ -13,6 +13,7 @@ add_executable(gputils_test)
 target_sources(gputils_test  # add files
         PRIVATE
         testTensor.cu
+        hostAllocationFailure.cpp
 )
 target_link_libraries(gputils_test
     PRIVATE

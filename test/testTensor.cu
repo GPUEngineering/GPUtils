@@ -5,6 +5,7 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
+#include "hostAllocationFailure.h"
 
 #define PRECISION_LOW 1e-4
 #define PRECISION_HIGH 1e-10
@@ -364,6 +365,71 @@ TEST_F(TensorTest, tensorConstructionZero) {
     tensorConstructionZero<float>();
     tensorConstructionZero<double>();
     tensorConstructionZero<int>();
+}
+
+namespace {
+thread_local size_t failureDeviceBytes = 0;
+thread_local size_t failureHostBytes = 0;
+thread_local size_t observedDeviceBytes = 0;
+thread_local size_t observedHostBytes = 0;
+
+bool failAfterDeviceAllocation(size_t bytes) noexcept {
+    const size_t allocated = Session::getInstance().totalAllocatedBytes();
+    if (bytes != failureHostBytes || allocated != failureDeviceBytes) return false;
+    observedDeviceBytes = allocated;
+    observedHostBytes = bytes;
+    return true;
+}
+}
+
+template<typename T>
+void allocatingConstructorsReleaseStorageOnHostFailure() {
+    auto &session = Session::getInstance(); // Initialize CUDA before arming failure.
+    const size_t initialBytes = session.totalAllocatedBytes();
+    const std::vector<T> data(30,T(7));
+    // Warm up CUDA/library initialization and all transfer paths before testing.
+    { DTensor<T> warmup(data,2,3,5,rowMajor); }
+    for (int scenario=0;scenario<4;++scenario) {
+        SCOPED_TRACE("allocation-failure scenario " + std::to_string(scenario));
+        const bool sized = scenario < 2;
+        const size_t mats = scenario == 3 ? 1 : 5;
+        const size_t elements = 6*mats;
+        const std::vector<T> input(elements,T(7));
+        const size_t baseline = session.totalAllocatedBytes();
+        failureDeviceBytes = baseline + elements*sizeof(T) + (mats > 1 ? mats*sizeof(T *) : 0);
+        // Sized constructors fail in the pointer-table host vector. Vector
+        // constructors fail in the row-major conversion vector.
+        failureHostBytes = sized ? mats*sizeof(T *) : elements*sizeof(T);
+        observedDeviceBytes = observedHostBytes = 0;
+        bool caught = false;
+        {
+            gputils_test::FailHostAllocation failure(failAfterDeviceAllocation);
+            try {
+                if (sized) { DTensor<T> tensor(2,3,mats,scenario == 1); }
+                else { DTensor<T> tensor(input,2,3,mats,rowMajor); }
+            } catch (const std::bad_alloc &) { caught = true; }
+        }
+        EXPECT_TRUE(caught);
+        EXPECT_EQ(failureHostBytes,observedHostBytes);
+        EXPECT_EQ(failureDeviceBytes,observedDeviceBytes); // GPU allocations existed at failure.
+        EXPECT_GT(observedDeviceBytes,baseline);
+        EXPECT_EQ(baseline,session.totalAllocatedBytes());
+        // The original exception is recoverable and CUDA remains usable.
+        {
+            DTensor<T> recovered(input,2,3,mats,rowMajor);
+            std::vector<T> actual;
+            recovered.download(actual);
+            EXPECT_EQ(input,actual); // Constant input has identical row/column layout.
+        }
+        EXPECT_EQ(baseline,session.totalAllocatedBytes());
+    }
+    EXPECT_EQ(initialBytes,session.totalAllocatedBytes());
+}
+
+TEST_F(TensorTest, constructorsReleaseStorageOnHostAllocationFailure) {
+    allocatingConstructorsReleaseStorageOnHostFailure<float>();
+    allocatingConstructorsReleaseStorageOnHostFailure<double>();
+    allocatingConstructorsReleaseStorageOnHostFailure<int>();
 }
 
 /* ---------------------------------------
