@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Explicit scale-aware `Svd::rankRelative(rtol, atol = 0)` counts singular values
+  above `max(atol, rtol * sigmaMax)` using each matrix's own scale on the GPU.
+  Validates finite, nonnegative tolerances, shares the existing reusable rank buffer,
+  and preserves the absolute `rank()` API and nullspace policy. Added rescaling,
+  per-batch, zero-matrix, boundary, repeated-call, and nonblocking-stream tests.
 - `scripts/build_and_test.sh` builds the main executable and tests and runs all
   C++/Python tests; `scripts/check_memory.sh` additionally runs full CUDA memcheck
   with leak detection, shuffled repeated tests, main-executable checks, and saved logs.
@@ -61,6 +66,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Complete selected-stream use for single and batched Cholesky, including workspace
+  queries and solves; solver status tensors follow the matrix stream. Host transfers,
+  debug scalar reads, initialization, and pointer-array uploads complete on their selected
+  stream. Transpose results inherit the source stream. Device copies order prior destination
+  work and complete on the source stream before returning. Added nonblocking-stream
+  regressions for Cholesky, transfers, and delayed SVD inputs, and documented cross-stream
+  operand dependencies and blocking transfer semantics.
 - Keep QR debugging-helper host uploads on the selected solver stream and complete
   them before returning, fixing an intermittent nonblocking-stream failure exposed
   by the shuffled full-suite sanitizer run.

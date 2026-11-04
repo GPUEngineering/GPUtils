@@ -434,6 +434,35 @@ auto U = svdEngine.leftSingularVectors();
 if (U) std::cout << "U = " << U.value();
 ```
 
+### Numerical rank tolerances
+
+After a successful factorisation, `svdEngine.rank(epsilon)` retains its existing
+absolute-cutoff behavior. To use a scale-aware cutoff explicitly:
+
+```c++
+const auto& ranks = svdEngine.rankRelative(1e-6f);       // atol defaults to zero
+const auto& noisyRanks = svdEngine.rankRelative(1e-6f, 1e-8f);
+```
+
+`rankRelative(rtol, atol)` counts singular values **strictly greater than**
+`max(atol, rtol * sigmaMax)`. Each matrix in a batch uses its own largest
+singular value. Both tolerances must be finite and nonnegative. Zero matrices
+have rank zero, including when both tolerances are zero. Computation and counter
+reset stay on the selected stream without downloading singular values or
+allocating new workspace.
+
+With `atol = 0`, rescaling a matrix rescales its threshold, preserving numerical
+rank within floating-point limits. A positive `atol` intentionally imposes an
+absolute cutoff, useful when data have a known noise scale. `rtol` is required;
+one conventional choice is `max(rows, cols) * std::numeric_limits<T>::epsilon()`,
+but applications with noisy data may need a larger tolerance.
+
+Both rank methods return the same reusable internal device buffer. Download or
+deep-copy a result before making another rank call if you need a snapshot, and
+order consumers on other streams explicitly. For example, the second call above
+overwrites the result referenced by `ranks`. `Nullspace` continues to use its
+existing absolute rank policy; this new method does not change its behavior.
+
 ## 4. Projection onto a nullspace
 
 The nullspace of a matrix is computed by SVD.
@@ -494,6 +523,26 @@ auto b = DTensor<double>::createRandomTensor(3, 6, 4, -1, 1).setStreamIdx(1);
 // do stuff...
 Session::getInstance().synchronizeAllStreams();
 ```
+
+Stream ordering rules:
+
+- Single and batched Cholesky, QR, and SVD execute on their bound matrix's selected
+  stream. Select that stream before constructing the solver. Keep solver workspaces
+  and operands alive until completion; operands produced on another stream require
+  an explicit dependency before the solve. Solver `info()` tensors follow the
+  matrix stream, as do SVD outputs and transpose results.
+- Existing `upload`, `download`, debug element access, and deep copies wait for
+  completion on the tensor/source stream. They do not depend on legacy default-stream
+  synchronization. The row-major upload conversion buffer stays alive until transfer
+  completion. No new public asynchronous host-transfer API is introduced.
+- `source.deviceCopyTo(destination)` waits for prior work on the destination's
+  selected stream, then completes the copy on the source stream before returning.
+  Neither stream index changes, so subsequent destination-stream consumers are safe.
+  This is a blocking convenience operation, not a transfer-overlap API.
+- Arithmetic involving several tensors does not automatically connect all operand
+  streams. Callers must synchronize or establish CUDA-event dependencies between
+  different producer and consumer streams. A selected stream records an execution
+  convention, not a record of every external access to a tensor's raw pointer.
 
 ## 6. Build, test, and check CUDA memory
 

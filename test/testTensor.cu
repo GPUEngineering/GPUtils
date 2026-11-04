@@ -108,6 +108,124 @@ static void CUDART_CB delayTestInput(void *) {
 }
 
 template<typename T>
+void choleskyUsesSelectedStream(T epsilon) {
+    NonblockingTestStream execution;
+    for (int mode=0;mode<3;++mode) {
+        const size_t batch = mode == 0 ? 1 : 2;
+        std::vector<T> matrix = mode == 2
+            ? std::vector<T>{2,1,0,T(std::sqrt(2.0)), 3,1,0,2}
+            : std::vector<T>{4,2,2,3, 9,3,3,5};
+        matrix.resize(4*batch);
+        std::vector<T> rhs{8,8,0,12};
+        rhs.resize(2*batch);
+        DTensor<T> producerA(matrix,2,2,batch), producerB(rhs,2,1,batch);
+        DTensor<T> A(2,2,batch,true), B(2,1,batch,true), captured(2,1,batch);
+        A.setStreamIdx(1);
+        auto exercise = [&](auto &factoriser) {
+            EXPECT_EQ(1,factoriser.info().streamIdx());
+            gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+            gpuErrChk(cudaMemcpyAsync(A.raw(),producerA.raw(),matrix.size()*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+            gpuErrChk(cudaMemcpyAsync(B.raw(),producerB.raw(),rhs.size()*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+            if (mode != 2) factoriser.factorise();
+            factoriser.solve(B);
+            gpuErrChk(cudaMemcpyAsync(captured.raw(),B.raw(),rhs.size()*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+            std::vector<int> codes;
+            factoriser.info().download(codes); // Must wait for the selected solver stream.
+            EXPECT_EQ(0,codes[0]); // potrsBatched reports one call-level status.
+            std::vector<T> actual;
+            captured.download(actual);
+            EXPECT_NEAR(T(1),actual[0],epsilon);
+            EXPECT_NEAR(T(2),actual[1],epsilon);
+            if (batch == 2) {
+                EXPECT_NEAR(T(-1),actual[2],epsilon);
+                EXPECT_NEAR(T(3),actual[3],epsilon);
+            }
+            EXPECT_EQ(0,B.streamIdx()); // The matrix, not the RHS, selects execution.
+        };
+        if (mode == 0) {
+            CholeskyFactoriser<T> factoriser(A);
+            exercise(factoriser);
+        } else {
+            CholeskyBatchFactoriser<T> factoriser(A,mode == 2);
+            exercise(factoriser);
+        }
+    }
+}
+
+TEST_F(TensorTest, choleskyOrdersWorkOnSelectedStream) {
+    choleskyUsesSelectedStream<float>(PRECISION_LOW);
+    choleskyUsesSelectedStream<double>(PRECISION_HIGH);
+}
+
+template<typename T>
+void transfersUseSelectedStream() {
+    NonblockingTestStream execution;
+    const std::vector<T> data{1,2,3,4};
+    DTensor<T> producer(data,2,2), tensor(2,2,1,true);
+    tensor.setStreamIdx(1);
+    auto prepare = [&] {
+        gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+        gpuErrChk(cudaMemcpyAsync(tensor.raw(),producer.raw(),4*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+    };
+    prepare();
+    std::vector<T> actual;
+    tensor.download(actual); // No explicit synchronization by the caller.
+    EXPECT_EQ(data,actual);
+    prepare();
+    EXPECT_EQ(T(4),tensor(1,1));
+    for (auto mode : {columnMajor,rowMajor}) {
+        gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+        gpuErrChk(cudaMemsetAsync(tensor.raw(),0,4*sizeof(T),execution.stream));
+        tensor.upload(data,mode);
+        gpuErrChk(cudaStreamSynchronize(execution.stream));
+        tensor.download(actual);
+        EXPECT_EQ((mode == columnMajor ? data : std::vector<T>{1,3,2,4}),actual);
+    }
+    prepare();
+    auto transposed = tensor.tr();
+    EXPECT_EQ(1,transposed.streamIdx());
+    transposed.download(actual);
+    EXPECT_EQ((std::vector<T>{1,3,2,4}),actual);
+    EXPECT_EQ(T(4),tensor.maxAbs());
+    EXPECT_EQ(T(1),tensor.minAbs());
+}
+
+TEST_F(TensorTest, hostTransfersAndTransposeUseSelectedStream) {
+    transfersUseSelectedStream<float>();
+    transfersUseSelectedStream<double>();
+}
+
+template<typename T>
+void deviceCopiesUseSelectedStreams() {
+    NonblockingTestStream execution;
+    DTensor<T> source(4,1,1,true), destination(6), producer(std::vector<T>{1,2,3,4},4);
+    source.setStreamIdx(1);
+    cudaStream_t destinationStream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(),&destinationStream));
+    gpuErrChk(cudaLaunchHostFunc(destinationStream,delayTestInput,nullptr));
+    gpuErrChk(cudaMemsetAsync(destination.raw(),0,6*sizeof(T),destinationStream));
+    gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+    gpuErrChk(cudaMemcpyAsync(source.raw(),producer.raw(),4*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+    source.deviceCopyTo(destination);
+    // A consumer on the destination's stream can run immediately after return.
+    destination *= T(2);
+    std::vector<T> actual;
+    destination.download(actual);
+    EXPECT_EQ((std::vector<T>{2,4,6,8,0,0}),actual);
+    EXPECT_EQ(1,source.streamIdx());
+    EXPECT_EQ(0,destination.streamIdx());
+    destination.setStreamIdx(1);
+    source.deviceCopyTo(destination);
+    destination.download(actual);
+    EXPECT_EQ((std::vector<T>{1,2,3,4,0,0}),actual);
+}
+
+TEST_F(TensorTest, deviceCopiesOrderBothStreams) {
+    deviceCopiesUseSelectedStreams<float>();
+    deviceCopiesUseSelectedStreams<double>();
+}
+
+template<typename T>
 void qrUsesSelectedStream(T epsilon) {
     NonblockingTestStream execution;
     DTensor<T> source(std::vector<T>{1,0,1,0,1,1}, 3, 2);
@@ -1922,11 +2040,13 @@ TEST_F(SvdTest, rankRepeatedCallsRecomputeCounts) {
 template<typename T>
 void rankCallsAreOrderedOnSelectedStream() {
     NonblockingTestStream execution;
-    DTensor<T> matrices(std::vector<T>{5,0,0,2, 4,0,0,T(0.05)},2,2,2);
+    DTensor<T> producer(std::vector<T>{5,0,0,2, 4,0,0,T(0.05)},2,2,2);
+    DTensor<T> matrices(2,2,2,true);
     matrices.setStreamIdx(1);
     Svd<T> svd(matrices);
     DTensor<unsigned int> first(1,1,2), second(1,1,2), third(1,1,2);
     gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+    gpuErrChk(cudaMemcpyAsync(matrices.raw(),producer.raw(),8*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
     svd.factorise();
     const auto &rank1 = svd.rank(T(0.1));
     EXPECT_EQ(1,rank1.streamIdx());
@@ -1950,6 +2070,102 @@ void rankCallsAreOrderedOnSelectedStream() {
 TEST_F(SvdTest, rankCallsUseSelectedStream) {
     rankCallsAreOrderedOnSelectedStream<float>();
     rankCallsAreOrderedOnSelectedStream<double>();
+}
+
+template<typename T>
+void relativeRankRespectsPerMatrixScale() {
+    const std::vector<T> scales{std::ldexp(T(1),-20),std::ldexp(T(1),20),std::ldexp(T(1),-10),T(1)};
+    std::vector<T> data(36,T(0));
+    for (size_t batch=0;batch<3;++batch) {
+        data[9*batch] = T(8)*scales[batch];
+        data[9*batch+4] = (batch == 2 ? T(0.25) : T(2))*scales[batch];
+        data[9*batch+8] = (batch == 2 ? T(0) : T(0.125))*scales[batch];
+    }
+    DTensor<T> matrices(data,3,3,4);
+    Svd<T> svd(matrices);
+    svd.factorise();
+    const size_t allocated = Session::getInstance().totalAllocatedBytes();
+    std::vector<unsigned int> actual;
+    for (int repeat=0;repeat<2;++repeat) {
+        svd.rankRelative(T(0.1)).download(actual);
+        EXPECT_EQ((std::vector<unsigned int>{2,2,1,0}),actual);
+        svd.rankRelative(T(0.1),T(1)).download(actual);
+        EXPECT_EQ((std::vector<unsigned int>{0,2,0,0}),actual);
+        svd.rankRelative(T(0),T(0)).download(actual);
+        EXPECT_EQ((std::vector<unsigned int>{3,3,2,0}),actual);
+        // The old absolute API intentionally remains sensitive to scaling.
+        svd.rank(T(0.1)).download(actual);
+        EXPECT_EQ((std::vector<unsigned int>{0,3,0,0}),actual);
+    }
+    svd.rankRelative(T(0.1)).download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{2,2,1,0}),actual);
+    EXPECT_EQ(allocated,Session::getInstance().totalAllocatedBytes());
+}
+
+TEST_F(SvdTest, relativeRankUsesPerMatrixScaleAndAbsoluteCutoff) {
+    relativeRankRespectsPerMatrixScale<float>();
+    relativeRankRespectsPerMatrixScale<double>();
+}
+
+template<typename T>
+void relativeRankChecksBoundariesAndTolerances() {
+    DTensor<T> matrix(std::vector<T>{8,0,0,0,2,0,0,0,T(0.125)},3,3);
+    Svd<T> svd(matrix);
+    svd.factorise();
+    std::vector<unsigned int> actual;
+    svd.rankRelative(T(0.25)).download(actual); // threshold=2: equality excluded
+    EXPECT_EQ((std::vector<unsigned int>{1}),actual);
+    svd.rankRelative(T(0),T(0.125)).download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{2}),actual);
+    svd.rankRelative(T(1)).download(actual); // threshold=sigmaMax
+    EXPECT_EQ((std::vector<unsigned int>{0}),actual);
+    svd.rankRelative(T(0),std::numeric_limits<T>::max()).download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{0}),actual);
+    const auto &previous = svd.rankRelative(T(0.25));
+    for (T invalid : {T(-1),std::numeric_limits<T>::infinity(),std::numeric_limits<T>::quiet_NaN()}) {
+        EXPECT_THROW(svd.rankRelative(invalid),std::invalid_argument);
+        EXPECT_THROW(svd.rankRelative(T(0),invalid),std::invalid_argument);
+    }
+    previous.download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{1}),actual); // Invalid calls do not clear results.
+}
+
+TEST_F(SvdTest, relativeRankValidatesTolerancesAndUsesStrictCutoff) {
+    relativeRankChecksBoundariesAndTolerances<float>();
+    relativeRankChecksBoundariesAndTolerances<double>();
+}
+
+template<typename T>
+void relativeRankUsesSelectedStream() {
+    NonblockingTestStream execution;
+    DTensor<T> producer(std::vector<T>{8,0,0,2,4,0,0,T(0.125)},2,2,2);
+    DTensor<T> matrix(2,2,2,true);
+    matrix.setStreamIdx(1);
+    Svd<T> svd(matrix);
+    DTensor<unsigned int> first(2),second(2),third(2);
+    gpuErrChk(cudaLaunchHostFunc(execution.stream,delayTestInput,nullptr));
+    gpuErrChk(cudaMemcpyAsync(matrix.raw(),producer.raw(),8*sizeof(T),cudaMemcpyDeviceToDevice,execution.stream));
+    svd.factorise();
+    const auto &rank1 = svd.rankRelative(T(0.25));
+    EXPECT_EQ(1,rank1.streamIdx());
+    gpuErrChk(cudaMemcpyAsync(first.raw(),rank1.raw(),2*sizeof(unsigned int),cudaMemcpyDeviceToDevice,execution.stream));
+    const auto &rank2 = svd.rankRelative(T(0.01));
+    gpuErrChk(cudaMemcpyAsync(second.raw(),rank2.raw(),2*sizeof(unsigned int),cudaMemcpyDeviceToDevice,execution.stream));
+    const auto &rank3 = svd.rank(T(0.2));
+    gpuErrChk(cudaMemcpyAsync(third.raw(),rank3.raw(),2*sizeof(unsigned int),cudaMemcpyDeviceToDevice,execution.stream));
+    gpuErrChk(cudaStreamSynchronize(execution.stream));
+    std::vector<unsigned int> actual;
+    first.download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{1,1}),actual);
+    second.download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{2,2}),actual);
+    third.download(actual);
+    EXPECT_EQ((std::vector<unsigned int>{2,1}),actual);
+}
+
+TEST_F(SvdTest, relativeRankOrdersRepeatedCallsOnSelectedStream) {
+    relativeRankUsesSelectedStream<float>();
+    relativeRankUsesSelectedStream<double>();
 }
 
 /* ================================================================================================

@@ -341,6 +341,20 @@ private:
     size_t m_matrixPointerCapacity = 0; ///< Capacity of owned matrix-pointer allocation
     size_t m_idxStream = 0; ///< Stream index (defaults to 0)
 
+    cudaStream_t selectedStream() const {
+        cudaStream_t stream;
+        gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(m_idxStream), &stream));
+        return stream;
+    }
+
+    T downloadElement(size_t offset) const {
+        T value;
+        auto stream = selectedStream();
+        gpuErrChk(cudaMemcpyAsync(&value, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost, stream));
+        gpuErrChk(cudaStreamSynchronize(stream));
+        return value;
+    }
+
     void destroy() {
         if (m_doDestroyData) {
             gpuErrChk(Session::getInstance().cudaRelease(m_d_data, m_dataBytes));
@@ -543,6 +557,8 @@ public:
 
     /**
      * Device-to-device copy.
+     * Completes on the source stream before returning and waits for prior work
+     * on the destination's selected stream. Neither tensor's stream ID changes.
      * @param other target tensor
      */
     void deviceCopyTo(DTensor<T> &other) const;
@@ -798,7 +814,9 @@ void DTensor<T>::initialisePointersToMatricesData() {
     }
     /* Upload data to m_d_ptrMatrices */
     size_t buffer_size = m_numMats * sizeof(T *);
-    gpuErrChk(cudaMemcpy(m_d_ptrMatrices, h_pointers.data(), buffer_size, cudaMemcpyHostToDevice));
+    auto stream = selectedStream();
+    gpuErrChk(cudaMemcpyAsync(m_d_ptrMatrices, h_pointers.data(), buffer_size, cudaMemcpyHostToDevice, stream));
+    gpuErrChk(cudaStreamSynchronize(stream));
 }
 
 template<typename T>
@@ -1154,7 +1172,7 @@ inline float DTensor<float>::maxAbs() const {
     gpuErrChk(
         cublasIsamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
             &idx));
-    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
+    hostDst = downloadElement(idx - 1);
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
 
@@ -1165,7 +1183,7 @@ inline double DTensor<double>::maxAbs() const {
     gpuErrChk(
         cublasIdamax(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
             &idx));
-    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
+    hostDst = downloadElement(idx - 1);
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
 
@@ -1176,7 +1194,7 @@ inline float DTensor<float>::minAbs() const {
     gpuErrChk(
         cublasIsamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
             &idx));
-    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(float), cudaMemcpyDeviceToHost));
+    hostDst = downloadElement(idx - 1);
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
 
@@ -1187,7 +1205,7 @@ inline double DTensor<double>::minAbs() const {
     gpuErrChk(
         cublasIdamin(Session::getInstance().cuBlasHandle(m_idxStream), m_numRows * m_numCols * m_numMats, m_d_data, 1,
             &idx));
-    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + idx - 1, sizeof(double), cudaMemcpyDeviceToHost));
+    hostDst = downloadElement(idx - 1);
     return std::signbit(hostDst) ? -hostDst : hostDst;
 }
 
@@ -1232,7 +1250,11 @@ inline void DTensor<T>::allocateOnDevice(size_t size, bool zero) {
     size_t buffer_size = size * sizeof(T);
     gpuErrChk(Session::getInstance().cudaAllocate((void**)&m_d_data, buffer_size));
     m_dataBytes = buffer_size;
-    if (zero) gpuErrChk(cudaMemset(m_d_data, 0, buffer_size)); // set to zero all elements
+    if (zero) {
+        auto stream = selectedStream();
+        gpuErrChk(cudaMemsetAsync(m_d_data, 0, buffer_size, stream));
+        gpuErrChk(cudaStreamSynchronize(stream));
+    }
 
     if (numMats() > 1) {
         m_doDestroyPtrMatrices = true;
@@ -1257,12 +1279,16 @@ inline bool DTensor<T>::upload(const std::vector<T> &vec, StorageMode mode) {
     size_t thisSize = m_numRows * m_numCols * m_numMats;
     // make sure vec is of right size
     if (size != thisSize) throw std::invalid_argument("[upload] vec has wrong size");
+    if (size == 0) return true;
+    auto stream = selectedStream();
     if (mode == StorageMode::rowMajor) {
         std::vector<T> vecCm(thisSize);
         rm2cm(vec, vecCm);
-        gpuErrChk(cudaMemcpy(m_d_data, vecCm.data(), size * sizeof(T), cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMemcpyAsync(m_d_data, vecCm.data(), size * sizeof(T), cudaMemcpyHostToDevice, stream));
+        gpuErrChk(cudaStreamSynchronize(stream)); // Keep the conversion buffer alive.
     } else {
-        gpuErrChk(cudaMemcpy(m_d_data, vec.data(), size * sizeof(T), cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMemcpyAsync(m_d_data, vec.data(), size * sizeof(T), cudaMemcpyHostToDevice, stream));
+        gpuErrChk(cudaStreamSynchronize(stream));
     }
     return true;
 }
@@ -1270,10 +1296,13 @@ inline bool DTensor<T>::upload(const std::vector<T> &vec, StorageMode mode) {
 template<typename T>
 inline void DTensor<T>::download(std::vector<T> &vec) const {
     vec.resize(m_numRows * m_numCols * m_numMats);
-    gpuErrChk(cudaMemcpy(vec.data(),
+    if (vec.empty()) return;
+    auto stream = selectedStream();
+    gpuErrChk(cudaMemcpyAsync(vec.data(),
         m_d_data,
         m_numRows * m_numCols * m_numMats * sizeof(T),
-        cudaMemcpyDeviceToHost));
+        cudaMemcpyDeviceToHost, stream));
+    gpuErrChk(cudaStreamSynchronize(stream));
 }
 
 template<typename T>
@@ -1290,6 +1319,7 @@ inline T **DTensor<T>::ptrMatrices() const {
 template<>
 inline DTensor<float> DTensor<float>::tr() const {
     DTensor<float> transposes(m_numCols, m_numRows, m_numMats);
+    transposes.m_idxStream = m_idxStream;
     float alpha = 1.0f, beta = 0;
     size_t numElMat = m_numCols * m_numRows;
     for (size_t i = 0; i < m_numMats; i++) {
@@ -1306,6 +1336,7 @@ inline DTensor<float> DTensor<float>::tr() const {
 template<>
 inline DTensor<double> DTensor<double>::tr() const {
     DTensor<double> transposes(m_numCols, m_numRows, m_numMats);
+    transposes.m_idxStream = m_idxStream;
     double alpha = 1.0f, beta = 0;
     size_t numElMat = m_numCols * m_numRows;
     for (size_t i = 0; i < m_numMats; i++) {
@@ -1324,10 +1355,15 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
     if (elsewhere.numEl() < numEl()) {
         throw std::invalid_argument("[deviceCopyTo] tensor does not fit into destination");
     }
-    gpuErrChk(cudaMemcpy(elsewhere.raw(),
-        m_d_data,
-        m_numRows * m_numCols * m_numMats * sizeof(T),
-        cudaMemcpyDeviceToDevice));
+    if (numEl() == 0) return;
+    auto stream = selectedStream();
+    auto destinationStream = elsewhere.selectedStream();
+    if (destinationStream != stream) gpuErrChk(cudaStreamSynchronize(destinationStream));
+    if (elsewhere.raw() != m_d_data) {
+        gpuErrChk(cudaMemcpyAsync(elsewhere.raw(), m_d_data,
+            m_numRows * m_numCols * m_numMats * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+    }
+    gpuErrChk(cudaStreamSynchronize(stream));
 }
 
 template<>
@@ -1409,10 +1445,8 @@ template<typename T>
 inline T DTensor<T>::operator()(size_t i, size_t j, size_t k) const {
     if (i >= m_numRows || j >= m_numCols || k >= m_numMats)
         throw std::invalid_argument("tensor index out of range");
-    T hostDst;
     size_t offset = i + m_numRows * (j + m_numCols * k);
-    gpuErrChk(cudaMemcpy(&hostDst, m_d_data + offset, sizeof(T), cudaMemcpyDeviceToHost));
-    return hostDst;
+    return downloadElement(offset);
 }
 
 template<>
@@ -1640,6 +1674,17 @@ __global__ void k_countNonzeroSingularValues(const T *d_array, size_t n, unsigne
     }
 }
 
+TEMPLATE_WITH_TYPE_T
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
+__global__ void k_countRelativeSingularValues(const T *singularValues, size_t n,
+                                             unsigned int *count, T rtol, T atol) {
+    const size_t idx = threadIdx.x + size_t(blockIdx.x) * blockDim.x;
+    // gesvd returns singular values in descending order, separately per matrix.
+    const T relativeThreshold = rtol * singularValues[0];
+    const T threshold = atol > relativeThreshold ? atol : relativeThreshold;
+    if (idx < n && singularValues[idx] > threshold) atomicAdd(count, 1);
+}
+
 
 /**
  * Singular value decomposition (SVD) needs a workspace to be setup for cuSolver before factorisation.
@@ -1691,6 +1736,7 @@ public:
         checkMatrix(mat);
         m_destroyMatrix = destroyMatrix;
         m_tensor = (destroyMatrix) ? &mat : new DTensor<T>(mat);
+        m_info->setStreamIdx(mat.streamIdx());
         m_computeU = computeU;
         size_t m = mat.numRows();
         size_t n = mat.numCols();
@@ -1766,6 +1812,32 @@ public:
             DTensor<unsigned int> rankI(*m_rank, 2, i, i);
             k_countNonzeroSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK, 0, stream>>>(Si.raw(), numElS,
                 rankI.raw(), epsilon);
+            gpuErrChk(cudaGetLastError());
+        }
+        return *m_rank;
+    }
+
+    /**
+     * Count singular values strictly greater than max(atol, rtol*sigmaMax),
+     * using each matrix's own largest singular value on the device.
+     * Requires a successful factorise(). Tolerances must be finite and nonnegative.
+     * atol=0 gives scale-invariant relative rank within floating-point limits;
+     * a positive atol intentionally adds an absolute cutoff. rtol is explicit.
+     * Shares reusable result storage with rank(): later calls overwrite it.
+     * Work is enqueued on the input matrix's stream without host downloads.
+     */
+    DTensor<unsigned int> const &rankRelative(T rtol, T atol = T(0)) const {
+        if (!std::isfinite(rtol) || !std::isfinite(atol) || rtol < T(0) || atol < T(0))
+            throw std::invalid_argument("rank tolerances must be finite and nonnegative");
+        cudaStream_t stream;
+        const size_t streamIdx = m_tensor->streamIdx();
+        gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(streamIdx), &stream));
+        m_rank->setStreamIdx(streamIdx);
+        gpuErrChk(cudaMemsetAsync(m_rank->raw(), 0, m_rank->numEl() * sizeof(unsigned int), stream));
+        const size_t numElS = m_S->numRows() * m_S->numCols();
+        for (size_t i = 0; i < m_rank->numMats(); ++i) {
+            k_countRelativeSingularValues<T><<<numBlocks(numElS), THREADS_PER_BLOCK, 0, stream>>>(
+                m_S->raw() + i * numElS, numElS, m_rank->raw() + i, rtol, atol);
             gpuErrChk(cudaGetLastError());
         }
         return *m_rank;
@@ -1868,6 +1940,7 @@ public:
         if (A.numMats() > 1) throw std::invalid_argument("[Cholesky] 3D tensors require `CholeskyBatchFactoriser`");
         if (A.numRows() != A.numCols()) throw std::invalid_argument("[Cholesky] Matrix A must be square");
         m_matrix = &A;
+        m_info->setStreamIdx(A.streamIdx());
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T> >(m_workspaceSize);
     }
@@ -1890,7 +1963,7 @@ public:
 template<>
 inline void CholeskyFactoriser<double>::computeWorkspaceSize() {
     size_t n = m_matrix->numRows();
-    gpuErrChk(cusolverDnDpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDpotrf_bufferSize(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER, n,
         nullptr, n, &m_workspaceSize));
 }
@@ -1898,7 +1971,7 @@ inline void CholeskyFactoriser<double>::computeWorkspaceSize() {
 template<>
 inline void CholeskyFactoriser<float>::computeWorkspaceSize() {
     size_t n = m_matrix->numRows();
-    gpuErrChk(cusolverDnSpotrf_bufferSize(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSpotrf_bufferSize(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER, n,
         nullptr, n, &m_workspaceSize));
 }
@@ -1906,7 +1979,7 @@ inline void CholeskyFactoriser<float>::computeWorkspaceSize() {
 template<>
 inline void CholeskyFactoriser<double>::factorise() {
     size_t n = m_matrix->numRows();
-    gpuErrChk(cusolverDnDpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
+    gpuErrChk(cusolverDnDpotrf(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()), CUBLAS_FILL_MODE_LOWER, n,
         m_matrix->raw(), n,
         m_workspace->raw(),
         m_workspaceSize,
@@ -1917,7 +1990,7 @@ inline void CholeskyFactoriser<double>::factorise() {
 template<>
 inline void CholeskyFactoriser<float>::factorise() {
     size_t n = m_matrix->numRows();
-    gpuErrChk(cusolverDnSpotrf(Session::getInstance().cuSolverHandle(), CUBLAS_FILL_MODE_LOWER, n,
+    gpuErrChk(cusolverDnSpotrf(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()), CUBLAS_FILL_MODE_LOWER, n,
         m_matrix->raw(), n,
         m_workspace->raw(),
         m_workspaceSize,
@@ -1927,7 +2000,7 @@ inline void CholeskyFactoriser<float>::factorise() {
 template<>
 inline void CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
     size_t n = m_matrix->numRows();
-    gpuErrChk(cusolverDnDpotrs(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDpotrs(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         n, 1,
         m_matrix->raw(), n,
@@ -1938,7 +2011,7 @@ inline void CholeskyFactoriser<double>::solve(DTensor<double> &rhs) {
 template<>
 inline void CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
     size_t n = m_matrix->numRows();
-    gpuErrChk(cusolverDnSpotrs(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSpotrs(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         n, 1,
         m_matrix->raw(), n,
@@ -1977,6 +2050,7 @@ public:
         if (A.numMats() > 1) throw std::invalid_argument("[QR] 3D tensors require `leastSquaresBatched`");
         if (A.numRows() < A.numCols()) throw std::invalid_argument("[QR] Matrix A must be tall or square");
         m_matrix = &A;
+        m_info->setStreamIdx(A.streamIdx());
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T> >(m_workspaceSize);
         m_householder = std::make_unique<DTensor<T> >(m_matrix->numCols());
@@ -2295,6 +2369,7 @@ public:
                                                                       m_factorisationDone(factorised) {
         if (!A.numRows() || !A.numMats() || A.numRows() != A.numCols()) throw std::invalid_argument("[CholeskyBatch] A must be nonempty and square");
         m_matrix = &A;
+        m_info->setStreamIdx(A.streamIdx());
         m_numRows = A.numRows();
         m_numMats = A.numMats();
     }
@@ -2314,7 +2389,7 @@ public:
 template<>
 inline void CholeskyBatchFactoriser<double>::factorise() {
     if (m_factorisationDone) return;
-    gpuErrChk(cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
         m_matrix->ptrMatrices(),
@@ -2327,7 +2402,7 @@ inline void CholeskyBatchFactoriser<double>::factorise() {
 template<>
 inline void CholeskyBatchFactoriser<float>::factorise() {
     if (m_factorisationDone) return;
-    gpuErrChk(cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
         m_matrix->ptrMatrices(),
@@ -2344,7 +2419,7 @@ inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
-    gpuErrChk(cusolverDnDpotrsBatched(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnDpotrsBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
         1, ///< only supports rhs = 1
@@ -2363,7 +2438,7 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
-    gpuErrChk(cusolverDnSpotrsBatched(Session::getInstance().cuSolverHandle(),
+    gpuErrChk(cusolverDnSpotrsBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
         1, ///< only supports rhs = 1
