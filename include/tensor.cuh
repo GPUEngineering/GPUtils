@@ -1009,9 +1009,13 @@ DTensor<T>::DTensor(size_t m, size_t n, size_t k, bool zero) {
     m_numRows = m;
     m_numCols = n;
     m_numMats = k;
-    allocateOnDevice(size, zero);
-    /* Initialise m_d_ptrMatrices */
-    initialisePointersToMatricesData();
+    try {
+        allocateOnDevice(size, zero);
+        initialisePointersToMatricesData();
+    } catch (...) {
+        destroy();
+        throw;
+    }
 }
 
 template<typename T>
@@ -1022,10 +1026,14 @@ DTensor<T>::DTensor(const std::vector<T> &data, size_t m, size_t n, size_t k, St
     m_numRows = m;
     m_numCols = n;
     m_numMats = k;
-    allocateOnDevice(size);
-    upload(data, mode);
-    /* Initialise m_d_ptrMatrices */
-    initialisePointersToMatricesData();
+    try {
+        allocateOnDevice(size);
+        upload(data, mode);
+        initialisePointersToMatricesData();
+    } catch (...) {
+        destroy();
+        throw;
+    }
 }
 
 template<typename T>

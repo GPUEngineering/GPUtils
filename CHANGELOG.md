@@ -66,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Allocating tensor constructors release acquired device storage and preserve the
+  original exception when host allocation fails during row-major conversion or
+  matrix-pointer setup. Regression tests inject actual test-only host `operator new`
+  failures after GPU allocation, verify accounting recovery, and exercise successful
+  construction afterward for float, double, and int.
 - Session shutdown completes work on all owned CUDA streams, releases library
   handles, and explicitly destroys each stream instead of retaining stream resources
   until CUDA context teardown.

@@ -14,6 +14,12 @@ uninitialized placeholder. Tensor sizes and allocation sizes are checked for
 overflow. Slices are non-owning views: their source storage must remain alive
 and must not be reallocated while the view is used.
 
+Allocating constructors and the deep-copy constructor clean up acquired device
+storage if a C++ exception occurs during construction, then rethrow the original
+exception. For example, a host conversion-buffer allocation failure propagates
+`std::bad_alloc` without retaining the constructor's GPU allocations. This does
+not change `gpuErrChk`'s existing process-termination policy for CUDA errors.
+
 Numerical operations intended for repeated use may leave operand and index
 validation to the caller. In particular, `addAB` requires compatible matrix
 and batch dimensions and correctly sized output, `+=` and `-=` require matching
