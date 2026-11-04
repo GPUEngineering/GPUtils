@@ -326,9 +326,12 @@ inline void validateStorageMode(StorageMode mode) {
  * Tensors can be used to do a batched operation on many similar-sized matrices or vectors in parallel.
  * @tparam T type of data stored in tensor
  */
+template<typename T> class LeastSquaresBatchedWorkspace;
+
 TEMPLATE_WITH_TYPE_T
 class DTensor {
 private:
+    void leastSquaresBatchedImpl(DTensor &b, DTensor<int> &infoArray, T **matrixPointers, T **rhsPointers);
     T *m_d_data = nullptr; ///< Pointer to device data
     T **m_d_ptrMatrices = nullptr; ///< Pointer to matrices in tensor
     size_t m_numRows = 0; ///< Number of rows
@@ -689,8 +692,12 @@ public:
      * Work is submitted on A's stream. Keep A, b and infoArray alive until that
      * stream completes. Reuse on the same stream is ordered; sharing the buffer
      * across streams requires explicit synchronization. Its streamIdx is not used.
+     * Single matrices without pointer arrays require the workspace overload instead.
      */
     void leastSquaresBatched(DTensor &b, DTensor<int> &infoArray);
+
+    /** Reuse constructor-allocated status/pointer storage; supports batches of one. */
+    void leastSquaresBatched(DTensor &b, LeastSquaresBatchedWorkspace<T> &workspace);
 
     /**
      * Batched `C <- bC + a*A*B`.
@@ -781,6 +788,34 @@ public:
         return data.print(out);
     }
 }; /* END OF DTENSOR */
+
+// Kernel arguments capture pointer values without a temporary host upload buffer.
+template<typename T>
+__global__ void k_setSingleMatrixPointers(T **pointers, T *matrix, T *rhs) {
+    pointers[0] = matrix;
+    pointers[1] = rhs;
+}
+
+/** Reusable least-squares storage for a fixed shape; all allocation is in construction.
+ * Keep it alive until the solve stream completes. Concurrent streams need separate workspaces.
+ */
+template<typename T>
+class LeastSquaresBatchedWorkspace {
+    friend class DTensor<T>;
+    size_t m_rows, m_cols, m_batch;
+    DTensor<int> m_info;
+    std::unique_ptr<DTensor<T *>> m_singleMatrixPointers;
+public:
+    explicit LeastSquaresBatchedWorkspace(const DTensor<T> &A)
+        : m_rows(A.numRows()), m_cols(A.numCols()), m_batch(A.numMats()), m_info(A.numMats()) {
+        if (!m_rows || !m_cols || !m_batch || m_rows < m_cols)
+            throw std::invalid_argument("[Least squares workspace] A must be nonempty and tall or square");
+        m_info.setStreamIdx(A.streamIdx());
+        if (m_batch == 1) m_singleMatrixPointers = std::make_unique<DTensor<T *>>(2);
+    }
+
+    DTensor<int> &info() { return m_info; }
+};
 
 template<typename T>
 DTensor<T> &DTensor<T>::setStreamIdx(size_t idx) & {
@@ -1511,7 +1546,8 @@ inline void DTensor<float>::addAB(const DTensor<float> &A, const DTensor<float> 
 }
 
 template<>
-inline void DTensor<double>::leastSquaresBatched(DTensor &B, DTensor<int> &infoArray) {
+inline void DTensor<double>::leastSquaresBatchedImpl(DTensor &B, DTensor<int> &infoArray,
+                                                    double **matrixPointers, double **rhsPointers) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
@@ -1530,9 +1566,9 @@ inline void DTensor<double>::leastSquaresBatched(DTensor &B, DTensor<int> &infoA
         m_numRows,
         m_numCols,
         nColsB,
-        m_d_ptrMatrices,
+        matrixPointers,
         m_numRows,
-        B.m_d_ptrMatrices,
+        rhsPointers,
         m_numRows,
         &info,
         infoArray.raw(),
@@ -1540,7 +1576,8 @@ inline void DTensor<double>::leastSquaresBatched(DTensor &B, DTensor<int> &infoA
 }
 
 template<>
-inline void DTensor<float>::leastSquaresBatched(DTensor &B, DTensor<int> &infoArray) {
+inline void DTensor<float>::leastSquaresBatchedImpl(DTensor &B, DTensor<int> &infoArray,
+                                                   float **matrixPointers, float **rhsPointers) {
     size_t batchSize = numMats();
     size_t nColsB = B.numCols();
     if (B.numRows() != m_numRows)
@@ -1559,9 +1596,9 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B, DTensor<int> &infoAr
         m_numRows,
         m_numCols,
         nColsB,
-        m_d_ptrMatrices,
+        matrixPointers,
         m_numRows,
-        B.m_d_ptrMatrices,
+        rhsPointers,
         m_numRows,
         &info,
         infoArray.raw(),
@@ -1569,9 +1606,35 @@ inline void DTensor<float>::leastSquaresBatched(DTensor &B, DTensor<int> &infoAr
 }
 
 template<typename T>
+inline void DTensor<T>::leastSquaresBatched(DTensor &B, DTensor<int> &infoArray) {
+    if (numMats() == 1 && (!m_d_ptrMatrices || !B.m_d_ptrMatrices))
+        throw std::invalid_argument("[Least squares batched] batch of one requires LeastSquaresBatchedWorkspace");
+    leastSquaresBatchedImpl(B, infoArray, m_d_ptrMatrices, B.m_d_ptrMatrices);
+}
+
+template<typename T>
+inline void DTensor<T>::leastSquaresBatched(DTensor &B, LeastSquaresBatchedWorkspace<T> &workspace) {
+    if (numRows() != workspace.m_rows || numCols() != workspace.m_cols || numMats() != workspace.m_batch)
+        throw std::invalid_argument("[Least squares batched] workspace shape does not match A");
+    if (B.numRows() != numRows() || B.numCols() != 1 || B.numMats() != numMats())
+        throw std::invalid_argument("[Least squares batched] incompatible rhs");
+    T **matrixPointers = m_d_ptrMatrices, **rhsPointers = B.m_d_ptrMatrices;
+    workspace.m_info.setStreamIdx(streamIdx());
+    if (workspace.m_singleMatrixPointers) {
+        cudaStream_t stream;
+        gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(streamIdx()), &stream));
+        matrixPointers = workspace.m_singleMatrixPointers->raw();
+        rhsPointers = matrixPointers + 1;
+        k_setSingleMatrixPointers<<<1, 1, 0, stream>>>(matrixPointers, raw(), B.raw());
+        gpuErrChk(cudaGetLastError());
+    }
+    leastSquaresBatchedImpl(B, workspace.m_info, matrixPointers, rhsPointers);
+}
+
+template<typename T>
 inline void DTensor<T>::leastSquaresBatched(DTensor &B) {
-    DTensor<int> infoArray(numMats());
-    leastSquaresBatched(B, infoArray);
+    LeastSquaresBatchedWorkspace<T> workspace(*this);
+    leastSquaresBatched(B, workspace);
 }
 
 template<typename T>
@@ -2369,9 +2432,27 @@ TEMPLATE_CONSTRAINT_REQUIRES_FPX
 class CholeskyBatchFactoriser : public IStatus {
 private:
     DTensor<T> *m_matrix; ///< Matrix to factorise or lower-triangular decomposed matrix
+    std::unique_ptr<DTensor<T *>> m_singleMatrixPointers; ///< Two one-entry arrays, only for batches of one
     size_t m_numRows = 0; ///< Number of rows in `m_matrix`
     size_t m_numMats = 0; ///< Number of matrices in `m_matrix`
     bool m_factorisationDone = false; ///< Whether `m_matrix` holds original or lower-triangular matrix
+
+    void prepareSingleMatrixPointers(DTensor<T> *rhs = nullptr) {
+        if (!m_singleMatrixPointers) return;
+        cudaStream_t stream;
+        gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()), &stream));
+        k_setSingleMatrixPointers<<<1, 1, 0, stream>>>(m_singleMatrixPointers->raw(),
+            m_matrix->raw(), rhs ? rhs->raw() : nullptr);
+        gpuErrChk(cudaGetLastError());
+    }
+
+    T **matrixPointers() const {
+        return m_singleMatrixPointers ? m_singleMatrixPointers->raw() : m_matrix->ptrMatrices();
+    }
+
+    T **rhsPointers(DTensor<T> &rhs) const {
+        return m_singleMatrixPointers ? m_singleMatrixPointers->raw() + 1 : rhs.ptrMatrices();
+    }
 
 public:
     CholeskyBatchFactoriser() = delete;
@@ -2388,6 +2469,7 @@ public:
         m_info->setStreamIdx(A.streamIdx());
         m_numRows = A.numRows();
         m_numMats = A.numMats();
+        if (m_numMats == 1) m_singleMatrixPointers = std::make_unique<DTensor<T *>>(2);
     }
 
     /**
@@ -2405,10 +2487,11 @@ public:
 template<>
 inline void CholeskyBatchFactoriser<double>::factorise() {
     if (m_factorisationDone) return;
+    prepareSingleMatrixPointers();
     gpuErrChk(cusolverDnDpotrfBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
-        m_matrix->ptrMatrices(),
+        matrixPointers(),
         m_numRows,
         m_info->raw(),
         m_numMats));
@@ -2418,10 +2501,11 @@ inline void CholeskyBatchFactoriser<double>::factorise() {
 template<>
 inline void CholeskyBatchFactoriser<float>::factorise() {
     if (m_factorisationDone) return;
+    prepareSingleMatrixPointers();
     gpuErrChk(cusolverDnSpotrfBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
-        m_matrix->ptrMatrices(),
+        matrixPointers(),
         m_numRows,
         m_info->raw(),
         m_numMats));
@@ -2435,13 +2519,14 @@ inline void CholeskyBatchFactoriser<double>::solve(DTensor<double> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
+    prepareSingleMatrixPointers(&b);
     gpuErrChk(cusolverDnDpotrsBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
         1, ///< only supports rhs = 1
-        m_matrix->ptrMatrices(),
+        matrixPointers(),
         m_numRows,
-        b.ptrMatrices(),
+        rhsPointers(b),
         m_numRows,
         m_info->raw(),
         m_numMats));
@@ -2454,13 +2539,14 @@ inline void CholeskyBatchFactoriser<float>::solve(DTensor<float> &b) {
         throw std::invalid_argument("[CholeskyBatchSolve] A and b incompatible");
     }
     if (b.numCols() != 1) throw std::invalid_argument("[CholeskyBatchSolve] only supports `b` with one column");
+    prepareSingleMatrixPointers(&b);
     gpuErrChk(cusolverDnSpotrsBatched(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
         CUBLAS_FILL_MODE_LOWER,
         m_numRows,
         1, ///< only supports rhs = 1
-        m_matrix->ptrMatrices(),
+        matrixPointers(),
         m_numRows,
-        b.ptrMatrices(),
+        rhsPointers(b),
         m_numRows,
         m_info->raw(),
         m_numMats));

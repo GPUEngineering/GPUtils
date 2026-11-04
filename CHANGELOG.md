@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `LeastSquaresBatchedWorkspace<T>` preallocates reusable status storage and one-entry matrix-pointer arrays only for batches of one.
 - `Svd::rankRelative(rtol, atol = 0)` adds GPU rank calculation using per-matrix thresholds `max(atol, rtol * sigmaMax)` and validated tolerances.
 - Build/test and CUDA memory-check scripts run C++/Python tests, repeated leak checks, and save sanitizer logs.
 - Size-safe `Session::recordAllocation(size_t)`, `recordDeallocation(size_t)`, and counted `cudaRelease` methods.
@@ -37,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Batched Cholesky and least-squares support single matrices using constructor-allocated pointer storage without allocations during reusable solves.
 - Size QR workspace for the largest requirement across factorisation, least-squares, and Q extraction; add large square/tall regressions for both precisions.
 - Share stream configuration across translation units using an inline static `Session` member, with a two-file regression test.
 - Prevent SVD constructor exception leaks using a `unique_ptr` owner and raw observer; verify cleanup with allocation-failure tests.

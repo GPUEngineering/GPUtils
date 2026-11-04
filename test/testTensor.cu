@@ -1887,6 +1887,88 @@ TEST_F(LeastSquaresTest, tensorLS1) {
     tensorLeastSquares1<double>(PRECISION_HIGH);
 }
 
+// A batch of one is valid even though ordinary single-matrix tensors do not
+// allocate a device array of matrix pointers. Exercise the public solver API.
+template<typename T>
+void leastSquaresSingleMatrixBatch(T epsilon) {
+    NonblockingTestStream execution;
+    auto &session = Session::getInstance();
+    for (size_t batch : {size_t(1), size_t(2)}) {
+        for (size_t rows : {size_t(2), size_t(3)}) {
+            std::vector<T> data(rows * 2 * batch, T(0)), rhs(rows * batch, T(0));
+            for (size_t k = 0; k < batch; ++k) {
+                data[k * rows * 2] = T(2);
+                data[k * rows * 2 + rows + 1] = T(4);
+                rhs[k * rows] = T(2); rhs[k * rows + 1] = T(8);
+                if (rows == 3) {
+                    data[k * rows * 2 + 2] = data[k * rows * 2 + rows + 2] = T(1);
+                    rhs[k * rows + 2] = T(3);
+                }
+            }
+            DTensor<T> A(data, rows, 2, batch), otherA(data, rows, 2, batch);
+            DTensor<T> b(rhs, rows, 1, batch), otherB(rhs, rows, 1, batch);
+            A.setStreamIdx(1); otherA.setStreamIdx(1); b.setStreamIdx(1); otherB.setStreamIdx(1);
+            const size_t before = session.totalAllocatedBytes();
+            {
+                LeastSquaresBatchedWorkspace<T> workspace(A);
+                const size_t allocated = session.totalAllocatedBytes();
+                EXPECT_EQ(allocated - before, batch * sizeof(int) + (batch == 1 ? 2 * sizeof(T *) : 0));
+                for (int repeat = 0; repeat < 3; ++repeat) {
+                    DTensor<T> &lhs = repeat % 2 ? otherA : A;
+                    DTensor<T> &result = repeat % 2 ? otherB : b;
+                    lhs.upload(data); result.upload(rhs);
+                    lhs.leastSquaresBatched(result, workspace);
+                    std::vector<T> solution;
+                    result.download(solution);
+                    for (size_t k = 0; k < batch; ++k) {
+                        ASSERT_EQ(workspace.info()(k), 0);
+                        EXPECT_NEAR(solution[k * rows], T(1), epsilon);
+                        EXPECT_NEAR(solution[k * rows + 1], T(2), epsilon);
+                    }
+                    EXPECT_EQ(session.totalAllocatedBytes(), allocated);
+                }
+            }
+            EXPECT_EQ(session.totalAllocatedBytes(), before);
+            if (batch == 1) {
+                EXPECT_EQ(A.ptrMatrices(), nullptr);
+                EXPECT_EQ(b.ptrMatrices(), nullptr);
+                DTensor<int> status(1);
+                EXPECT_THROW(A.leastSquaresBatched(b, status), std::invalid_argument);
+            }
+            A.upload(data); b.upload(rhs);
+            A.leastSquaresBatched(b); // Convenience overload constructs its own temporary workspace.
+            std::vector<T> solution;
+            b.download(solution);
+            EXPECT_NEAR(solution[0], T(1), epsilon);
+            EXPECT_NEAR(solution[1], T(2), epsilon);
+        }
+    }
+}
+
+TEST_F(LeastSquaresTest, singleMatrixBatchFloat) {
+    leastSquaresSingleMatrixBatch<float>(PRECISION_LOW);
+}
+
+TEST_F(LeastSquaresTest, singleMatrixBatchDouble) {
+    leastSquaresSingleMatrixBatch<double>(PRECISION_HIGH);
+}
+
+TEST_F(LeastSquaresTest, workspaceRejectsIncompatibleShapes) {
+    DTensor<double> A(3, 2), b(3), differentRows(4, 2), differentCols(3, 1), differentBatch(3, 2, 2);
+    DTensor<double> shortB(2), matrixB(3, 2), batchedB(3, 1, 2), wide(2, 3), empty;
+    const size_t before = Session::getInstance().totalAllocatedBytes();
+    EXPECT_THROW(LeastSquaresBatchedWorkspace<double> workspace(wide), std::invalid_argument);
+    EXPECT_THROW(LeastSquaresBatchedWorkspace<double> workspace(empty), std::invalid_argument);
+    EXPECT_EQ(Session::getInstance().totalAllocatedBytes(), before);
+    LeastSquaresBatchedWorkspace<double> workspace(A);
+    EXPECT_THROW(differentRows.leastSquaresBatched(b, workspace), std::invalid_argument);
+    EXPECT_THROW(differentCols.leastSquaresBatched(b, workspace), std::invalid_argument);
+    EXPECT_THROW(differentBatch.leastSquaresBatched(b, workspace), std::invalid_argument);
+    EXPECT_THROW(A.leastSquaresBatched(shortB, workspace), std::invalid_argument);
+    EXPECT_THROW(A.leastSquaresBatched(matrixB, workspace), std::invalid_argument);
+    EXPECT_THROW(A.leastSquaresBatched(batchedB, workspace), std::invalid_argument);
+}
+
 template<typename T>
 void leastSquaresReusesStatusBuffer(T epsilon) {
     auto &session = Session::getInstance();
@@ -2334,6 +2416,52 @@ protected:
     virtual ~CholeskyTest() {
     }
 };
+
+template<typename T>
+void choleskySingleMatrixBatch(T epsilon) {
+    NonblockingTestStream execution;
+    auto &session = Session::getInstance();
+    for (bool factorised : {false, true}) {
+        DTensor<T> A(factorised ? std::vector<T>{2, 0, 0, 3} : std::vector<T>{4, 0, 0, 9}, 2, 2, 1);
+        DTensor<T> b(2), otherB(2);
+        A.setStreamIdx(1); b.setStreamIdx(1); otherB.setStreamIdx(1);
+        ASSERT_EQ(A.ptrMatrices(), nullptr);
+        ASSERT_EQ(b.ptrMatrices(), nullptr);
+        const size_t before = session.totalAllocatedBytes();
+        {
+            CholeskyBatchFactoriser<T> chol(A, factorised);
+            const size_t allocated = session.totalAllocatedBytes();
+            EXPECT_EQ(allocated - before, sizeof(int) + 2 * sizeof(T *));
+            if (!factorised) {
+                chol.factorise();
+                ASSERT_EQ(chol.info()(0), 0);
+            }
+            for (int repeat = 0; repeat < 3; ++repeat) {
+                DTensor<T> &rhs = repeat % 2 ? otherB : b;
+                rhs.upload(std::vector<T>{4, 18});
+                chol.solve(rhs);
+                std::vector<T> solution;
+                rhs.download(solution);
+                ASSERT_EQ(chol.info()(0), 0);
+                ASSERT_EQ(solution.size(), 2u);
+                EXPECT_NEAR(solution[0], T(1), epsilon);
+                EXPECT_NEAR(solution[1], T(2), epsilon);
+                EXPECT_EQ(session.totalAllocatedBytes(), allocated);
+            }
+        }
+        EXPECT_EQ(session.totalAllocatedBytes(), before);
+        EXPECT_EQ(A.ptrMatrices(), nullptr);
+        EXPECT_EQ(b.ptrMatrices(), nullptr);
+    }
+}
+
+TEST_F(CholeskyTest, singleMatrixBatchFloat) {
+    choleskySingleMatrixBatch<float>(PRECISION_LOW);
+}
+
+TEST_F(CholeskyTest, singleMatrixBatchDouble) {
+    choleskySingleMatrixBatch<double>(PRECISION_HIGH);
+}
 
 
 /* ---------------------------------------

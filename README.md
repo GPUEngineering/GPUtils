@@ -284,8 +284,24 @@ Then, we can solve the system by
 A.leastSquaresBatched(B);
 ```
 
-For repeated batched solves, allocate the per-matrix device status buffer once
-during setup and pass it explicitly:
+For repeated solves, construct a workspace once during setup. It supports any
+batch size, including one, and subsequent calls allocate no GPUtils memory:
+
+```c++
+LeastSquaresBatchedWorkspace<float> workspace(A);
+A.leastSquaresBatched(B, workspace);
+Session::getInstance().synchronizeStream(A.streamIdx());
+std::vector<int> status;
+workspace.info().download(status);
+```
+
+The workspace owns one status integer per matrix and allocates two one-entry
+device pointer arrays only for a batch of one. Reuse it with tensors of the same
+shape; their storage addresses may differ. Keep it alive until the solve stream
+completes and use separate workspaces for concurrent streams.
+
+For batches with existing device pointer arrays, the status-buffer overload
+also remains available:
 
 ```c++
 DTensor<int> info(A.numMats()); // setup: one integer per matrix
@@ -295,13 +311,20 @@ std::vector<int> status;
 info.download(status);
 ```
 
-The original one-argument overload remains available and allocates its own
-temporary status buffer. The supplied buffer may be larger than the batch;
+The original one-argument overload remains available and constructs its own
+temporary workspace. The status-only overload rejects single matrices that lack
+device pointer arrays; use an explicit workspace for allocation-free calls in
+that case. The supplied status buffer may be larger than the batch;
 only its first `A.numMats()` entries are written. Both overloads overwrite A
 and B; restore the original inputs before solving a new problem. Keep the
 inputs and supplied buffer alive until A's stream completes. Reuse on that
 stream is ordered; use separate buffers or synchronization for concurrent
 streams. The buffer's own stream index does not select the solve stream.
+
+`CholeskyBatchFactoriser<T>` also supports a batch of one. Its constructor
+allocates two one-entry device pointer arrays only for that case; factorisation
+and repeated solves allocate no GPUtils memory. Ordinary tensors retain their
+existing allocation behaviour, and larger batches reuse tensor pointer arrays.
 
 The `DTensor` `B` will be overwritten with the solution.
 
