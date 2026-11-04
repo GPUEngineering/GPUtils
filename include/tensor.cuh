@@ -2040,7 +2040,7 @@ TEMPLATE_WITH_TYPE_T
 TEMPLATE_CONSTRAINT_REQUIRES_FPX
 class QRFactoriser : public IStatus {
 private:
-    int m_workspaceSize = 0; ///< Size of workspace needed for LS
+    int m_workspaceSize = 0; ///< Maximum workspace element count for geqrf and both ormqr calls
     std::unique_ptr<DTensor<T> > m_householder; ///< For storing householder reflectors
     std::unique_ptr<DTensor<T> > m_workspace; ///< Workspace for LS
     DTensor<T> *m_matrix; ///< Lhs matrix template. Do not destroy!
@@ -2057,9 +2057,9 @@ public:
         if (A.numRows() < A.numCols()) throw std::invalid_argument("[QR] Matrix A must be tall or square");
         m_matrix = &A;
         m_info->setStreamIdx(A.streamIdx());
+        m_householder = std::make_unique<DTensor<T> >(m_matrix->numCols());
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T> >(m_workspaceSize);
-        m_householder = std::make_unique<DTensor<T> >(m_matrix->numCols());
     }
 
     /**
@@ -2096,20 +2096,30 @@ template<>
 inline void QRFactoriser<double>::computeWorkspaceSize() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    gpuErrChk(cusolverDnDgeqrf_bufferSize(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
-        m, n,
-        nullptr, m,
-        &m_workspaceSize));
+    auto handle = Session::getInstance().cuSolverHandle(m_matrix->streamIdx());
+    int factoriseSize = 0, solveSize = 0, extractSize = 0;
+    gpuErrChk(cusolverDnDgeqrf_bufferSize(handle, m, n, m_matrix->raw(), m, &factoriseSize));
+    // Buffer-size queries do not modify C; use A as a sufficiently sized placeholder.
+    gpuErrChk(cusolverDnDormqr_bufferSize(handle, CUBLAS_SIDE_LEFT, CUBLAS_OP_T,
+        m, 1, n, m_matrix->raw(), m, m_householder->raw(), m_matrix->raw(), m, &solveSize));
+    gpuErrChk(cusolverDnDormqr_bufferSize(handle, CUBLAS_SIDE_LEFT, CUBLAS_OP_N,
+        m, n, n, m_matrix->raw(), m, m_householder->raw(), m_matrix->raw(), m, &extractSize));
+    m_workspaceSize = std::max({factoriseSize, solveSize, extractSize});
 }
 
 template<>
 inline void QRFactoriser<float>::computeWorkspaceSize() {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
-    gpuErrChk(cusolverDnSgeqrf_bufferSize(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
-        m, n,
-        nullptr, m,
-        &m_workspaceSize));
+    auto handle = Session::getInstance().cuSolverHandle(m_matrix->streamIdx());
+    int factoriseSize = 0, solveSize = 0, extractSize = 0;
+    gpuErrChk(cusolverDnSgeqrf_bufferSize(handle, m, n, m_matrix->raw(), m, &factoriseSize));
+    // Buffer-size queries do not modify C; use A as a sufficiently sized placeholder.
+    gpuErrChk(cusolverDnSormqr_bufferSize(handle, CUBLAS_SIDE_LEFT, CUBLAS_OP_T,
+        m, 1, n, m_matrix->raw(), m, m_householder->raw(), m_matrix->raw(), m, &solveSize));
+    gpuErrChk(cusolverDnSormqr_bufferSize(handle, CUBLAS_SIDE_LEFT, CUBLAS_OP_N,
+        m, n, n, m_matrix->raw(), m, m_householder->raw(), m_matrix->raw(), m, &extractSize));
+    m_workspaceSize = std::max({factoriseSize, solveSize, extractSize});
 }
 
 template<>

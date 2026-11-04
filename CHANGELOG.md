@@ -12,114 +12,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Explicit scale-aware `Svd::rankRelative(rtol, atol = 0)` counts singular values
-  above `max(atol, rtol * sigmaMax)` using each matrix's own scale on the GPU.
-  Validates finite, nonnegative tolerances, shares the existing reusable rank buffer,
-  and preserves the absolute `rank()` API and nullspace policy. Added rescaling,
-  per-batch, zero-matrix, boundary, repeated-call, and nonblocking-stream tests.
-- `scripts/build_and_test.sh` builds the main executable and tests and runs all
-  C++/Python tests; `scripts/check_memory.sh` additionally runs full CUDA memcheck
-  with leak detection, shuffled repeated tests, main-executable checks, and saved logs.
-- Size-safe manual accounting methods `Session::recordAllocation(size_t)` and
-  `recordDeallocation(size_t)`, plus a counted `cudaRelease` wrapper.
-- `DTensor::getRowsInto(destination, rowsFrom, rowsTo, matIdx)` copies rows into a
-  preallocated tensor without allocating or resizing; validates indices, destination shape,
-  and non-overlapping storage, and enqueues the copy on the source tensor's stream.
-- `DTensor::leastSquaresBatched(b, infoArray)` accepts a reusable device status buffer,
-  avoiding GPUtils's per-call workspace allocation while retaining the original overload.
+- `Svd::rankRelative(rtol, atol = 0)` adds GPU rank calculation using per-matrix thresholds `max(atol, rtol * sigmaMax)` and validated tolerances.
+- Build/test and CUDA memory-check scripts run C++/Python tests, repeated leak checks, and save sanitizer logs.
+- Size-safe `Session::recordAllocation(size_t)`, `recordDeallocation(size_t)`, and counted `cudaRelease` methods.
+- `DTensor::getRowsInto(destination, rowsFrom, rowsTo, matIdx)` validates and copies rows into preallocated storage on the source stream.
+- `DTensor::leastSquaresBatched(b, infoArray)` supports reusable device status storage without per-call allocation.
 - `Session::numStreams()` exposes the initialized stream count.
-- Standalone Release-mode GPU benchmarks for pointer-based versus strided batched GEMM
-  and row-loop, 2D-copy, kernel, and actual `getRows` extraction paths. Includes configurable
-  dimensions, correctness checks, preallocated and allocation-inclusive measurements,
-  host/CUDA-event timings, CSV percentiles, and build/run documentation.
-- Regression tests for setup validation, malformed files, dimension mismatches in checked
-  operations, non-default GEMM coefficients, stream ordering, move semantics, reusable
-  least-squares status buffers, and preallocated row extraction.
+- Configurable GPU benchmarks compare batched GEMM and row-extraction methods, with correctness checks, host/GPU timings, and CSV results.
+- Regression tests cover validation, files, GEMM coefficients, stream ordering, ownership, rank tolerances, and reusable buffers.
 
 ### Changed
 
-- **Breaking:** replace `incrementAllocatedBytes(int)` with separate size-safe
-  allocation/deallocation accounting methods. Reshape retains owned pointer-array
-  capacity when shrinking and reuses it when growing within capacity.
-- **Breaking:** copy assignment now deep-copies tensor data and shape consistently with
-  copy construction, instead of creating a non-owning alias. Use explicit slices for
-  aliasing, and `deviceCopyTo` for copying into preallocated storage. Move assignment
-  transfers ownership and empties the source; moving a slice retains its borrowing semantics.
-- Column-major uploads copy directly from the supplied host vector; only row-major uploads
-  allocate a conversion buffer.
-- `setStreamIdx` returns a reference for lvalues and moves rvalues into the returned tensor,
-  eliminating the previous implicit device allocation and deep copy.
-- `getRows` uses one asynchronous 2D device copy instead of a cuBLAS call per row and
-  returns a tensor with the source's stream index. It shares its copy implementation with
-  `getRowsInto`; caller-supplied destinations retain their own stream index.
-- Explicit tensor allocations require positive dimensions that fit CUDA's integer dimensions
-  and reject allocation-size overflow; default construction remains available for placeholders.
-  Vector constructors validate data length and storage mode before device allocation.
-- Added validation for reshape sizes, slice axes/ranges, random bounds, storage modes,
-  row extraction, debug element access, empty factoriser inputs, and QR output batch shapes.
-- Stream setup rejects zero streams and reconfiguration after session initialization;
-  stream selection validates against the actual initialized count.
-- Documented unchecked numerical-operation preconditions, slice and asynchronous-buffer
-  lifetimes, stream dependencies, reusable workspace usage, and binary-format assumptions.
-- Ignore generated CMake/CTest files, fetched dependencies, build products, and temporary
-  file-I/O test artifacts, including those produced by in-source builds.
+- **Breaking:** replace `incrementAllocatedBytes(int)` with separate size-safe allocation/deallocation methods.
+- **Breaking:** copy assignment deep-copies; move assignment transfers storage and empties the source. Use slices for aliases and `deviceCopyTo` for preallocated copies.
+- Reshape retains and reuses owned matrix-pointer capacity where possible.
+- Column-major uploads use the supplied host vector directly; only row-major uploads allocate a conversion buffer.
+- `setStreamIdx` returns a reference for lvalues and moves rvalues, avoiding implicit allocation and deep copying.
+- `getRows` uses one asynchronous 2D copy and inherits the source stream; `getRowsInto` preserves the destination's stream index.
+- Tensor constructors validate dimensions, allocation overflow, vector length, and storage mode before allocating.
+- Validate reshape sizes, slices, random bounds, row extraction, debug access, empty factoriser inputs, and QR output shapes.
+- Reject zero streams and reconfiguration after initialization; validate stream indices against the initialized count.
+- Document numerical preconditions, buffer lifetimes, stream dependencies, reusable workspaces, and binary-format assumptions.
+- Ignore generated build files, dependencies, binaries, and temporary test artifacts, including in-source builds.
 
 ### Fixed
 
-- Store the configured stream count in a C++17 inline static `Session` member,
-  eliminating per-translation-unit copies. A two-CUDA-translation-unit regression
-  verifies cross-file configuration, singleton identity, second-stream execution,
-  allocation accounting, and rejection of reconfiguration after initialization.
-- SVD uses a `unique_ptr` owner for its optional input copy and a separate raw
-  observer for numerical operations, removing manual deletion and preventing leaks
-  if later workspace/output construction throws. Fault-injection regressions verify
-  cleanup, input preservation, and borrowed-input lifetime for float and double.
-- Allocating tensor constructors release acquired device storage and preserve the
-  original exception when host allocation fails during row-major conversion or
-  matrix-pointer setup. Regression tests inject actual test-only host `operator new`
-  failures after GPU allocation, verify accounting recovery, and exercise successful
-  construction afterward for float, double, and int.
-- Session shutdown completes work on all owned CUDA streams, releases library
-  handles, and explicitly destroys each stream instead of retaining stream resources
-  until CUDA context teardown.
-- Complete selected-stream use for single and batched Cholesky, including workspace
-  queries and solves; solver status tensors follow the matrix stream. Host transfers,
-  debug scalar reads, initialization, and pointer-array uploads complete on their selected
-  stream. Transpose results inherit the source stream. Device copies order prior destination
-  work and complete on the source stream before returning. Added nonblocking-stream
-  regressions for Cholesky, transfers, and delayed SVD inputs, and documented cross-stream
-  operand dependencies and blocking transfer semantics.
-- Keep QR debugging-helper host uploads on the selected solver stream and complete
-  them before returning, fixing an intermittent nonblocking-stream failure exposed
-  by the shuffled full-suite sanitizer run.
-- Track actual owned element bytes and matrix-pointer capacity independently of shape,
-  update counters only after successful allocation/free calls, and transfer sizes with
-  moves/swaps. Reshaped views own independent pointer arrays without freeing borrowed
-  data. Added reshape/reallocation/ownership and large-counter arithmetic regressions.
-- Repeated `Svd::rank()` calls reset device counters before counting, preventing
-  accumulation across calls and thresholds. SVD factorisation, rank reset/counting,
-  and result stream metadata consistently use the input matrix's selected stream.
-  Added repeated-call and nonblocking-stream regressions for float and double batches.
-- Copy/move assignment releases the destination's previous owned storage, preserves
-  matrix-pointer and stream metadata, and handles self-assignment and empty tensors safely.
-  Copy construction and assignment complete copies on the source's selected stream.
-  Added regression coverage for ownership, allocation accounting, views, and stream ordering.
+- Size QR workspace for the largest requirement across factorisation, least-squares, and Q extraction; add large square/tall regressions for both precisions.
+- Share stream configuration across translation units using an inline static `Session` member, with a two-file regression test.
+- Prevent SVD constructor exception leaks using a `unique_ptr` owner and raw observer; verify cleanup with allocation-failure tests.
+- Tensor constructors release GPU storage on subsequent host-allocation failures; fault-injection tests verify cleanup for float, double, and int.
+- Session shutdown completes pending work, releases library handles, and destroys owned CUDA streams.
+- Single and batched Cholesky queries, factorisations, solves, and status tensors use the matrix-selected stream.
+- Host transfers, scalar reads, initialization, and pointer uploads complete on their selected stream; transpose results inherit the source stream.
+- Device copies wait for prior destination work and complete on the source stream before returning.
+- QR debugging-helper uploads complete on the selected solver stream before returning, fixing intermittent stream-ordering failures.
+- Track owned bytes and pointer capacity independently of shape, count successful allocations/frees, and preserve accounting across reshape, views, and moves.
+- Reset `Svd::rank()` counters on each call; SVD factorisation, rank kernels, and results use the input stream.
+- Assignment releases previous storage and safely handles metadata, self-assignment, and empty tensors; deep copies complete on the source stream.
 - Enable testing at the project root so `ctest --test-dir build` discovers the test suite.
-- Make the Python-format binary-reader test self-contained, removing its dependency on
-  separately generated Python test files and a particular working directory.
-- Reject malformed text headers/data and incomplete or incorrectly sized binary files before
-  constructing tensors; reject extra payload data and report file-write failures. Handle short
-  file names safely and avoid writes into empty text-data vectors and uninitialized binary reads.
+- Make the Python-format binary-reader test independent of generated Python files and the working directory.
+- Reject malformed text and incomplete or incorrectly sized binary files; report write failures and handle short filenames and empty data safely.
 - Avoid null-pointer arithmetic when slicing a single-matrix tensor along the matrix axis.
-- QR workspace queries, factorisation, and least-squares/Q extraction use the matrix-selected
-  cuSolver handle consistently with cuBLAS. The debugging `getQR` method synchronizes that
-  stream before reading the triangular factor on the host.
-- Givens coefficient computation runs on the selected cuBLAS stream before the rotation,
-  checks kernel launch errors, and restores the caller's previous cuBLAS pointer mode.
-- Configure test streams independently of test execution order and add nonblocking-stream
-  regressions with delayed inputs and downstream consumers for QR, Givens, and row extraction.
-- Correct the row-slicing test to select a column before slicing its rows, rather than using
-  flat storage offsets as row indices.
+- QR operations use the matrix-selected cuSolver/cuBLAS stream; `getQR` synchronizes before reading R on the host.
+- Givens coefficient kernels use the selected cuBLAS stream, check launch errors, and restore the previous pointer mode.
+- Make test-stream setup independent of execution order and add nonblocking-stream regressions for QR, Givens, and row extraction.
+- Correct the row-slicing test to select a column before slicing its rows.
 
 
 <!-- ---------------------
@@ -170,8 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The project now uses the GNU General Public License (GPL) v3; license file added
-- Introduces new Python package for storing and loading numpy arrays; in can be installed with `pip install gputils-api`; 
-  unit tests and documentation
+- Python package for storing and loading NumPy arrays, with tests and documentation; install with `pip install gputils-api`.
 
 ### Fixed
 
@@ -187,8 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Method `saveToFile` becomes `DTensor<T>::saveToFile(std::string pathToFile, Serialisation ser)`, i.e., the user can 
-  choose whether to save the file as a text (ASCII) file, or a binary one
+- `DTensor<T>::saveToFile(std::string pathToFile, Serialisation ser)` supports text (ASCII) and binary output.
 
 ### Changed
 
@@ -232,12 +167,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- (Breaking change) The methods `CholeskyFactoriser::factorise`, `CholeskyFactoriser::solve`, `QRFactoriser::factorise`,
-  `QRFactoriser::leastSquares`, and `QRFactoriser::getQR` are now `void` and do not
-  return a status code. Instead, a status code is returned by called `statusCode`.
-  This change leads to a reduction in data being downloaded from the GPU.
-- In `Svd` a status code (`bool`) is returned from `Svd<double>::factorise` only if the
-  `#GPUTILS_DEBUG_MODE` is defined, otherwise, the method returns always `true`.
+- **Breaking:** Cholesky factorisation/solve and QR factorisation/least-squares/extraction return `void`; query status separately to reduce GPU downloads.
+- `Svd<double>::factorise` returns a status only with `GPUTILS_DEBUG_MODE`; otherwise it always returns `true`.
 - New base class `IStatus` used for a universal implementation of `info()`
 
 
@@ -259,7 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Memory management improvements: we got rid of `pointerToMatrices`, which would unnecessarily allocate memory and `addAB` does not allocate any new memory internally.
+- Remove unnecessary `pointerToMatrices` allocations; `addAB` no longer allocates memory internally.
 
 <!-- ---------------------
       v1.3.0
@@ -334,7 +265,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Implementation of `DTensor<T>`, which is our basic entity for data storage and maniputation (supports basic linear algebra using `cublas` and `cusolver`); implementation of `=+`, `-=`, `*=` (for scalars and other tensors), `+`, `-`, `*` (scalars and tensors), printing (using `std::cout <<`), computation of norms (Frobenius and sum of absolute values of all elements); device vectors and matrices are tensors  
+- `DTensor<T>` provides GPU tensor storage, arithmetic, printing, and norms using cuBLAS and cuSolver; includes device vectors and matrices.
 - Singular value decomposition using `cublas`
 - Least-squares on tensors
 - Computation of nullspace matrices (on tensor objects)

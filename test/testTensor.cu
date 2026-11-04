@@ -2582,6 +2582,64 @@ TEST_F(QRTest, qrFactorisation) {
     qrFactorisation<double>(PRECISION_HIGH);
 }
 
+// These shapes exercise ormqr workspace requirements exceeding geqrf's on CUDA 13.
+// Check both callers of ormqr, reusing the same factorisation and workspace.
+template<typename T>
+void qrLargeWorkspace(size_t m, size_t n, T tolerance) {
+    std::vector<T> data(m * n, T(0));
+    std::vector<T> expected(n), rhs(m, T(0));
+    for (size_t c = 0; c < n; ++c) {
+        expected[c] = c % 2 ? T(-1) : T(1);
+        for (size_t r = c; r < m; r += n) {
+            data[r + c * m] = T(2);
+            rhs[r] += T(2) * expected[c];
+            if (r + 1 < m) {
+                data[r + 1 + c * m] = T(0.25);
+                rhs[r + 1] += T(0.25) * expected[c];
+            }
+        }
+    }
+    DTensor<T> original(data, m, n, 1, columnMajor);
+    DTensor<T> factors(original);
+    factors.setStreamIdx(1);
+    QRFactoriser<T> qr(factors);
+    qr.factorise();
+    ASSERT_EQ(qr.info()(0), 0);
+
+    DTensor<T> b(rhs, m);
+    b.setStreamIdx(1);
+    qr.leastSquares(b);
+    ASSERT_EQ(qr.info()(0), 0);
+    std::vector<T> solution;
+    b.download(solution);
+    for (size_t c = 0; c < n; ++c)
+        ASSERT_NEAR(solution[c], expected[c], tolerance) << "column " << c;
+
+    DTensor<T> Q(m, n), R(n, n), reconstructed(m, n);
+    Q.setStreamIdx(1); R.setStreamIdx(1); reconstructed.setStreamIdx(1);
+    qr.getQR(Q, R);
+    ASSERT_EQ(qr.info()(0), 0);
+    reconstructed.addAB(Q, R);
+    reconstructed -= original;
+    EXPECT_LT(reconstructed.normF() / original.normF(), tolerance);
+}
+
+TEST_F(QRTest, largeSquareWorkspaceFloat) {
+    qrLargeWorkspace<float>(512, 512, 1e-4f);
+}
+
+TEST_F(QRTest, largeSquareWorkspaceDouble) {
+    qrLargeWorkspace<double>(512, 512, 1e-10);
+}
+
+TEST_F(QRTest, largeTallWorkspaceFloat) {
+    qrLargeWorkspace<float>(4096, 256, 1e-4f);
+}
+
+TEST_F(QRTest, largeTallWorkspaceDouble) {
+    qrLargeWorkspace<double>(4096, 256, 1e-10);
+}
+
 /* ---------------------------------------
  * QR factorisation
  * - tall and skinny matrix
