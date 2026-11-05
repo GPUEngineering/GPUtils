@@ -100,6 +100,42 @@ DTensor<float> y(10);
 x.deviceCopyTo(y);  // x ---> y (device memory to device memory)
 ```
 
+For copies between preallocated buffers on the same stream, use
+`deviceCopyToAsync` to enqueue the copy without an explicit synchronization:
+
+```c++
+DTensor<float> source(std::vector<float>(10, 1.f), 10);
+DTensor<float> destination(10);
+source.deviceCopyToAsync(destination);
+destination *= 2.f; // Ordered after the copy on the same selected stream.
+std::vector<float> result;
+destination.download(result); // Completes the stream before the CPU uses result.
+```
+
+An explicit-stream overload is also available:
+
+```c++
+cudaStream_t stream;
+gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(source.streamIdx()), &stream));
+source.deviceCopyToAsync(destination, stream);
+```
+
+For a nonempty source, both tensors must select the same actual CUDA stream;
+the explicit overload requires it to match `stream` too. Mismatches throw
+`std::invalid_argument`. The operation checks destination capacity, copies
+only the source-sized prefix, and leaves any destination tail unchanged.
+Identical data pointers are a no-op; partially overlapping copy regions are
+rejected. No storage is allocated or resized, and neither stream index changes.
+
+The backing allocations must remain valid until the copy completes. Queue
+source producers and destination consumers on the same stream, or establish
+CUDA-event dependencies for accesses from other streams. Changing a stream
+index does not itself order existing work. Synchronize before the CPU needs
+completion or before releasing/replacing storage that is still in use.
+Deferred CUDA errors are reported at the relevant completion boundary.
+`deviceCopyTo`, copy construction, and copy assignment retain their existing
+completion guarantees.
+
 Copy construction and copy assignment create independent owning storage:
 
 ```c++
@@ -589,6 +625,10 @@ Stream ordering rules:
   selected stream, then completes the copy on the source stream before returning.
   Neither stream index changes, so subsequent destination-stream consumers are safe.
   This is a blocking convenience operation, not a transfer-overlap API.
+- `source.deviceCopyToAsync(destination[, stream])` enqueues on the common
+  selected stream without explicit synchronization. It rejects nonempty
+  copies with incompatible streams and partially overlapping regions. The
+  caller retains the backing allocations and orders accesses from other streams.
 - Arithmetic involving several tensors does not automatically connect all operand
   streams. Callers must synchronize or establish CUDA-event dependencies between
   different producer and consumer streams. A selected stream records an execution

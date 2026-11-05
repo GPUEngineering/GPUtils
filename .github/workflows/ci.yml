@@ -12,7 +12,7 @@ jobs:
   ci:
     name: A40 CUDA and Python tests
     runs-on: [self-hosted, linux, x64, a40]
-    timeout-minutes: 40
+    timeout-minutes: 20
 
     env:
       JOBS: "4"
@@ -37,7 +37,7 @@ jobs:
           build/test-venv/bin/python -m pip install --upgrade pip
           build/test-venv/bin/python -m pip install ./python pytest
 
-      - name: Build, run unit tests, and check CUDA memory
+      - name: Unit tests and satanization
         run: |
           bash scripts/check_memory.sh -DSM_ARCH=86 -DCPPVERSION=20
 

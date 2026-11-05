@@ -566,6 +566,26 @@ public:
     void deviceCopyTo(DTensor<T> &other) const;
 
     /**
+     * Enqueue a device-to-device copy on this tensor's selected stream.
+     * The destination must select the same CUDA stream and have room for all
+     * source elements; only that prefix is written. Identical data pointers
+     * are a no-op; partially overlapping copy regions are rejected.
+     * Does not allocate, resize, change stream IDs, or explicitly synchronize.
+     * Keep the backing allocations alive until the stream completes. Queue
+     * producers/consumers on this stream or establish event dependencies for
+     * accesses on other streams. Empty sources are a no-op.
+     */
+    void deviceCopyToAsync(DTensor<T> &other) const;
+
+    /**
+     * Explicit-stream overload of deviceCopyToAsync. For nonempty tensors,
+     * stream must match both tensors' selected CUDA streams. A mismatch is
+     * rejected rather than inserting a hidden wait or changing stream IDs.
+     * Completion and any deferred CUDA errors are the caller's responsibility.
+     */
+    void deviceCopyToAsync(DTensor<T> &other, cudaStream_t stream) const;
+
+    /**
      * Slices rows from specified matrix.
      * The copy is enqueued on this tensor's stream; the result inherits that
      * stream. Keep the source storage alive until the copy completes, and
@@ -1406,6 +1426,31 @@ inline void DTensor<T>::deviceCopyTo(DTensor<T> &elsewhere) const {
             m_numRows * m_numCols * m_numMats * sizeof(T), cudaMemcpyDeviceToDevice, stream));
     }
     gpuErrChk(cudaStreamSynchronize(stream));
+}
+
+template<typename T>
+inline void DTensor<T>::deviceCopyToAsync(DTensor<T> &elsewhere) const {
+    if (numEl() == 0) return;
+    deviceCopyToAsync(elsewhere, selectedStream());
+}
+
+template<typename T>
+inline void DTensor<T>::deviceCopyToAsync(DTensor<T> &elsewhere, cudaStream_t stream) const {
+    if (elsewhere.numEl() < numEl())
+        throw std::invalid_argument("[deviceCopyToAsync] tensor does not fit into destination");
+    if (numEl() == 0) return;
+    if (selectedStream() != stream || elsewhere.selectedStream() != stream)
+        throw std::invalid_argument("[deviceCopyToAsync] both tensors must select the copy stream");
+    if (elsewhere.raw() == m_d_data) return;
+
+    const size_t bytes = numEl() * sizeof(T);
+    const auto source = reinterpret_cast<std::uintptr_t>(m_d_data);
+    const auto destination = reinterpret_cast<std::uintptr_t>(elsewhere.raw());
+    // Compare only the regions actually copied, not an unused destination tail.
+    const auto separation = source < destination ? destination - source : source - destination;
+    if (separation < bytes)
+        throw std::invalid_argument("[deviceCopyToAsync] copy regions overlap");
+    gpuErrChk(cudaMemcpyAsync(elsewhere.raw(), m_d_data, bytes, cudaMemcpyDeviceToDevice, stream));
 }
 
 template<>
