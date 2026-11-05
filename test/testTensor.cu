@@ -5,6 +5,8 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include "hostAllocationFailure.h"
 #include "sessionAcrossTranslationUnits.h"
 
@@ -246,6 +248,209 @@ void deviceCopiesUseSelectedStreams() {
 TEST_F(TensorTest, deviceCopiesOrderBothStreams) {
     deviceCopiesUseSelectedStreams<float>();
     deviceCopiesUseSelectedStreams<double>();
+}
+
+// Hold the stream until the test releases it. A bounded wait turns an
+// accidental synchronization inside an Async API into a failure, not a hang.
+class AsyncCopyGate {
+    cudaStream_t m_stream;
+    std::mutex m_mutex;
+    std::condition_variable m_condition;
+    bool m_released = false, m_expired = false;
+
+    static void CUDART_CB wait(void *context) {
+        auto &gate = *static_cast<AsyncCopyGate *>(context);
+        std::unique_lock<std::mutex> lock(gate.m_mutex);
+        gate.m_expired = !gate.m_condition.wait_for(lock, std::chrono::seconds(5),
+            [&] { return gate.m_released; });
+    }
+
+public:
+    explicit AsyncCopyGate(cudaStream_t stream) : m_stream(stream) {
+        gpuErrChk(cudaLaunchHostFunc(stream, wait, this));
+    }
+    ~AsyncCopyGate() {
+        release();
+        gpuErrChk(cudaStreamSynchronize(m_stream));
+    }
+    void release() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_released = true;
+        m_condition.notify_all();
+    }
+    bool expired() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_expired;
+    }
+};
+
+class AsyncCopyEvent {
+public:
+    cudaEvent_t value;
+    AsyncCopyEvent() { gpuErrChk(cudaEventCreateWithFlags(&value, cudaEventDisableTiming)); }
+    ~AsyncCopyEvent() { gpuErrChk(cudaEventDestroy(value)); }
+};
+
+template<typename T>
+void asyncDeviceCopiesOrderWithoutWaiting() {
+    NonblockingTestStream execution;
+    DTensor<T> producer(std::vector<T>{1, 2, 3, 4}, 4);
+    DTensor<T> source(4, 1, 1, true), destination(6, 1, 1, true), captured(6);
+    source.setStreamIdx(1);
+    destination.setStreamIdx(1);
+    captured.setStreamIdx(1);
+    // Warm up cuBLAS before gating the stream to exclude lazy setup work.
+    destination *= T(1);
+    gpuErrChk(cudaStreamSynchronize(execution.stream));
+    const size_t allocated = Session::getInstance().totalAllocatedBytes();
+    const auto address = destination.raw();
+    for (bool explicitStream : {false, true}) {
+        AsyncCopyEvent completed;
+        {
+            AsyncCopyGate gate(execution.stream);
+            gpuErrChk(cudaMemcpyAsync(source.raw(), producer.raw(), 4 * sizeof(T),
+                cudaMemcpyDeviceToDevice, execution.stream));
+            gpuErrChk(cudaMemsetAsync(destination.raw(), 0, 6 * sizeof(T), execution.stream));
+            if (explicitStream) source.deviceCopyToAsync(destination, execution.stream);
+            else source.deviceCopyToAsync(destination);
+            destination *= T(2);  // A consumer queued immediately on the same stream.
+            destination.deviceCopyToAsync(captured);
+            gpuErrChk(cudaEventRecord(completed.value, execution.stream));
+            EXPECT_FALSE(gate.expired()) << "Async copy waited for the stream";
+            EXPECT_EQ(cudaErrorNotReady, cudaEventQuery(completed.value));
+            gate.release();
+        }
+        std::vector<T> actual;
+        captured.download(actual);
+        EXPECT_EQ((std::vector<T>{2, 4, 6, 8, 0, 0}), actual);
+        EXPECT_EQ(address, destination.raw());
+        EXPECT_EQ(6, destination.numRows());
+        EXPECT_EQ(1, source.streamIdx());
+        EXPECT_EQ(1, destination.streamIdx());
+        EXPECT_EQ(allocated, Session::getInstance().totalAllocatedBytes());
+    }
+}
+
+TEST_F(TensorTest, asyncDeviceCopiesOrderWithoutHostWait) {
+    asyncDeviceCopiesOrderWithoutWaiting<float>();
+    asyncDeviceCopiesOrderWithoutWaiting<double>();
+}
+
+template<typename T>
+void asyncDeviceCopiesWorkOnStreamZero() {
+    const std::vector<T> values{-7, 0, 13, -2};
+    DTensor<T> producer(values, 2, 2), source(2, 2, 1, true);
+    DTensor<T> destination(std::vector<T>{91, 92, 93, 94, 95, 96}, 6), captured(6);
+    cudaStream_t stream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(0), &stream));
+    ASSERT_EQ(0, source.streamIdx());
+    ASSERT_EQ(0, destination.streamIdx());
+    ASSERT_EQ(0, captured.streamIdx());
+
+    for (bool explicitStream : {false, true}) {
+        SCOPED_TRACE(explicitStream ? "explicit stream" : "selected stream");
+        AsyncCopyEvent completed;
+        {
+            AsyncCopyGate gate(stream);
+            gpuErrChk(cudaMemcpyAsync(source.raw(), producer.raw(), values.size() * sizeof(T),
+                cudaMemcpyDeviceToDevice, stream));
+            if (explicitStream) source.deviceCopyToAsync(destination, stream);
+            else source.deviceCopyToAsync(destination);
+            // A raw CUDA consumer also exercises int tensors, without relying
+            // on floating-point-only arithmetic operators.
+            gpuErrChk(cudaMemcpyAsync(captured.raw(), destination.raw(), 6 * sizeof(T),
+                cudaMemcpyDeviceToDevice, stream));
+            gpuErrChk(cudaEventRecord(completed.value, stream));
+            EXPECT_FALSE(gate.expired()) << "Async copy waited for stream index 0";
+            EXPECT_EQ(cudaErrorNotReady, cudaEventQuery(completed.value));
+            gate.release();
+        }
+        std::vector<T> actual;
+        captured.download(actual);
+        EXPECT_EQ((std::vector<T>{-7, 0, 13, -2, 95, 96}), actual);
+        EXPECT_EQ(0, source.streamIdx());
+        EXPECT_EQ(0, destination.streamIdx());
+    }
+}
+
+TEST_F(TensorTest, asyncDeviceCopiesWorkOnStreamZero) {
+    asyncDeviceCopiesWorkOnStreamZero<float>();
+    asyncDeviceCopiesWorkOnStreamZero<double>();
+    asyncDeviceCopiesWorkOnStreamZero<int>();
+}
+
+template<typename T>
+void asyncDeviceCopiesValidateBuffersAndStreams() {
+    NonblockingTestStream execution;
+    DTensor<T> storage(std::vector<T>{1, 2, 3, 4, 5, 6, 7, 8}, 8), target(4), small(3), empty;
+    storage.setStreamIdx(1);
+    target.setStreamIdx(1);
+    small.setStreamIdx(1);
+    DTensor<T> first(storage, 0, 0, 3), shifted(storage, 0, 1, 4), last(storage, 0, 4, 7);
+    EXPECT_THROW(first.deviceCopyToAsync(small), std::invalid_argument);
+    EXPECT_THROW(first.deviceCopyToAsync(empty, execution.stream), std::invalid_argument);
+    EXPECT_THROW(first.deviceCopyToAsync(target, cudaStream_t{}), std::invalid_argument);
+    target.setStreamIdx(0);
+    EXPECT_THROW(first.deviceCopyToAsync(target), std::invalid_argument);
+    EXPECT_THROW(first.deviceCopyToAsync(target, execution.stream), std::invalid_argument);
+    EXPECT_EQ(0, target.streamIdx());
+    EXPECT_THROW(first.deviceCopyToAsync(shifted), std::invalid_argument);
+    EXPECT_THROW(shifted.deviceCopyToAsync(first, execution.stream), std::invalid_argument);
+    EXPECT_NO_THROW(empty.deviceCopyToAsync(first));
+    EXPECT_NO_THROW(empty.deviceCopyToAsync(first, cudaStream_t{}));
+    EXPECT_NO_THROW(first.deviceCopyToAsync(first));
+    EXPECT_NO_THROW(first.deviceCopyToAsync(storage, execution.stream)); // Identical prefix.
+    // The destination contains the source in its untouched tail. Only the
+    // actual copy regions must be disjoint, so copying last into its prefix is valid.
+    last.deviceCopyToAsync(storage, execution.stream);
+    std::vector<T> actual;
+    storage.download(actual);
+    EXPECT_EQ((std::vector<T>{5, 6, 7, 8, 5, 6, 7, 8}), actual);
+}
+
+TEST_F(TensorTest, asyncDeviceCopiesValidateBuffersAndStreams) {
+    asyncDeviceCopiesValidateBuffersAndStreams<float>();
+    asyncDeviceCopiesValidateBuffersAndStreams<double>();
+}
+
+template<typename T>
+void asyncDeviceCopiesPreserveBatchedStorage() {
+    NonblockingTestStream execution;
+    std::vector<T> values{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    DTensor<T> source(values, 2, 3, 2), destination(2, 2, 4, true);
+    source.setStreamIdx(1);
+    destination.setStreamIdx(1);
+    const auto data = destination.raw();
+    const auto pointers = destination.ptrMatrices();
+    const size_t allocated = Session::getInstance().totalAllocatedBytes();
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        SCOPED_TRACE(repeat);
+        for (size_t i = 0; i < values.size(); ++i)
+            values[i] = T((repeat % 2 == 0 ? 1 : -1) * ((repeat + 1) * 100 + int(i)));
+        source.upload(values, columnMajor);
+        for (bool explicitStream : {false, true}) {
+            SCOPED_TRACE(explicitStream ? "explicit stream" : "selected stream");
+            if (explicitStream) source.deviceCopyToAsync(destination, execution.stream);
+            else source.deviceCopyToAsync(destination);
+            destination *= T(2);
+            std::vector<T> actual;
+            destination.download(actual);
+            std::vector<T> expected(16, 0);
+            for (size_t i = 0; i < values.size(); ++i) expected[i] = 2 * values[i];
+            EXPECT_EQ(expected, actual);
+            EXPECT_EQ(data, destination.raw());
+            EXPECT_EQ(pointers, destination.ptrMatrices());
+            EXPECT_EQ(2, destination.numRows());
+            EXPECT_EQ(2, destination.numCols());
+            EXPECT_EQ(4, destination.numMats());
+            EXPECT_EQ(allocated, Session::getInstance().totalAllocatedBytes());
+        }
+    }
+}
+
+TEST_F(TensorTest, asyncDeviceCopiesPreserveBatchedStorage) {
+    asyncDeviceCopiesPreserveBatchedStorage<float>();
+    asyncDeviceCopiesPreserveBatchedStorage<double>();
 }
 
 template<typename T>

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- ---------------------
+      v2.1.0
+     --------------------- -->
+## v2.1.0 - 05-11-2026
+
+### Added
+
+- `DTensor::deviceCopyToAsync(destination[, stream])` enqueues a device copy
+  into preallocated storage without explicit synchronization. It validates
+  capacity, matching selected streams and nonoverlapping copy regions, while
+  preserving destination shape, storage and stream metadata. Existing blocking
+  copy APIs retain their completion guarantees.
+- Async-copy regressions cover queued producers/consumers on a nonblocking
+  stream, return with work pending, invalid streams/capacity, overlapping
+  views, empty/self copies, batches, and stable device storage.
+
+
+<!-- ---------------------
       v2.0.0
      --------------------- -->
 ## v2.0.0 - 04-11-2026
