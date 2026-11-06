@@ -21,6 +21,7 @@
 #include <climits>
 #include <cmath>
 #include <utility>
+#include <type_traits>
 
 
 /**
@@ -286,6 +287,76 @@ public:
     }
 };
 
+
+/**
+ * Owns a std::vector and registers its existing allocation with CUDA without
+ * copying elements. The size and allocation are fixed until ownership moves.
+ * Registration/unregistration happen only during construction, destruction,
+ * and move assignment, not during transfers. CUDA registration failure throws
+ * std::runtime_error; the adopted vector is released during unwinding.
+ *
+ * Wait for pending transfers before modifying upload sources, reading download
+ * destinations, or destroying/replacing participating allocations. Destruction
+ * does not explicitly wait for transfers. Move construction preserves the
+ * registered allocation; the new owner must retain it until completion.
+ */
+template<typename T>
+class RegisteredHostVector {
+    static_assert(std::is_trivially_copyable_v<T> && !std::is_same_v<T, bool>,
+        "RegisteredHostVector requires trivially copyable elements other than bool");
+    std::vector<T> m_values;
+    T *m_registeredData = nullptr;
+
+    void unregisterStorage() noexcept {
+        if (m_registeredData) {
+            gpuErrChk(cudaHostUnregister(m_registeredData));
+            m_registeredData = nullptr;
+        }
+    }
+
+public:
+    RegisteredHostVector() noexcept = default;
+
+    explicit RegisteredHostVector(std::vector<T> &&values)
+        : m_values(std::move(values)) {
+        if (m_values.empty()) return;
+        const auto status = cudaHostRegister(m_values.data(), m_values.size() * sizeof(T), cudaHostRegisterDefault);
+        if (status != cudaSuccess)
+            throw std::runtime_error(std::string("[RegisteredHostVector] cudaHostRegister: ") + cudaGetErrorString(status));
+        m_registeredData = m_values.data();
+    }
+
+    explicit RegisteredHostVector(size_t count)
+        : RegisteredHostVector(std::vector<T>(count)) {}
+
+    ~RegisteredHostVector() { unregisterStorage(); }
+
+    RegisteredHostVector(const RegisteredHostVector &) = delete;
+    RegisteredHostVector &operator=(const RegisteredHostVector &) = delete;
+
+    RegisteredHostVector(RegisteredHostVector &&other) noexcept
+        : m_values(std::move(other.m_values)),
+          m_registeredData(std::exchange(other.m_registeredData, nullptr)) {
+        other.m_values.clear();
+    }
+
+    RegisteredHostVector &operator=(RegisteredHostVector &&other) noexcept {
+        if (this != &other) {
+            unregisterStorage(); // Unregister before vector assignment releases old storage.
+            m_values = std::move(other.m_values);
+            m_registeredData = std::exchange(other.m_registeredData, nullptr);
+            other.m_values.clear();
+        }
+        return *this;
+    }
+
+    T *data() noexcept { return m_values.data(); }
+    const T *data() const noexcept { return m_values.data(); }
+    size_t size() const noexcept { return m_values.size(); }
+    bool empty() const noexcept { return m_values.empty(); }
+    T &operator[](size_t index) noexcept { return m_values[index]; }
+    const T &operator[](size_t index) const noexcept { return m_values[index]; }
+};
 
 /* ================================================================================================
  *  TENSOR
@@ -556,6 +627,32 @@ public:
      * @param vec destination vector
      */
     void download(std::vector<T> &vec) const;
+
+    /**
+     * Enqueue an upload from registered host storage on the selected stream.
+     * Requires exactly numEl() column-major elements. No allocation, resizing,
+     * conversion, stream-index change, or explicit synchronization is performed.
+     * Keep both allocations alive and the source unchanged until completion;
+     * order accesses from other streams explicitly. Empty pairs are a no-op.
+     */
+    void uploadAsync(const RegisteredHostVector<T> &source);
+
+    /** Explicit stream must match this tensor's actual selected CUDA stream. */
+    void uploadAsync(const RegisteredHostVector<T> &source, cudaStream_t stream);
+
+    /**
+     * Enqueue a column-major download into registered host storage of exactly
+     * numEl() elements. Does not allocate, resize, change streams, or explicitly
+     * synchronize. Keep both allocations alive; wait for completion before
+     * reading/modifying the destination or replacing either allocation.
+     * Device producers on other streams require an explicit dependency.
+     * 
+     * @param destination pinned memory where the data is downloaded
+     */
+    void downloadAsync(RegisteredHostVector<T> &destination) const;
+
+    /** Explicit stream must match this tensor's actual selected CUDA stream. */
+    void downloadAsync(RegisteredHostVector<T> &destination, cudaStream_t stream) const;
 
     /**
      * Device-to-device copy.
@@ -1368,6 +1465,42 @@ inline void DTensor<T>::download(std::vector<T> &vec) const {
 }
 
 template<typename T>
+inline void DTensor<T>::uploadAsync(const RegisteredHostVector<T> &source) {
+    if (source.size() != numEl())
+        throw std::invalid_argument("[uploadAsync] source has wrong size");
+    if (source.empty()) return;
+    uploadAsync(source, selectedStream());
+}
+
+template<typename T>
+inline void DTensor<T>::uploadAsync(const RegisteredHostVector<T> &source, cudaStream_t stream) {
+    if (source.size() != numEl())
+        throw std::invalid_argument("[uploadAsync] source has wrong size");
+    if (source.empty()) return;
+    if (stream != selectedStream())
+        throw std::invalid_argument("[uploadAsync] stream does not match tensor's selected stream");
+    gpuErrChk(cudaMemcpyAsync(raw(), source.data(), numEl() * sizeof(T), cudaMemcpyHostToDevice, stream));
+}
+
+template<typename T>
+inline void DTensor<T>::downloadAsync(RegisteredHostVector<T> &destination) const {
+    if (destination.size() != numEl())
+        throw std::invalid_argument("[downloadAsync] destination has wrong size");
+    if (destination.empty()) return;
+    downloadAsync(destination, selectedStream());
+}
+
+template<typename T>
+inline void DTensor<T>::downloadAsync(RegisteredHostVector<T> &destination, cudaStream_t stream) const {
+    if (destination.size() != numEl())
+        throw std::invalid_argument("[downloadAsync] destination has wrong size");
+    if (destination.empty()) return;
+    if (stream != selectedStream())
+        throw std::invalid_argument("[downloadAsync] stream does not match tensor's selected stream");
+    gpuErrChk(cudaMemcpyAsync(destination.data(), raw(), numEl() * sizeof(T), cudaMemcpyDeviceToHost, stream));
+}
+
+template<typename T>
 inline T *DTensor<T>::raw() const {
     return m_d_data;
 }
@@ -1444,6 +1577,7 @@ inline void DTensor<T>::deviceCopyToAsync(DTensor<T> &elsewhere, cudaStream_t st
     if (elsewhere.raw() == m_d_data) return;
 
     const size_t bytes = numEl() * sizeof(T);
+    // Cast the pointers as unsigned integers (uintptr_t)
     const auto source = reinterpret_cast<std::uintptr_t>(m_d_data);
     const auto destination = reinterpret_cast<std::uintptr_t>(elsewhere.raw());
     // Compare only the regions actually copied, not an unused destination tail.

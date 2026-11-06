@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- `RegisteredHostVector<T>` owns a moved vector and its CUDA registration, with fixed-size storage and move-only ownership.
+- `DTensor::uploadAsync` and `downloadAsync` transfer column-major data on the selected stream using reusable registered host vectors.
+- Host-transfer tests cover ownership, registration cleanup, moves, validation, batches, types, repeated data changes, and asynchronous stream ordering.
+
 <!-- ---------------------
       v2.1.0
      --------------------- -->
