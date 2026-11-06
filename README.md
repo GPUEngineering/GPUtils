@@ -416,6 +416,51 @@ The `DTensor` `B` will be overwritten with the solution.
 > overwrite only part of the given `B`, as `B` is a
 > (4,1,1)-tensor and the solution is a (3,1,1)-tensor.
 
+#### Reusable QR operations
+
+`QRFactoriser<T>` supports nonempty tall or square single matrices in `float`
+and `double`. Select the matrix's stream before constructing the factoriser.
+The constructor allocates the reflectors and the maximum workspace required by
+factorisation, applying the reflectors to a vector, and forming thin Q.
+
+```c++
+DTensor<double> A(aData, m, n, 1, columnMajor); // m >= n
+DTensor<double> rhs(bData, m);
+DTensor<double> Q(m, n), R(n, n);
+A.setStreamIdx(0);
+QRFactoriser<double> qr(A);
+
+qr.factorise();     // overwrites A with Householder reflectors and R
+qr.applyQt(rhs);    // overwrites the m-entry vector with full Q^T b
+qr.extractR(R);     // writes n-by-n R, including zeros below the diagonal
+qr.formThinQ(Q);    // writes the m-by-n orthonormal columns of thin Q
+Session::getInstance().synchronizeStream(A.streamIdx());
+```
+
+The first `n` entries returned by `applyQt` are `thinQ^T b`; the remaining
+`m-n` entries are coordinates in the orthogonal complement. It performs no
+triangular solve. `leastSquares(rhs)` instead applies the reflectors and solves
+the triangular system in place, requiring full column rank.
+
+The three new operations preserve the stored reflectors and can be repeated in
+any order after `factorise()`. They perform no host transfers, GPUtils device
+allocations, or explicit synchronization. They always enqueue on **A's selected
+cuSOLVER stream**, irrespective of the outputs' `streamIdx()`, and leave output
+storage, shapes and stream indices unchanged. Order both prior producers and
+later consumers on other streams with explicit dependencies. Synchronize A's
+stream before reading outputs through a different stream, and retain all storage
+and the factoriser until the queued work completes. A workspace cannot be used
+concurrently on different streams. Select matching streams for a session's
+cuBLAS and cuSOLVER handles if configuring those handles directly.
+
+Output shapes are checked and outputs must not overlap A. Refill A's existing
+storage to factorise another matrix; changing its shape, allocation or selected
+stream requires a new factoriser. `getQR(Q, R)` is a blocking convenience wrapper
+for the GPU operations and also rejects overlapping Q and R destinations. The
+new operations support CUDA Graph capture after library warm-up; construct the
+factoriser and output tensors before capture. `info()` reports the last queued
+cuSOLVER operation's status; `extractR` leaves it unchanged.
+
 ### 1.8. Saving and loading tensors
 
 Tensor data can be stored in simple text files or binary files. 

@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RegisteredHostVector<T>` owns a moved vector and its CUDA registration, with fixed-size storage and move-only ownership.
 - `DTensor::uploadAsync` and `downloadAsync` transfer column-major data on the selected stream using reusable registered host vectors.
 - Host-transfer tests cover ownership, registration cleanup, moves, validation, batches, types, repeated data changes, and asynchronous stream ordering.
+- `QRFactoriser::applyQt(rhs)`, `extractR(R)`, and `formThinQ(Q)` reuse the factorisation workspace and preallocated outputs without host transfers or explicit synchronization. All run on the bound matrix's stream and preserve its reflectors.
+- QR regression tests cover both precisions, square/tall/scalar and rank-deficient matrices, repeated use, invalid shapes and aliases, nonblocking stream ordering, stable device storage, and CUDA Graph capture/replay.
+
+### Changed
+
+- `QRFactoriser::getQR` forms Q and extracts R entirely on the GPU while retaining its blocking completion guarantee.
+- QR operations reject use before factorisation, overlapping factor/output storage, and changes to the bound matrix's shape, storage, or stream index. Least-squares right-hand sides must have shape `(m,1,1)`.
 
 <!-- ---------------------
       v2.1.0
