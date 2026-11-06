@@ -454,6 +454,198 @@ TEST_F(TensorTest, asyncDeviceCopiesPreserveBatchedStorage) {
 }
 
 template<typename T>
+void registeredHostVectorOwnsAndRegistersStorage() {
+    static_assert(!std::is_copy_constructible_v<RegisteredHostVector<T>>);
+    static_assert(!std::is_copy_assignable_v<RegisteredHostVector<T>>);
+    static_assert(std::is_nothrow_move_constructible_v<RegisteredHostVector<T>>);
+    static_assert(std::is_nothrow_move_assignable_v<RegisteredHostVector<T>>);
+    static_assert(!std::is_constructible_v<RegisteredHostVector<T>, std::vector<T> &>);
+    static_assert(std::is_same_v<decltype(std::declval<const RegisteredHostVector<T> &>().data()), const T *>);
+    static_assert(std::is_same_v<decltype(std::declval<const RegisteredHostVector<T> &>()[0]), const T &>);
+    std::vector<T> values{1, -2, 3, -4};
+    const auto address = values.data();
+    RegisteredHostVector<T> host(std::move(values));
+    EXPECT_EQ(address, host.data()); // Moving must not copy the elements.
+    ASSERT_EQ(4, host.size());
+    EXPECT_FALSE(host.empty());
+    const auto &readOnly = host;
+    EXPECT_EQ(T(-2), readOnly[1]);
+    host[1] = T(7);
+    EXPECT_EQ(T(7), readOnly.data()[1]);
+    cudaPointerAttributes attributes{};
+    ASSERT_EQ(cudaSuccess, cudaPointerGetAttributes(&attributes, host.data()));
+    EXPECT_EQ(cudaMemoryTypeHost, attributes.type);
+}
+
+TEST(RegisteredHostVectorTest, takesOwnershipWithoutCopyingAndRegistersStorage) {
+    registeredHostVectorOwnsAndRegistersStorage<float>();
+    registeredHostVectorOwnsAndRegistersStorage<double>();
+    registeredHostVectorOwnsAndRegistersStorage<int>();
+}
+
+template<typename T>
+void registeredHostVectorTransfersRegistrationOnMove() {
+    RegisteredHostVector<T> first(std::vector<T>{1, 2, 3});
+    const auto firstAddress = first.data();
+    RegisteredHostVector<T> second(std::move(first));
+    EXPECT_TRUE(first.empty());
+    EXPECT_EQ(firstAddress, second.data());
+    RegisteredHostVector<T> target(std::vector<T>{7, 8});
+    const auto oldAddress = target.data();
+    target = std::move(second);
+    EXPECT_TRUE(second.empty());
+    EXPECT_EQ(firstAddress, target.data());
+    EXPECT_EQ(3, target.size());
+    EXPECT_EQ(T(3), target[2]);
+    cudaPointerAttributes attributes{};
+    ASSERT_EQ(cudaSuccess, cudaPointerGetAttributes(&attributes, oldAddress));
+    EXPECT_EQ(cudaMemoryTypeUnregistered, attributes.type);
+    ASSERT_EQ(cudaSuccess, cudaPointerGetAttributes(&attributes, target.data()));
+    EXPECT_EQ(cudaMemoryTypeHost, attributes.type);
+    auto &same = target;
+    target = std::move(same);
+    EXPECT_EQ(firstAddress, target.data());
+    EXPECT_EQ(3, target.size());
+    ASSERT_EQ(cudaSuccess, cudaPointerGetAttributes(&attributes, target.data()));
+    EXPECT_EQ(cudaMemoryTypeHost, attributes.type);
+    target = RegisteredHostVector<T>();
+    EXPECT_TRUE(target.empty());
+    ASSERT_EQ(cudaSuccess, cudaPointerGetAttributes(&attributes, firstAddress));
+    EXPECT_EQ(cudaMemoryTypeUnregistered, attributes.type);
+}
+
+TEST(RegisteredHostVectorTest, movesTransferRegistrationAndReleaseOldStorage) {
+    registeredHostVectorTransfersRegistrationOnMove<float>();
+    registeredHostVectorTransfersRegistrationOnMove<double>();
+    registeredHostVectorTransfersRegistrationOnMove<int>();
+}
+
+TEST(RegisteredHostVectorTest, emptyAndSizedBuffers) {
+    RegisteredHostVector<int> empty;
+    EXPECT_TRUE(empty.empty());
+    EXPECT_EQ(0, empty.size());
+    RegisteredHostVector<int> zero(0);
+    EXPECT_TRUE(zero.empty());
+    RegisteredHostVector<int> adoptedEmpty(std::vector<int>{});
+    EXPECT_TRUE(adoptedEmpty.empty());
+    RegisteredHostVector<int> sized(5);
+    ASSERT_EQ(5, sized.size());
+    for (size_t i = 0; i < sized.size(); ++i) EXPECT_EQ(0, sized[i]);
+    cudaPointerAttributes attributes{};
+    ASSERT_EQ(cudaSuccess, cudaPointerGetAttributes(&attributes, sized.data()));
+    EXPECT_EQ(cudaMemoryTypeHost, attributes.type);
+}
+
+TEST(RegisteredHostVectorTest, unregistersStorageOnDestruction) {
+    const void *address;
+    {
+        RegisteredHostVector<double> host(17);
+        address = host.data();
+    }
+    // CUDA queries registration metadata without dereferencing the freed host
+    // address. A leaked registration would still be reported as Host memory.
+    cudaPointerAttributes attributes{};
+    ASSERT_EQ(cudaSuccess, cudaPointerGetAttributes(&attributes, address));
+    EXPECT_EQ(cudaMemoryTypeUnregistered, attributes.type);
+}
+
+template<typename T>
+void asyncHostTransfersOrderWithoutWaiting(size_t streamIndex) {
+    NonblockingTestStream execution(streamIndex);
+    for (size_t batch : {size_t(1), size_t(2)}) {
+        SCOPED_TRACE(batch);
+        RegisteredHostVector<T> input(6 * batch), output(6 * batch);
+        DTensor<T> tensor(2, 3, batch, true), captured(2, 3, batch, true);
+        tensor.setStreamIdx(streamIndex);
+        captured.setStreamIdx(streamIndex);
+        const auto inputAddress = input.data(), outputAddress = output.data();
+        const auto deviceAddress = tensor.raw();
+        const auto pointers = tensor.ptrMatrices();
+        const size_t allocated = Session::getInstance().totalAllocatedBytes();
+        for (bool explicitStream : {false, true}) {
+            SCOPED_TRACE(explicitStream ? "explicit stream" : "selected stream");
+            for (int repeat = 0; repeat < 3; ++repeat) {
+                SCOPED_TRACE(repeat);
+                std::vector<T> expected(input.size());
+                for (size_t i = 0; i < input.size(); ++i) {
+                    expected[i] = input[i] = T((repeat % 2 ? -1 : 1) * ((repeat + 1) * 100 + int(i)));
+                    output[i] = T(-999);
+                }
+                AsyncCopyEvent completed;
+                {
+                    AsyncCopyGate gate(execution.stream);
+                    gpuErrChk(cudaMemsetAsync(tensor.raw(), 0, input.size() * sizeof(T), execution.stream));
+                    const auto &readOnlyInput = input;
+                    if (explicitStream) tensor.uploadAsync(readOnlyInput, execution.stream);
+                    else tensor.uploadAsync(readOnlyInput);
+                    // A CUDA consumer uses the freshly uploaded device data.
+                    gpuErrChk(cudaMemcpyAsync(captured.raw(), tensor.raw(), input.size() * sizeof(T),
+                        cudaMemcpyDeviceToDevice, execution.stream));
+                    const auto &readOnlyTensor = captured;
+                    if (explicitStream) readOnlyTensor.downloadAsync(output, execution.stream);
+                    else readOnlyTensor.downloadAsync(output);
+                    gpuErrChk(cudaEventRecord(completed.value, execution.stream));
+                    EXPECT_FALSE(gate.expired()) << "Host transfer waited for the stream";
+                    EXPECT_EQ(cudaErrorNotReady, cudaEventQuery(completed.value));
+                    gate.release();
+                }
+                EXPECT_EQ(expected, (std::vector<T>(output.data(), output.data() + output.size())));
+                EXPECT_EQ(expected, (std::vector<T>(input.data(), input.data() + input.size())));
+                EXPECT_EQ(inputAddress, input.data());
+                EXPECT_EQ(outputAddress, output.data());
+                EXPECT_EQ(deviceAddress, tensor.raw());
+                EXPECT_EQ(pointers, tensor.ptrMatrices());
+                EXPECT_EQ(streamIndex, tensor.streamIdx());
+                EXPECT_EQ(streamIndex, captured.streamIdx());
+                EXPECT_EQ(2, tensor.numRows());
+                EXPECT_EQ(3, tensor.numCols());
+                EXPECT_EQ(batch, tensor.numMats());
+                EXPECT_EQ(allocated, Session::getInstance().totalAllocatedBytes());
+            }
+        }
+    }
+}
+
+TEST_F(TensorTest, asyncHostTransfersOrderWithoutHostWait) {
+    for (size_t index : {size_t(0), size_t(1)}) {
+        SCOPED_TRACE(index);
+        asyncHostTransfersOrderWithoutWaiting<float>(index);
+        asyncHostTransfersOrderWithoutWaiting<double>(index);
+        asyncHostTransfersOrderWithoutWaiting<int>(index);
+    }
+}
+
+TEST_F(TensorTest, asyncHostTransfersValidateSizesAndStreams) {
+    NonblockingTestStream execution;
+    DTensor<int> tensor(std::vector<int>{1, 2, 3, 4}, 4), empty;
+    tensor.setStreamIdx(1);
+    RegisteredHostVector<int> host(std::vector<int>{9, 8, 7, 6}), small(3), large(5), zero;
+    for (auto *wrongSize : {&small, &large, &zero}) {
+        EXPECT_THROW(tensor.uploadAsync(*wrongSize), std::invalid_argument);
+        EXPECT_THROW(tensor.uploadAsync(*wrongSize, execution.stream), std::invalid_argument);
+        EXPECT_THROW(tensor.downloadAsync(*wrongSize), std::invalid_argument);
+        EXPECT_THROW(tensor.downloadAsync(*wrongSize, execution.stream), std::invalid_argument);
+    }
+    cudaStream_t otherStream;
+    gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(0), &otherStream));
+    EXPECT_THROW(tensor.uploadAsync(host, otherStream), std::invalid_argument);
+    EXPECT_THROW(tensor.downloadAsync(host, otherStream), std::invalid_argument);
+    EXPECT_THROW(tensor.uploadAsync(host, cudaStream_t{}), std::invalid_argument);
+    EXPECT_THROW(tensor.downloadAsync(host, cudaStream_t{}), std::invalid_argument);
+    EXPECT_THROW(empty.uploadAsync(host), std::invalid_argument);
+    EXPECT_THROW(empty.downloadAsync(host), std::invalid_argument);
+    EXPECT_NO_THROW(empty.uploadAsync(zero));
+    EXPECT_NO_THROW(empty.downloadAsync(zero));
+    EXPECT_NO_THROW(empty.uploadAsync(zero, cudaStream_t{}));
+    EXPECT_NO_THROW(empty.downloadAsync(zero, cudaStream_t{}));
+    EXPECT_EQ((std::vector<int>{9, 8, 7, 6}), (std::vector<int>(host.data(), host.data() + host.size())));
+    std::vector<int> actual;
+    tensor.download(actual);
+    EXPECT_EQ((std::vector<int>{1, 2, 3, 4}), actual);
+    EXPECT_EQ(1, tensor.streamIdx());
+}
+
+template<typename T>
 void qrUsesSelectedStream(T epsilon) {
     NonblockingTestStream execution;
     DTensor<T> source(std::vector<T>{1,0,1,0,1,1}, 3, 2);

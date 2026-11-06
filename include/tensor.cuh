@@ -21,6 +21,7 @@
 #include <climits>
 #include <cmath>
 #include <utility>
+#include <type_traits>
 
 
 /**
@@ -286,6 +287,76 @@ public:
     }
 };
 
+
+/**
+ * Owns a std::vector and registers its existing allocation with CUDA without
+ * copying elements. The size and allocation are fixed until ownership moves.
+ * Registration/unregistration happen only during construction, destruction,
+ * and move assignment, not during transfers. CUDA registration failure throws
+ * std::runtime_error; the adopted vector is released during unwinding.
+ *
+ * Wait for pending transfers before modifying upload sources, reading download
+ * destinations, or destroying/replacing participating allocations. Destruction
+ * does not explicitly wait for transfers. Move construction preserves the
+ * registered allocation; the new owner must retain it until completion.
+ */
+template<typename T>
+class RegisteredHostVector {
+    static_assert(std::is_trivially_copyable_v<T> && !std::is_same_v<T, bool>,
+        "RegisteredHostVector requires trivially copyable elements other than bool");
+    std::vector<T> m_values;
+    T *m_registeredData = nullptr;
+
+    void unregisterStorage() noexcept {
+        if (m_registeredData) {
+            gpuErrChk(cudaHostUnregister(m_registeredData));
+            m_registeredData = nullptr;
+        }
+    }
+
+public:
+    RegisteredHostVector() noexcept = default;
+
+    explicit RegisteredHostVector(std::vector<T> &&values)
+        : m_values(std::move(values)) {
+        if (m_values.empty()) return;
+        const auto status = cudaHostRegister(m_values.data(), m_values.size() * sizeof(T), cudaHostRegisterDefault);
+        if (status != cudaSuccess)
+            throw std::runtime_error(std::string("[RegisteredHostVector] cudaHostRegister: ") + cudaGetErrorString(status));
+        m_registeredData = m_values.data();
+    }
+
+    explicit RegisteredHostVector(size_t count)
+        : RegisteredHostVector(std::vector<T>(count)) {}
+
+    ~RegisteredHostVector() { unregisterStorage(); }
+
+    RegisteredHostVector(const RegisteredHostVector &) = delete;
+    RegisteredHostVector &operator=(const RegisteredHostVector &) = delete;
+
+    RegisteredHostVector(RegisteredHostVector &&other) noexcept
+        : m_values(std::move(other.m_values)),
+          m_registeredData(std::exchange(other.m_registeredData, nullptr)) {
+        other.m_values.clear();
+    }
+
+    RegisteredHostVector &operator=(RegisteredHostVector &&other) noexcept {
+        if (this != &other) {
+            unregisterStorage(); // Unregister before vector assignment releases old storage.
+            m_values = std::move(other.m_values);
+            m_registeredData = std::exchange(other.m_registeredData, nullptr);
+            other.m_values.clear();
+        }
+        return *this;
+    }
+
+    T *data() noexcept { return m_values.data(); }
+    const T *data() const noexcept { return m_values.data(); }
+    size_t size() const noexcept { return m_values.size(); }
+    bool empty() const noexcept { return m_values.empty(); }
+    T &operator[](size_t index) noexcept { return m_values[index]; }
+    const T &operator[](size_t index) const noexcept { return m_values[index]; }
+};
 
 /* ================================================================================================
  *  TENSOR
@@ -556,6 +627,32 @@ public:
      * @param vec destination vector
      */
     void download(std::vector<T> &vec) const;
+
+    /**
+     * Enqueue an upload from registered host storage on the selected stream.
+     * Requires exactly numEl() column-major elements. No allocation, resizing,
+     * conversion, stream-index change, or explicit synchronization is performed.
+     * Keep both allocations alive and the source unchanged until completion;
+     * order accesses from other streams explicitly. Empty pairs are a no-op.
+     */
+    void uploadAsync(const RegisteredHostVector<T> &source);
+
+    /** Explicit stream must match this tensor's actual selected CUDA stream. */
+    void uploadAsync(const RegisteredHostVector<T> &source, cudaStream_t stream);
+
+    /**
+     * Enqueue a column-major download into registered host storage of exactly
+     * numEl() elements. Does not allocate, resize, change streams, or explicitly
+     * synchronize. Keep both allocations alive; wait for completion before
+     * reading/modifying the destination or replacing either allocation.
+     * Device producers on other streams require an explicit dependency.
+     * 
+     * @param destination pinned memory where the data is downloaded
+     */
+    void downloadAsync(RegisteredHostVector<T> &destination) const;
+
+    /** Explicit stream must match this tensor's actual selected CUDA stream. */
+    void downloadAsync(RegisteredHostVector<T> &destination, cudaStream_t stream) const;
 
     /**
      * Device-to-device copy.
@@ -1368,6 +1465,42 @@ inline void DTensor<T>::download(std::vector<T> &vec) const {
 }
 
 template<typename T>
+inline void DTensor<T>::uploadAsync(const RegisteredHostVector<T> &source) {
+    if (source.size() != numEl())
+        throw std::invalid_argument("[uploadAsync] source has wrong size");
+    if (source.empty()) return;
+    uploadAsync(source, selectedStream());
+}
+
+template<typename T>
+inline void DTensor<T>::uploadAsync(const RegisteredHostVector<T> &source, cudaStream_t stream) {
+    if (source.size() != numEl())
+        throw std::invalid_argument("[uploadAsync] source has wrong size");
+    if (source.empty()) return;
+    if (stream != selectedStream())
+        throw std::invalid_argument("[uploadAsync] stream does not match tensor's selected stream");
+    gpuErrChk(cudaMemcpyAsync(raw(), source.data(), numEl() * sizeof(T), cudaMemcpyHostToDevice, stream));
+}
+
+template<typename T>
+inline void DTensor<T>::downloadAsync(RegisteredHostVector<T> &destination) const {
+    if (destination.size() != numEl())
+        throw std::invalid_argument("[downloadAsync] destination has wrong size");
+    if (destination.empty()) return;
+    downloadAsync(destination, selectedStream());
+}
+
+template<typename T>
+inline void DTensor<T>::downloadAsync(RegisteredHostVector<T> &destination, cudaStream_t stream) const {
+    if (destination.size() != numEl())
+        throw std::invalid_argument("[downloadAsync] destination has wrong size");
+    if (destination.empty()) return;
+    if (stream != selectedStream())
+        throw std::invalid_argument("[downloadAsync] stream does not match tensor's selected stream");
+    gpuErrChk(cudaMemcpyAsync(destination.data(), raw(), numEl() * sizeof(T), cudaMemcpyDeviceToHost, stream));
+}
+
+template<typename T>
 inline T *DTensor<T>::raw() const {
     return m_d_data;
 }
@@ -1444,6 +1577,7 @@ inline void DTensor<T>::deviceCopyToAsync(DTensor<T> &elsewhere, cudaStream_t st
     if (elsewhere.raw() == m_d_data) return;
 
     const size_t bytes = numEl() * sizeof(T);
+    // Cast the pointers as unsigned integers (uintptr_t)
     const auto source = reinterpret_cast<std::uintptr_t>(m_d_data);
     const auto destination = reinterpret_cast<std::uintptr_t>(elsewhere.raw());
     // Compare only the regions actually copied, not an unused destination tail.
@@ -2138,11 +2272,38 @@ inline void CholeskyFactoriser<float>::solve(DTensor<float> &rhs) {
  *  QR DECOMPOSITION (QR)
  * ================================================================================================ */
 
+namespace gputils_detail {
+template<typename T>
+__global__ void qrThinIdentity(T *Q, size_t rows, size_t elements) {
+    for (size_t i = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+         i < elements; i += size_t(blockDim.x) * gridDim.x) {
+        Q[i] = (i % rows == i / rows) ? T(1) : T(0);
+    }
+}
+
+template<typename T>
+__global__ void qrUpperTriangle(const T *factors, T *R, size_t rows, size_t cols) {
+    for (size_t i = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+         i < cols * cols; i += size_t(blockDim.x) * gridDim.x) {
+        const size_t row = i % cols, col = i / cols;
+        R[i] = row <= col ? factors[row + col * rows] : T(0);
+    }
+}
+}
+
 /**
- * QR decomposition (QR) needs a workspace to be setup for cuSolver before factorisation.
- * This object can be setup for a specific type and size of (m,n,1)-tensor (i.e., a matrix).
- * Then, many same-type-(m,n,1)-tensor can be factorised using this object's workspace
- * @tparam T data type of (m,n,1)-tensor to be factorised (must be float or double)
+ * Reusable QR workspace bound to a nonempty tall or square (m,n,1) matrix.
+ * Select A's stream before construction and retain its shape, storage and stream
+ * index for this object's lifetime. Refill that storage and call factorise() to
+ * factorise another matrix. Factorisation overwrites A with R and reflectors.
+ *
+ * All operations use A's selected cuSOLVER stream, regardless of the operands'
+ * streamIdx(). They do not change tensor metadata or insert dependencies on
+ * other streams. Order prior producers and later consumers explicitly, keep
+ * operands and this workspace alive until completion, and do not concurrently
+ * reuse one workspace. Except for getQR(), calls do not explicitly synchronize
+ * or allocate GPUtils storage. cuSOLVER status remains available through info().
+ * @tparam T float or double
  */
 TEMPLATE_WITH_TYPE_T
 TEMPLATE_CONSTRAINT_REQUIRES_FPX
@@ -2152,6 +2313,41 @@ private:
     std::unique_ptr<DTensor<T> > m_householder; ///< For storing householder reflectors
     std::unique_ptr<DTensor<T> > m_workspace; ///< Workspace for LS
     DTensor<T> *m_matrix; ///< Lhs matrix template. Do not destroy!
+    size_t m_rows, m_cols, m_streamIdx;
+    T *m_data;
+    bool m_factorised = false;
+
+    void validateMatrix() const {
+        if (m_matrix->numRows() != m_rows || m_matrix->numCols() != m_cols ||
+            m_matrix->numMats() != 1 || m_matrix->raw() != m_data ||
+            m_matrix->streamIdx() != m_streamIdx)
+            throw std::invalid_argument("[QR] bound matrix shape, storage or stream changed");
+    }
+
+    static bool overlaps(const DTensor<T> &a, const DTensor<T> &b) {
+        const auto first = reinterpret_cast<std::uintptr_t>(a.raw());
+        const auto second = reinterpret_cast<std::uintptr_t>(b.raw());
+        return first <= second ? second - first < a.numEl() * sizeof(T)
+                               : first - second < b.numEl() * sizeof(T);
+    }
+
+    void validateOutput(const DTensor<T> &output, size_t rows, size_t cols) const {
+        validateMatrix();
+        if (!m_factorised) throw std::logic_error("[QR] call factorise() first");
+        if (output.numRows() != rows || output.numCols() != cols || output.numMats() != 1)
+            throw std::invalid_argument("[QR] incompatible output shape");
+        if (overlaps(output, *m_matrix))
+            throw std::invalid_argument("[QR] output overlaps factorised matrix");
+    }
+
+    cudaStream_t stream() const {
+        cudaStream_t selected;
+        gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(m_streamIdx), &selected));
+        return selected;
+    }
+
+    // Both applications share the constructor-allocated ORMQR workspace.
+    void applyQ(DTensor<T> &target, cublasOperation_t transpose);
 
     /**
      * Computes the workspace size required by cuSolver.
@@ -2163,11 +2359,17 @@ public:
         if (!A.numRows() || !A.numCols() || !A.numMats()) throw std::invalid_argument("[QR] empty tensor");
         if (A.numMats() > 1) throw std::invalid_argument("[QR] 3D tensors require `leastSquaresBatched`");
         if (A.numRows() < A.numCols()) throw std::invalid_argument("[QR] Matrix A must be tall or square");
+        if (A.numRows() > INT_MAX || A.numCols() > INT_MAX)
+            throw std::invalid_argument("[QR] matrix dimensions exceed cuSOLVER's int range");
         m_matrix = &A;
+        m_rows = A.numRows(); m_cols = A.numCols();
+        m_streamIdx = A.streamIdx(); m_data = A.raw();
         m_info->setStreamIdx(A.streamIdx());
         m_householder = std::make_unique<DTensor<T> >(m_matrix->numCols());
+        m_householder->setStreamIdx(m_streamIdx);
         computeWorkspaceSize();
         m_workspace = std::make_unique<DTensor<T> >(m_workspaceSize);
+        m_workspace->setStreamIdx(m_streamIdx);
     }
 
     /**
@@ -2177,9 +2379,48 @@ public:
     void factorise();
 
     /**
+     * Overwrite an (m,1,1) vector with the full Q^T rhs using stored reflectors.
+     * The first n entries are thin-Q^T rhs; the remaining m-n entries are the
+     * orthogonal complement. No triangular solve is performed. Call after
+     * factorise(); rhs must not overlap A. Uses A's stream, not rhs.streamIdx().
+     */
+    void applyQt(DTensor<T> &rhs) {
+        validateOutput(rhs, m_rows, 1);
+        applyQ(rhs, CUBLAS_OP_T);
+    }
+
+    /**
+     * Copy the upper-triangular R into preallocated (n,n,1) storage, zeroing its
+     * strict lower triangle on the GPU. Preserves the factors and info().
+     * Call after factorise(); R must not overlap A. Uses A's stream.
+     */
+    void extractR(DTensor<T> &R) {
+        validateOutput(R, m_cols, m_cols);
+        const auto blocks = static_cast<unsigned int>(std::min(size_t(65535), numBlocks(R.numEl())));
+        gputils_detail::qrUpperTriangle<<<blocks, THREADS_PER_BLOCK, 0, stream()>>>(
+            m_data, R.raw(), m_rows, m_cols);
+        gpuErrChk(cudaGetLastError());
+    }
+
+    /**
+     * Form thin Q in preallocated (m,n,1) storage entirely on the GPU. Preserves
+     * the reflectors so applyQt(), extractR() and this method can be repeated.
+     * Call after factorise(); Q must not overlap A. Uses A's stream.
+     */
+    void formThinQ(DTensor<T> &Q) {
+        validateOutput(Q, m_rows, m_cols);
+        const auto blocks = static_cast<unsigned int>(std::min(size_t(65535), numBlocks(Q.numEl())));
+        gputils_detail::qrThinIdentity<<<blocks, THREADS_PER_BLOCK, 0, stream()>>>(Q.raw(), m_rows, Q.numEl());
+        gpuErrChk(cudaGetLastError());
+        applyQ(Q, CUBLAS_OP_N);
+    }
+
+    /**
      * Solves A \ b using the QR of A.
      * A is the matrix that is factorised and b is the provided matrix.
-     * A and b must have compatible dimensions (same number of rows and matrices=1).
+     * b must have shape (m,1,1) and must not overlap A. Call factorise() first.
+     * The first n entries receive the solution; the remaining m-n entries retain
+     * the orthogonal-complement coordinates from Q^T b. Requires full column rank.
      * A must be tall or square (m>=n).
      * Both solver and BLAS work use A's stream, independent of b.streamIdx().
      * Keep inputs and this workspace alive until that stream completes.
@@ -2188,9 +2429,9 @@ public:
     void leastSquares(DTensor<T> &b);
 
     /**
-     * Populate the given tensors with Q and R.
-     * Caution! This is an inefficient method: only to be used for debugging.
-     * It synchronizes A's stream before reading the triangular factor on host.
+     * Blocking convenience wrapper for formThinQ() and extractR(). All arithmetic
+     * stays on the GPU; A's stream is synchronized before return for compatibility.
+     * Q and R must not overlap each other or A. Call factorise() first.
      *
      * @param Q matrix Q (preallocated)
      * @param R matrix R (preallocated)
@@ -2232,6 +2473,7 @@ inline void QRFactoriser<float>::computeWorkspaceSize() {
 
 template<>
 inline void QRFactoriser<double>::factorise() {
+    validateMatrix();
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     gpuErrChk(cusolverDnDgeqrf(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
@@ -2240,11 +2482,13 @@ inline void QRFactoriser<double>::factorise() {
         m_householder->raw(),
         m_workspace->raw(), m_workspaceSize,
         m_info->raw()));
+    m_factorised = true;
 }
 
 
 template<>
 inline void QRFactoriser<float>::factorise() {
+    validateMatrix();
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     gpuErrChk(cusolverDnSgeqrf(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
@@ -2253,6 +2497,23 @@ inline void QRFactoriser<float>::factorise() {
         m_householder->raw(),
         m_workspace->raw(), m_workspaceSize,
         m_info->raw()));
+    m_factorised = true;
+}
+
+template<>
+inline void QRFactoriser<double>::applyQ(DTensor<double> &target, cublasOperation_t transpose) {
+    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(m_streamIdx),
+        CUBLAS_SIDE_LEFT, transpose, m_rows, target.numCols(), m_cols,
+        m_data, m_rows, m_householder->raw(), target.raw(), m_rows,
+        m_workspace->raw(), m_workspaceSize, m_info->raw()));
+}
+
+template<>
+inline void QRFactoriser<float>::applyQ(DTensor<float> &target, cublasOperation_t transpose) {
+    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(m_streamIdx),
+        CUBLAS_SIDE_LEFT, transpose, m_rows, target.numCols(), m_cols,
+        m_data, m_rows, m_householder->raw(), target.raw(), m_rows,
+        m_workspace->raw(), m_workspaceSize, m_info->raw()));
 }
 
 template<>
@@ -2260,13 +2521,7 @@ inline void QRFactoriser<double>::leastSquares(DTensor<double> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     double alpha = 1.;
-    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
-        CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
-        m_matrix->raw(), m,
-        m_householder->raw(),
-        rhs.raw(), m,
-        m_workspace->raw(), m_workspaceSize,
-        m_info->raw()));
+    applyQt(rhs);
     gpuErrChk(cublasDtrsm(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, n, 1,
         &alpha,
@@ -2279,13 +2534,7 @@ inline void QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
     size_t m = m_matrix->numRows();
     size_t n = m_matrix->numCols();
     float alpha = 1.;
-    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
-        CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, 1, n,
-        m_matrix->raw(), m,
-        m_householder->raw(),
-        rhs.raw(), m,
-        m_workspace->raw(), m_workspaceSize,
-        m_info->raw()));
+    applyQt(rhs);
     gpuErrChk(cublasStrsm(Session::getInstance().cuBlasHandle(m_matrix->streamIdx()),
         CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, n, 1,
         &alpha,
@@ -2293,82 +2542,16 @@ inline void QRFactoriser<float>::leastSquares(DTensor<float> &rhs) {
         rhs.raw(), m));
 }
 
-template<>
-inline void QRFactoriser<double>::getQR(DTensor<double> &Q, DTensor<double> &R) {
-    size_t m = m_matrix->numRows();
-    size_t n = m_matrix->numCols();
-    if (Q.numRows() != m || Q.numCols() != n || Q.numMats() != 1)
-        throw std::invalid_argument("[QR] invalid shape of Q.");
-    if (R.numRows() != n || R.numCols() != n || R.numMats() != 1)
-        throw std::invalid_argument("[QR] invalid shape of R.");
-    // Initialize Q to 1's on diagonal
-    std::vector<double> vecQ(m * n, 0.);
-    for (size_t r = 0; r < m; r++) {
-        for (size_t c = 0; c < n; c++) {
-            if (r == c) { vecQ[r + c * m] = 1.; }
-        }
-    }
-    cudaStream_t stream;
-    gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()), &stream));
-    gpuErrChk(cudaMemcpyAsync(Q.raw(), vecQ.data(), vecQ.size() * sizeof(double), cudaMemcpyHostToDevice, stream));
-    // Apply Householder reflectors to compute Q
-    gpuErrChk(cusolverDnDormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
-        CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
-        m_matrix->raw(), m,
-        m_householder->raw(),
-        Q.raw(), m,
-        m_workspace->raw(), m_workspaceSize,
-        m_info->raw()));
-    // This debugging helper reads R on the host; finish the selected stream first.
-    Session::getInstance().synchronizeStream(m_matrix->streamIdx());
-    // Extract upper triangular R
-    std::vector<double> vecR(n * n, 0.);
-    for (size_t r = 0; r < n; r++) {
-        for (size_t c = r; c < n; c++) {
-            vecR[r + c * n] = (*m_matrix)(r, c);
-        }
-    }
-    gpuErrChk(cudaMemcpyAsync(R.raw(), vecR.data(), vecR.size() * sizeof(double), cudaMemcpyHostToDevice, stream));
-    gpuErrChk(cudaStreamSynchronize(stream)); // Complete host-buffer use before return.
-}
-
-template<>
-inline void QRFactoriser<float>::getQR(DTensor<float> &Q, DTensor<float> &R) {
-    size_t m = m_matrix->numRows();
-    size_t n = m_matrix->numCols();
-    if (Q.numRows() != m || Q.numCols() != n || Q.numMats() != 1)
-        throw std::invalid_argument("[QR] invalid shape of Q.");
-    if (R.numRows() != n || R.numCols() != n || R.numMats() != 1)
-        throw std::invalid_argument("[QR] invalid shape of R.");
-    // Initialize Q to 1's on diagonal
-    std::vector<float> vecQ(m * n, 0.);
-    for (size_t r = 0; r < m; r++) {
-        for (size_t c = 0; c < n; c++) {
-            if (r == c) { vecQ[r + c * m] = 1.; }
-        }
-    }
-    cudaStream_t stream;
-    gpuErrChk(cusolverDnGetStream(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()), &stream));
-    gpuErrChk(cudaMemcpyAsync(Q.raw(), vecQ.data(), vecQ.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
-    // Apply Householder reflectors to compute Q
-    gpuErrChk(cusolverDnSormqr(Session::getInstance().cuSolverHandle(m_matrix->streamIdx()),
-        CUBLAS_SIDE_LEFT, CUBLAS_OP_N, m, n, n,
-        m_matrix->raw(), m,
-        m_householder->raw(),
-        Q.raw(), m,
-        m_workspace->raw(), m_workspaceSize,
-        m_info->raw()));
-    // This debugging helper reads R on the host; finish the selected stream first.
-    Session::getInstance().synchronizeStream(m_matrix->streamIdx());
-    // Extract upper triangular R
-    std::vector<float> vecR(n * n, 0.);
-    for (size_t r = 0; r < n; r++) {
-        for (size_t c = r; c < n; c++) {
-            vecR[r + c * n] = (*m_matrix)(r, c);
-        }
-    }
-    gpuErrChk(cudaMemcpyAsync(R.raw(), vecR.data(), vecR.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
-    gpuErrChk(cudaStreamSynchronize(stream)); // Complete host-buffer use before return.
+template<typename T>
+TEMPLATE_CONSTRAINT_REQUIRES_FPX
+inline void QRFactoriser<T>::getQR(DTensor<T> &Q, DTensor<T> &R) {
+    // Validate both destinations before modifying either one.
+    validateOutput(Q, m_rows, m_cols);
+    validateOutput(R, m_cols, m_cols);
+    if (overlaps(Q, R)) throw std::invalid_argument("[QR] Q and R storage overlap");
+    formThinQ(Q);
+    extractR(R);
+    gpuErrChk(cudaStreamSynchronize(stream()));
 }
 
 

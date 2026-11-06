@@ -13,6 +13,7 @@ add_executable(gputils_test)
 target_sources(gputils_test  # add files
         PRIVATE
         testTensor.cu
+        testQR.cu
         testFileIO.cu
         hostAllocationFailure.cpp
         sessionAcrossTranslationUnits.cu

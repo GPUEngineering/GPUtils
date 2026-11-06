@@ -136,6 +136,53 @@ Deferred CUDA errors are reported at the relevant completion boundary.
 `deviceCopyTo`, copy construction, and copy assignment retain their existing
 completion guarantees.
 
+For asynchronous host transfers, `RegisteredHostVector<T>` owns a fixed-size
+`std::vector<T>` and registers its existing allocation with CUDA. Construct it
+by moving an existing vector (no element copy), or by specifying an element
+count for a value-initialized buffer. Registration happens during construction;
+reuse the buffers for repeated transfers.
+
+```c++
+std::vector<float> values{1, 2, 3, 4}; // Column-major matrix data.
+RegisteredHostVector<float> input(std::move(values));
+RegisteredHostVector<float> output(4);
+DTensor<float> matrix(2, 2);
+
+cudaStream_t stream;
+gpuErrChk(cublasGetStream(Session::getInstance().cuBlasHandle(matrix.streamIdx()), &stream));
+
+matrix.uploadAsync(input);
+matrix *= 2.f; // Ordered after the upload on the same stream.
+matrix.downloadAsync(output);
+
+// Independent CPU work can run here.
+gpuErrChk(cudaStreamSynchronize(stream));
+std::cout << output[0] << "\n"; // 2; output is now ready for CPU access.
+```
+
+Both methods also accept an explicit stream, for example
+`matrix.downloadAsync(output, stream)`. It must match the tensor's actual
+selected CUDA stream. Host buffers must contain exactly `matrix.numEl()`
+elements; size and stream mismatches throw `std::invalid_argument`. Empty
+tensor/buffer pairs are a no-op. Transfers preserve shape, storage, and stream
+indices and perform no allocation or explicit synchronization.
+
+These methods use column-major storage, including consecutive column-major
+matrices for batches. They do not convert row-major input; prepare the layout
+before uploading, or use the existing blocking `upload(values, rowMajor)`.
+
+Keep both host and device allocations alive until their transfers complete.
+Do not modify upload inputs or read/modify download outputs while a transfer
+is pending. Use a CUDA event or synchronize the actual selected stream before
+accessing/reusing buffers; accesses on other streams require explicit
+dependencies. The registered vector exposes `data()`, `size()`, `empty()`, and
+element access, but no resizing operations. It is movable and noncopyable.
+Move construction preserves its allocation and registration; wait before
+move-assigning over or destroying a buffer involved in a pending transfer.
+Destruction unregisters the memory before releasing the vector and introduces
+no explicit synchronization. Registration failure throws `std::runtime_error`
+and releases the adopted vector; registration requires CUDA platform support.
+
 Copy construction and copy assignment create independent owning storage:
 
 ```c++
@@ -368,6 +415,51 @@ The `DTensor` `B` will be overwritten with the solution.
 > This particular example demonstrates how the solution may 
 > overwrite only part of the given `B`, as `B` is a
 > (4,1,1)-tensor and the solution is a (3,1,1)-tensor.
+
+#### Reusable QR operations
+
+`QRFactoriser<T>` supports nonempty tall or square single matrices in `float`
+and `double`. Select the matrix's stream before constructing the factoriser.
+The constructor allocates the reflectors and the maximum workspace required by
+factorisation, applying the reflectors to a vector, and forming thin Q.
+
+```c++
+DTensor<double> A(aData, m, n, 1, columnMajor); // m >= n
+DTensor<double> rhs(bData, m);
+DTensor<double> Q(m, n), R(n, n);
+A.setStreamIdx(0);
+QRFactoriser<double> qr(A);
+
+qr.factorise();     // overwrites A with Householder reflectors and R
+qr.applyQt(rhs);    // overwrites the m-entry vector with full Q^T b
+qr.extractR(R);     // writes n-by-n R, including zeros below the diagonal
+qr.formThinQ(Q);    // writes the m-by-n orthonormal columns of thin Q
+Session::getInstance().synchronizeStream(A.streamIdx());
+```
+
+The first `n` entries returned by `applyQt` are `thinQ^T b`; the remaining
+`m-n` entries are coordinates in the orthogonal complement. It performs no
+triangular solve. `leastSquares(rhs)` instead applies the reflectors and solves
+the triangular system in place, requiring full column rank.
+
+The three new operations preserve the stored reflectors and can be repeated in
+any order after `factorise()`. They perform no host transfers, GPUtils device
+allocations, or explicit synchronization. They always enqueue on **A's selected
+cuSOLVER stream**, irrespective of the outputs' `streamIdx()`, and leave output
+storage, shapes and stream indices unchanged. Order both prior producers and
+later consumers on other streams with explicit dependencies. Synchronize A's
+stream before reading outputs through a different stream, and retain all storage
+and the factoriser until the queued work completes. A workspace cannot be used
+concurrently on different streams. Select matching streams for a session's
+cuBLAS and cuSOLVER handles if configuring those handles directly.
+
+Output shapes are checked and outputs must not overlap A. Refill A's existing
+storage to factorise another matrix; changing its shape, allocation or selected
+stream requires a new factoriser. `getQR(Q, R)` is a blocking convenience wrapper
+for the GPU operations and also rejects overlapping Q and R destinations. The
+new operations support CUDA Graph capture after library warm-up; construct the
+factoriser and output tensors before capture. `info()` reports the last queued
+cuSOLVER operation's status; `extractR` leaves it unchanged.
 
 ### 1.8. Saving and loading tensors
 
@@ -620,7 +712,8 @@ Stream ordering rules:
 - Existing `upload`, `download`, debug element access, and deep copies wait for
   completion on the tensor/source stream. They do not depend on legacy default-stream
   synchronization. The row-major upload conversion buffer stays alive until transfer
-  completion. No new public asynchronous host-transfer API is introduced.
+  completion. The asynchronous host-transfer methods below leave completion
+  to the caller.
 - `source.deviceCopyTo(destination)` waits for prior work on the destination's
   selected stream, then completes the copy on the source stream before returning.
   Neither stream index changes, so subsequent destination-stream consumers are safe.
@@ -629,6 +722,10 @@ Stream ordering rules:
   selected stream without explicit synchronization. It rejects nonempty
   copies with incompatible streams and partially overlapping regions. The
   caller retains the backing allocations and orders accesses from other streams.
+- `tensor.uploadAsync(host[, stream])` and `tensor.downloadAsync(host[, stream])`
+  transfer column-major data using an owning `RegisteredHostVector` of the exact
+  element count. They enqueue on the tensor's selected stream; an explicit stream
+  must match it. Keep allocations alive and wait before CPU access or buffer reuse.
 - Arithmetic involving several tensors does not automatically connect all operand
   streams. Callers must synchronize or establish CUDA-event dependencies between
   different producer and consumer streams. A selected stream records an execution
