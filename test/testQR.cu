@@ -2,6 +2,7 @@
 #include "../include/tensor.cuh"
 #include <chrono>
 #include <thread>
+#include <utility>
 
 namespace {
 // Use the same handle index as the other tests, but remove any implicit
@@ -79,7 +80,8 @@ void checkComponents(const std::vector<T> &a, const std::vector<T> &b,
 
 TYPED_TEST(QRComponentsTest, RepeatedComponentsPreserveFactorsAndStorage) {
     using T = TypeParam;
-    for (const auto &shape : {std::pair<size_t,size_t>{1,1}, {5,5}, {37,4}, {4097,3}}) {
+    const std::pair<size_t, size_t> shapes[] = {{1,1}, {5,5}, {37,4}, {4097,3}};
+    for (const auto &shape : shapes) {
         const auto [m,n] = shape;
         SCOPED_TRACE(::testing::Message() << m << 'x' << n);
         DTensor<T> A(m,n), Q(m,n), R(n,n), rhs(m);
